@@ -1,0 +1,118 @@
+{
+  "theme": "dark",
+  "archetype": "7 (Electric & Neon) crossed with 4 (Swiss & High-Contrast)",
+  "mood": "Hacker terminal meets premium Vercel/Linear aesthetic. Dense, precise, high-performance command center. Left-aligned asymmetry. No AI slop.",
+  "colors": {
+    "background": {
+      "page": "#050505",
+      "surface": "#0A0A0A",
+      "surfaceHover": "#141414"
+    },
+    "text": {
+      "primary": "#F8FAFC",
+      "secondary": "#8B949E",
+      "muted": "#4B5563"
+    },
+    "accents": {
+      "cyan": "#00E5FF",
+      "blue": "#2962FF",
+      "purple": "#BF55EC",
+      "success": "#10B981",
+      "danger": "#EF4444",
+      "warning": "#F59E0B"
+    },
+    "borders": {
+      "default": "#262626",
+      "glow": "rgba(0, 229, 255, 0.3)"
+    }
+  },
+  "typography": {
+    "banned_fonts": ["Inter", "Space Grotesk", "Roboto", "Open Sans", "Lato"],
+    "fonts": {
+      "headings": "Chivo",
+      "body": "IBM Plex Sans",
+      "mono": "JetBrains Mono"
+    },
+    "hierarchy": {
+      "h1": "text-4xl sm:text-5xl font-black tracking-tighter text-white",
+      "h2": "text-2xl sm:text-3xl font-bold tracking-tight text-white",
+      "h3": "text-xl font-semibold tracking-tight text-white",
+      "h4": "text-lg font-medium tracking-tight text-gray-200",
+      "body": "text-base font-normal leading-relaxed text-[#8B949E]",
+      "mono_accent": "text-xs font-mono tracking-[0.2em] uppercase text-[#00E5FF]"
+    }
+  },
+  "layout": {
+    "spacing_system": "Generous spacing for macro sections (p-12, py-24), dense spacing for data tables (p-3, p-4)",
+    "corners": "rounded-md (max 6px radius for sharp, technical feel)",
+    "dashboard_grid": "Control Room Protocol: grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4",
+    "alignment": "Left-aligned asymmetry. Center nothing unless it's an empty state."
+  },
+  "surfaces": {
+    "cards": "Flat background (#0A0A0A), 1px solid border (#262626), no shadow by default. Hover adds subtle -translate-y-0.5 and border color shift.",
+    "modals": "Glassmorphism: backdrop-blur-xl bg-black/80 border border-white/10",
+    "headers": "Solid background with hard bottom border border-[#262626]",
+    "kanban_board": "Columns have distinct dark grey bg (#121212) with 1px border (#262626)."
+  },
+  "motion": {
+    "library": "framer-motion",
+    "rules": [
+      "Staggered entrance for lists and table rows.",
+      "Hover states must alter border color to cyan/blue and slight text brightening.",
+      "Tracing beam or border gradient animation for active AI Agents.",
+      "Keep durations short (0.2s) to maintain the fast, high-performance command center feel."
+    ]
+  },
+  "components_strategy": {
+    "buttons": "Flat backgrounds, sharp edges. Primary CTA uses neon border/text or subtle glowing background.",
+    "tables": "Dense. Use Shadcn table. Monospace fonts for IDs, dates, and metrics.",
+    "forms": "Left-aligned labels, Shadcn inputs with dark backgrounds, glow on focus focus:ring-1 focus:ring-cyan-500",
+    "charts": "Shadcn charts (Recharts) using dark mode palette, cyan and purple lines. Hide grid lines or make them extremely faint (#262626)."
+  },
+  "media": {
+    "image_urls": [
+      {
+        "category": "hero_abstract_bg",
+        "url": "https://images.unsplash.com/photo-1754738381772-897447d10eb6?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1OTV8MHwxfHNlYXJjaHwzfHxhYnN0cmFjdCUyMGRhcmslMjB0ZWNobm9sb2d5fGVufDB8fHx8MTc3NjM3MTc2Nnww&ixlib=rb-4.1.0&q=85",
+        "description": "Abstract flowing shape with purple and blue highlights - Use for Login/Register split screen right side background. Use max bg-black/40 overlay."
+      },
+      {
+        "category": "dashboard_texture",
+        "url": "https://images.unsplash.com/photo-1754738797051-4e0c6983473a?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1OTV8MHwxfHNlYXJjaHw0fHxhYnN0cmFjdCUyMGRhcmslMjB0ZWNobm9sb2d5fGVufDB8fHx8MTc3NjM3MTc2Nnww&ixlib=rb-4.1.0&q=85",
+        "description": "Abstract metallic sculpture with iridescent blue and purple hues - Use for Empty States or large visual sections"
+      },
+      {
+        "category": "ai_agent_avatar",
+        "url": "https://images.unsplash.com/photo-1754738381730-e08d0a402f0e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1OTV8MHwxfHNlYXJjaHwyfHxhYnN0cmFjdCUyMGRhcmslMjB0ZWNobm9sb2d5fGVufDB8fHx8MTc3NjM3MTc2Nnww&ixlib=rb-4.1.0&q=85",
+        "description": "Abstract purple metallic knot - Use as the visual avatar or state indicator for OpenClaw AI instances"
+      }
+    ]
+  },
+  "icons": {
+    "library": "@phosphor-icons/react",
+    "instruction": "yarn add @phosphor-icons/react",
+    "style": "Use regular or duotone weight for a dense developer tools look."
+  },
+  "testing": {
+    "requirements": "All interactive elements (buttons, links, form inputs) MUST include data-testid attributes (e.g., data-testid='start-campaign-button'). Use kebab-case, role-based naming."
+  },
+  "page_specific_instructions": {
+    "login_register": "Split screen layout. Left side: Form. Right side: Image category 'hero_abstract_bg' with an overlay of bg-black/30. Use Shadcn forms but highly customized with sharp borders.",
+    "dashboard": "Control Room Grid (grid-cols-4). Metric cards at the top using JetBrains Mono for numbers. Left-aligned charts. Dense and data-rich.",
+    "campaign_builder": "Multi-step visual. Use sharp, tech-style cards. Tracing beam border (via framer-motion) for active/selected step.",
+    "leads_crm": "Dense table view + Kanban board. Kanban columns should have a distinct dark grey background with 1px borders.",
+    "ai_composer": "Modal using Glassmorphism overlay. Text area should have subtle purple glow when 'AI generating' is active.",
+    "agents_page": "Live status page. Use Framer motion to create a 'pulse' effect on active agents. Monospace logs.",
+    "analytics": "Dense charts. Accent colors (cyan/purple) on dark background.",
+    "settings": "Standard list-based form layout. Clean, left-aligned, high contrast. Use pure HTML + Tailwind for structural layout, Shadcn logic for inputs."
+  },
+  "instructions_to_main_agent": [
+    "Install specific fonts: Chivo, IBM Plex Sans, JetBrains Mono.",
+    "Do NOT use standard Shadcn borders everywhere, override border colors to #262626.",
+    "Ensure all text against dark backgrounds passes APCA contrast. Never use muddy gradients on white.",
+    "Implement 'data-testid' on all CTAs and interactive items.",
+    "Use Framer Motion for micro-interactions but avoid slow transitions (use duration 0.2s).",
+    "Build the UI in React (.jsx or .js) with Tailwind CSS.",
+    "When customizing Shadcn components, respect the sharp aesthetics (rounded-md max) and dark premium feel."
+  ]
+}
