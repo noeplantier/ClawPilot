@@ -8,6 +8,7 @@ from models import Campaign, CampaignCreate, CampaignUpdate, Activity, Message
 from deps import db, get_current_user
 from services.sendgrid_svc import send_email
 from services.twilio_svc import send_whatsapp
+from services import scheduler
 
 router = APIRouter(prefix="/campaigns", tags=["campaigns"])
 
@@ -215,3 +216,32 @@ async def launch_campaign(campaign_id: str, user: dict = Depends(get_current_use
     )
     await _log(user["org_id"], "campaign.launched", f"{c['name']} dispatched {burst} messages")
     return {"ok": True, "dispatched": burst, "opened": opened, "replied": replied, "converted": converted}
+
+
+@router.post("/{campaign_id}/schedule")
+async def schedule_campaign(campaign_id: str, user: dict = Depends(get_current_user)):
+    """Enqueue every step × every assigned lead with cumulative delay_hours."""
+    res = await scheduler.enqueue_campaign(campaign_id, user["org_id"])
+    if res.get("error"):
+        raise HTTPException(status_code=400, detail=res["error"])
+    await db.campaigns.update_one(
+        {"id": campaign_id, "org_id": user["org_id"]}, {"$set": {"status": "running"}}
+    )
+    await _log(user["org_id"], "campaign.scheduled", f"Scheduled {res['scheduled']} jobs ({res['steps']} steps × {res['leads']} leads)")
+    return res
+
+
+@router.get("/{campaign_id}/schedule")
+async def list_schedule(campaign_id: str, user: dict = Depends(get_current_user)):
+    jobs = await scheduler.pending_for_campaign(campaign_id, user["org_id"])
+    counts = {"pending": 0, "running": 0, "done": 0, "failed": 0}
+    for j in jobs:
+        counts[j.get("status", "pending")] = counts.get(j.get("status", "pending"), 0) + 1
+    return {"jobs": jobs[:100], "counts": counts, "total": len(jobs)}
+
+
+@router.post("/{campaign_id}/cancel-schedule")
+async def cancel_schedule(campaign_id: str, user: dict = Depends(get_current_user)):
+    deleted = await scheduler.cancel_campaign(campaign_id, user["org_id"])
+    await _log(user["org_id"], "campaign.schedule_cancel", f"Cancelled {deleted} pending jobs")
+    return {"cancelled": deleted}

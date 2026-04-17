@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { motion } from "framer-motion";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
@@ -8,6 +8,7 @@ import {
 import AIComposerModal from "@/components/AIComposerModal";
 import BulkLeadsModal from "@/components/BulkLeadsModal";
 import BatchComposerModal from "@/components/BatchComposerModal";
+import LeadsBulkBar from "@/components/LeadsBulkBar";
 
 const STAGES = ["new", "contacted", "engaged", "qualified", "won", "lost"];
 const STAGE_COLORS = {
@@ -24,6 +25,17 @@ export default function Leads() {
   const [showBatch, setShowBatch] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
   const [aiDefaults, setAiDefaults] = useState(null);
+  const [selected, setSelected] = useState(new Set());
+
+  const allVisible = leads.map((l) => l.id);
+  const toggleOne = (id) =>
+    setSelected((s) => {
+      const n = new Set(s);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+  const toggleAll = () =>
+    setSelected((s) => (s.size === allVisible.length ? new Set() : new Set(allVisible)));
 
   const load = async () => {
     const { data } = await api.get("/leads", { params: { search } });
@@ -82,6 +94,15 @@ export default function Leads() {
           <table className="w-full text-sm">
             <thead className="bg-[#FAFAF7] border-b border-[#D6D3C8]">
               <tr className="text-left mono-accent">
+                <th className="p-3 w-10">
+                  <input
+                    type="checkbox"
+                    checked={selected.size > 0 && selected.size === allVisible.length}
+                    onChange={toggleAll}
+                    className="accent-[#DC2626]"
+                    data-testid="leads-select-all"
+                  />
+                </th>
                 <th className="p-3">Name</th>
                 <th className="p-3">Company</th>
                 <th className="p-3">Email</th>
@@ -98,9 +119,18 @@ export default function Leads() {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ delay: i * 0.02 }}
-                  className="border-b border-[#F0F0EA] hover:bg-[#FAFAF7] transition-colors"
+                  className={`border-b border-[#F0F0EA] hover:bg-[#FAFAF7] transition-colors ${selected.has(l.id) ? "bg-[#FEF2F2]" : ""}`}
                   data-testid={`lead-row-${l.id}`}
                 >
+                  <td className="p-3">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(l.id)}
+                      onChange={() => toggleOne(l.id)}
+                      className="accent-[#DC2626]"
+                      data-testid={`lead-check-${l.id}`}
+                    />
+                  </td>
                   <td className="p-3">
                     <div className="flex items-center gap-2">
                       <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#DC2626]/30 to-[#0F172A]/30 flex items-center justify-center text-xs font-bold">
@@ -187,6 +217,11 @@ export default function Leads() {
       <BulkLeadsModal open={showBulk} onClose={() => setShowBulk(false)} onDone={load} />
       <BatchComposerModal open={showBatch} onClose={() => setShowBatch(false)} />
       <AIComposerModal open={aiOpen} onClose={() => setAiOpen(false)} defaults={aiDefaults} />
+      <LeadsBulkBar
+        selectedIds={Array.from(selected)}
+        onCleared={() => setSelected(new Set())}
+        onDone={() => { setSelected(new Set()); load(); }}
+      />
     </div>
   );
 }

@@ -18,8 +18,21 @@ from routes.messages import router as messages_router
 from routes.ai import router as ai_router
 from routes.analytics import router as analytics_router
 from routes.settings import router as settings_router
+from routes.webhooks import router as webhooks_router
+from services import scheduler
 
 app = FastAPI(title="OpenClaw API", version="1.0.0")
+
+
+@app.on_event("startup")
+async def _startup():
+    scheduler.start()
+
+
+@app.on_event("shutdown")
+async def _shutdown():
+    scheduler.stop()
+
 
 api_router = APIRouter(prefix="/api")
 
@@ -42,6 +55,7 @@ api_router.include_router(messages_router)
 api_router.include_router(ai_router)
 api_router.include_router(analytics_router)
 api_router.include_router(settings_router)
+api_router.include_router(webhooks_router)
 
 app.include_router(api_router)
 
