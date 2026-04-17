@@ -84,7 +84,7 @@ export default function Campaigns() {
                 <p className="text-sm text-[#6B6B66] mt-1 line-clamp-1">{c.goal || "—"}</p>
               </div>
               <div className="flex gap-2">
-                <button onClick={() => setDrawerId(c.id)} className="btn-ghost !py-1.5 !px-2" title="open" data-testid={`open-${c.id}`}>
+                <button onClick={() => setDrawerId(c.id)} className="btn-ghost !py-1.5 !px-2" title="open" data-testid={`view-campaign-${c.id}`}>
                   <ArrowSquareOut size={14} weight="bold" />
                 </button>
                 <button onClick={() => toggle(c)} className="btn-ghost !py-1.5 !px-2" title="toggle" data-testid={`toggle-${c.id}`}>

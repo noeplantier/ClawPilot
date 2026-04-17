@@ -50,3 +50,32 @@ Build a highly scalable, production-grade SaaS platform for automated global out
 - A/B testing for subject lines
 - Real-time updates via WebSocket/SSE
 - Advanced analytics (cohort, attribution)
+
+## Iteration 2 (2026-02) — Light Theme + Feature Maximization
+
+### Theme redesign
+- Switched dark cyberpunk → **light gray gridded canvas** (`#EDEBE0` + 32px gridlines) with **OpenClaw red** (`#DC2626`) as primary accent, ink black (`#0F172A`) as secondary
+- New utility classes: `.btn-ink`, `.chip-red`, `.dot-paper`, `.flash-pulse`
+- White surfaces with solid 1px borders + subtle shadows; red-glow hover states
+
+### Feature maximization
+Backend additions:
+- `POST /api/leads/bulk` — CSV-style bulk import with email dedup (`{created, skipped, errors, lead_ids}`)
+- `POST /api/leads/bulk-stage` — bulk stage transitions
+- `POST /api/messages/email/batch` — multi-lead dispatch with `{{first_name}}` `{{full_name}}` `{{company}}` `{{title}}` `{{country}}` token substitution; returns `{dispatched, sent, mocked, failed, skipped, total}`
+- `POST /api/messages/whatsapp/batch` — same pattern for WhatsApp
+- `POST /api/campaigns/{id}/assign-leads` — org-validated lead assignment
+- `POST /api/campaigns/{id}/run-step/{index}` — executes one step against assigned leads with token rendering, returns rich result
+- `POST /api/ai/generate/variants` — 3 tone variants (professional / friendly / urgent) in parallel via `asyncio.gather`
+
+Frontend additions:
+- `BulkLeadsModal` — paste/import multiple leads with live preview and result panel
+- `BatchComposerModal` — lead multi-select, token hints, AI WRITE with tokenization, live preview, dispatch summary with sent/mocked/failed/skipped
+- `CampaignDetailDrawer` — slide-in side drawer with metrics, lead assignment, and per-step RUN button with inline execution stats
+- AI Composer — "GENERATE 3 VARIANTS" button with stacked tone cards you can click to adopt
+- Messages page — "BATCH EMAIL" + "BATCH WHATSAPP" shortcuts
+- Leads page — "BULK IMPORT" + "BATCH SEND" shortcuts + campaign lead-count chips
+
+### Test status (iteration_2)
+- Backend: 100% (28/28 tests pass)
+- Frontend: 95% → fixed (renamed `open-{id}` → `view-campaign-{id}` to avoid testid collision with sidebar AI button)
