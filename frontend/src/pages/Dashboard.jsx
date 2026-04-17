@@ -1,0 +1,253 @@
+import { useEffect, useState } from "react";
+import { motion } from "framer-motion";
+import { api } from "@/lib/api";
+import {
+  LineChart, Line, AreaChart, Area, BarChart, Bar,
+  XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell,
+} from "recharts";
+import {
+  PaperPlaneTilt, Eye, ChatCircleDots, Target, Robot, Users, TrendUp, Lightning, ArrowUpRight,
+} from "@phosphor-icons/react";
+
+const METRICS = [
+  { key: "sent",      label: "MESSAGES DISPATCHED", icon: PaperPlaneTilt, color: "#00E5FF" },
+  { key: "opened",    label: "OPENED",              icon: Eye,            color: "#BF55EC" },
+  { key: "replied",   label: "REPLIED",             icon: ChatCircleDots, color: "#2962FF" },
+  { key: "converted", label: "CONVERTED",           icon: Target,         color: "#10B981" },
+];
+
+const CHANNEL_COLORS = ["#00E5FF", "#BF55EC"];
+
+export default function Dashboard() {
+  const [data, setData] = useState(null);
+  const [activity, setActivity] = useState([]);
+
+  useEffect(() => {
+    api.get("/analytics/overview").then((r) => setData(r.data));
+    api.get("/analytics/activity").then((r) => setActivity(r.data));
+  }, []);
+
+  if (!data) {
+    return <div className="p-12 text-[#8B949E] font-mono">loading telemetry...</div>;
+  }
+
+  const openRate = data.totals.sent ? ((data.totals.opened / data.totals.sent) * 100).toFixed(1) : "0.0";
+  const replyRate = data.totals.sent ? ((data.totals.replied / data.totals.sent) * 100).toFixed(1) : "0.0";
+
+  return (
+    <div className="p-6 md:p-10 space-y-8">
+      {/* Header */}
+      <div className="flex items-start justify-between flex-wrap gap-4">
+        <div>
+          <div className="mono-accent mb-2">// operations.overview</div>
+          <h1 className="text-4xl sm:text-5xl font-black tracking-tighter">Command Dashboard</h1>
+          <p className="text-[#8B949E] mt-2">Real-time telemetry across all active outreach operations.</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="chip chip-success"><span className="w-1.5 h-1.5 rounded-full bg-[#10B981] pulse-dot" /> LIVE</span>
+          <span className="chip chip-cyan font-mono">{data.agents_running}/{data.agents_total} agents online</span>
+        </div>
+      </div>
+
+      {/* Metric cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {METRICS.map((m, i) => {
+          const val = data.totals[m.key] || 0;
+          return (
+            <motion.div
+              key={m.key}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.05 }}
+              className="surface surface-hover p-5"
+              data-testid={`metric-${m.key}`}
+            >
+              <div className="flex items-start justify-between">
+                <m.icon size={22} weight="duotone" style={{ color: m.color }} />
+                <ArrowUpRight size={14} className="text-[#4B5563]" />
+              </div>
+              <div className="mt-6">
+                <div className="mono-accent" style={{ color: m.color }}>{m.label}</div>
+                <div className="font-mono text-4xl font-bold mt-1 text-white">{val.toLocaleString()}</div>
+              </div>
+            </motion.div>
+          );
+        })}
+      </div>
+
+      {/* Main charts grid */}
+      <div className="grid lg:grid-cols-3 gap-4">
+        {/* Timeseries */}
+        <div className="surface p-6 lg:col-span-2">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <div className="mono-accent">/// outreach.throughput · 14d</div>
+              <div className="font-display font-bold text-lg mt-0.5">Campaign Performance</div>
+            </div>
+            <div className="flex gap-3 text-xs font-mono">
+              <span className="flex items-center gap-1.5"><span className="w-2 h-0.5 bg-[#00E5FF]" /> sent</span>
+              <span className="flex items-center gap-1.5"><span className="w-2 h-0.5 bg-[#BF55EC]" /> opened</span>
+              <span className="flex items-center gap-1.5"><span className="w-2 h-0.5 bg-[#10B981]" /> replied</span>
+            </div>
+          </div>
+          <ResponsiveContainer width="100%" height={260}>
+            <AreaChart data={data.timeseries} margin={{ top: 10, right: 10, bottom: 0, left: -20 }}>
+              <defs>
+                <linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#00E5FF" stopOpacity={0.35} />
+                  <stop offset="100%" stopColor="#00E5FF" stopOpacity={0} />
+                </linearGradient>
+                <linearGradient id="g2" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#BF55EC" stopOpacity={0.3} />
+                  <stop offset="100%" stopColor="#BF55EC" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid stroke="#1a1a1a" strokeDasharray="3 3" vertical={false} />
+              <XAxis dataKey="date" stroke="#4B5563" fontSize={11} tickLine={false} axisLine={false} />
+              <YAxis stroke="#4B5563" fontSize={11} tickLine={false} axisLine={false} />
+              <Tooltip contentStyle={{ background: "#0A0A0A", border: "1px solid #262626", borderRadius: 6 }} labelStyle={{ color: "#8B949E", fontFamily: "JetBrains Mono" }} />
+              <Area type="monotone" dataKey="sent" stroke="#00E5FF" strokeWidth={2} fill="url(#g1)" />
+              <Area type="monotone" dataKey="opened" stroke="#BF55EC" strokeWidth={2} fill="url(#g2)" />
+              <Line type="monotone" dataKey="replied" stroke="#10B981" strokeWidth={2} dot={false} />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Channel Split */}
+        <div className="surface p-6 flex flex-col">
+          <div className="mono-accent">/// channel.split</div>
+          <div className="font-display font-bold text-lg mt-0.5">Messaging Mix</div>
+
+          <div className="flex-1 flex items-center justify-center min-h-[200px]">
+            <ResponsiveContainer width="100%" height={200}>
+              <PieChart>
+                <Pie data={data.channel_split} dataKey="value" nameKey="channel" cx="50%" cy="50%" innerRadius={50} outerRadius={78} strokeWidth={0}>
+                  {data.channel_split.map((_, idx) => (
+                    <Cell key={idx} fill={CHANNEL_COLORS[idx]} />
+                  ))}
+                </Pie>
+                <Tooltip contentStyle={{ background: "#0A0A0A", border: "1px solid #262626", borderRadius: 6 }} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 text-xs font-mono">
+            {data.channel_split.map((c, i) => (
+              <div key={c.channel} className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-sm" style={{ background: CHANNEL_COLORS[i] }} />
+                <span className="text-[#8B949E] uppercase">{c.channel}</span>
+                <span className="text-white ml-auto">{c.value}%</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Pipeline + rates + Activity */}
+      <div className="grid lg:grid-cols-3 gap-4">
+        <div className="surface p-6">
+          <div className="mono-accent">/// rates</div>
+          <div className="font-display font-bold text-lg mt-0.5 mb-4">Performance Index</div>
+          <div className="space-y-5">
+            <RateBar label="OPEN RATE" value={parseFloat(openRate)} color="#00E5FF" />
+            <RateBar label="REPLY RATE" value={parseFloat(replyRate)} color="#BF55EC" />
+            <div className="flex items-center justify-between pt-3 border-t border-[#262626]">
+              <div>
+                <div className="mono-accent">total.leads</div>
+                <div className="font-mono text-2xl font-bold text-white mt-1">{data.leads_total}</div>
+              </div>
+              <Users size={36} weight="duotone" className="text-[#00E5FF]/40" />
+            </div>
+          </div>
+        </div>
+
+        <div className="surface p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <div className="mono-accent">/// pipeline</div>
+              <div className="font-display font-bold text-lg mt-0.5">Lead Funnel</div>
+            </div>
+            <TrendUp size={18} className="text-[#10B981]" />
+          </div>
+          <div className="space-y-2">
+            {Object.entries(data.pipeline).map(([stage, count]) => {
+              const max = Math.max(...Object.values(data.pipeline), 1);
+              const pct = (count / max) * 100;
+              return (
+                <div key={stage}>
+                  <div className="flex justify-between text-xs font-mono mb-1">
+                    <span className="uppercase text-[#8B949E]">{stage}</span>
+                    <span className="text-white">{count}</span>
+                  </div>
+                  <div className="h-1.5 bg-[#141414] rounded-sm overflow-hidden">
+                    <motion.div initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.6 }} className="h-full bg-gradient-to-r from-[#00E5FF] to-[#BF55EC]" />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Activity */}
+        <div className="surface p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <div className="mono-accent">/// live.feed</div>
+              <div className="font-display font-bold text-lg mt-0.5">Activity Stream</div>
+            </div>
+            <Lightning size={18} className="text-[#F59E0B]" />
+          </div>
+          <div className="space-y-3 max-h-[280px] overflow-y-auto pr-1">
+            {activity.slice(0, 10).map((a) => (
+              <div key={a.id} className="flex items-start gap-3 text-sm">
+                <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-[#00E5FF]" />
+                <div className="flex-1 min-w-0">
+                  <div className="text-[#e6edf3] truncate">{a.title}</div>
+                  <div className="mono-accent text-[#4B5563] mt-0.5">{a.kind}</div>
+                </div>
+              </div>
+            ))}
+            {activity.length === 0 && (
+              <div className="text-[#4B5563] text-sm italic">No activity yet</div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Top countries */}
+      <div className="surface p-6">
+        <div className="mono-accent">/// global.reach</div>
+        <div className="font-display font-bold text-lg mt-0.5 mb-4">Territories</div>
+        <ResponsiveContainer width="100%" height={200}>
+          <BarChart data={data.top_countries} margin={{ top: 10, right: 10, bottom: 0, left: -20 }}>
+            <CartesianGrid stroke="#1a1a1a" vertical={false} />
+            <XAxis dataKey="country" stroke="#4B5563" fontSize={11} tickLine={false} />
+            <YAxis stroke="#4B5563" fontSize={11} tickLine={false} axisLine={false} />
+            <Tooltip contentStyle={{ background: "#0A0A0A", border: "1px solid #262626", borderRadius: 6 }} />
+            <Bar dataKey="leads" fill="#00E5FF" radius={[4, 4, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
+function RateBar({ label, value, color }) {
+  return (
+    <div>
+      <div className="flex justify-between items-baseline mb-1.5">
+        <span className="mono-accent" style={{ color }}>{label}</span>
+        <span className="font-mono text-2xl font-bold text-white">{value.toFixed(1)}<span className="text-[#4B5563] text-sm">%</span></span>
+      </div>
+      <div className="h-2 bg-[#141414] rounded-sm overflow-hidden">
+        <motion.div
+          initial={{ width: 0 }}
+          animate={{ width: `${Math.min(value, 100)}%` }}
+          transition={{ duration: 0.8 }}
+          className="h-full"
+          style={{ background: color, boxShadow: `0 0 10px ${color}` }}
+        />
+      </div>
+    </div>
+  );
+}
