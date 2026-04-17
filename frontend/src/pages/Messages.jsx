@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
-import { Envelope, WhatsappLogo, PaperPlaneTilt, Sparkle } from "@phosphor-icons/react";
+import { Envelope, WhatsappLogo, PaperPlaneTilt, Sparkle, Users } from "@phosphor-icons/react";
+import BatchComposerModal from "@/components/BatchComposerModal";
 
 const STATUS_CHIP = {
   sent: "chip-success", delivered: "chip-success", opened: "chip-cyan",
@@ -13,6 +14,7 @@ export default function Messages() {
   const [list, setList] = useState([]);
   const [filter, setFilter] = useState("all");
   const [composer, setComposer] = useState({ open: false, channel: "email" });
+  const [batchChannel, setBatchChannel] = useState(null);
 
   const load = () => {
     const params = filter === "all" ? {} : { channel: filter };
@@ -26,10 +28,12 @@ export default function Messages() {
         <div>
           <div className="mono-accent">// transmission.log</div>
           <h1 className="text-4xl font-black tracking-tighter">Messages</h1>
-          <p className="text-[#8B949E] mt-1">{list.length} transmissions recorded</p>
+          <p className="text-[#6B6B66] mt-1">{list.length} transmissions recorded</p>
         </div>
-        <div className="flex gap-2">
-          <button onClick={() => setComposer({ open: true, channel: "email" })} className="btn-ghost" data-testid="new-email-button"><Envelope size={14} /> NEW EMAIL</button>
+        <div className="flex gap-2 flex-wrap">
+          <button onClick={() => setBatchChannel("email")} className="btn-ink" data-testid="batch-email-button"><Users size={14} /> BATCH EMAIL</button>
+          <button onClick={() => setBatchChannel("whatsapp")} className="btn-ink" data-testid="batch-whatsapp-button"><Users size={14} /> BATCH WHATSAPP</button>
+          <button onClick={() => setComposer({ open: true, channel: "email" })} className="btn-ghost" data-testid="new-email-button"><Envelope size={14} /> EMAIL</button>
           <button onClick={() => setComposer({ open: true, channel: "whatsapp" })} className="btn-primary" data-testid="new-whatsapp-button"><WhatsappLogo size={14} weight="fill" /> WHATSAPP</button>
         </div>
       </div>
@@ -42,7 +46,7 @@ export default function Messages() {
 
       <div className="surface overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-[#080808] border-b border-[#262626]">
+          <thead className="bg-[#FAFAF7] border-b border-[#D6D3C8]">
             <tr className="text-left mono-accent">
               <th className="p-3">Channel</th>
               <th className="p-3">To</th>
@@ -54,28 +58,33 @@ export default function Messages() {
           <tbody>
             {list.map((m, i) => (
               <motion.tr key={m.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.02 }}
-                className="border-b border-[#141414] hover:bg-[#0c0c0c]">
+                className="border-b border-[#F0F0EA] hover:bg-[#FAFAF7]">
                 <td className="p-3">
                   {m.channel === "email"
-                    ? <span className="inline-flex items-center gap-1.5 text-[#00E5FF]"><Envelope size={14} /> email</span>
+                    ? <span className="inline-flex items-center gap-1.5 text-[#DC2626]"><Envelope size={14} /> email</span>
                     : <span className="inline-flex items-center gap-1.5 text-[#25D366]"><WhatsappLogo size={14} weight="fill" /> whatsapp</span>
                   }
                 </td>
-                <td className="p-3 font-mono text-xs text-[#e6edf3]">{m.to}</td>
-                <td className="p-3 text-[#8B949E] truncate max-w-sm">
-                  {m.subject && <div className="text-white">{m.subject}</div>}
+                <td className="p-3 font-mono text-xs text-[#1a1a1a]">{m.to}</td>
+                <td className="p-3 text-[#6B6B66] truncate max-w-sm">
+                  {m.subject && <div className="text-[#0A0A0A]">{m.subject}</div>}
                   <div className="truncate">{m.body}</div>
                 </td>
                 <td className="p-3"><span className={`chip ${STATUS_CHIP[m.status]}`}>{m.status}</span></td>
-                <td className="p-3 font-mono text-xs text-[#4B5563]">{new Date(m.created_at).toLocaleString()}</td>
+                <td className="p-3 font-mono text-xs text-[#999995]">{new Date(m.created_at).toLocaleString()}</td>
               </motion.tr>
             ))}
-            {list.length === 0 && <tr><td colSpan="5" className="p-10 text-center text-[#8B949E]">No messages yet.</td></tr>}
+            {list.length === 0 && <tr><td colSpan="5" className="p-10 text-center text-[#6B6B66]">No messages yet.</td></tr>}
           </tbody>
         </table>
       </div>
 
       {composer.open && <Composer channel={composer.channel} onClose={() => setComposer({ ...composer, open: false })} onSent={() => { setComposer({ ...composer, open: false }); load(); }} />}
+      <BatchComposerModal
+        open={batchChannel !== null}
+        onClose={() => { setBatchChannel(null); load(); }}
+        defaultChannel={batchChannel || "email"}
+      />
     </div>
   );
 }
@@ -122,7 +131,7 @@ function Composer({ channel, onClose, onSent }) {
   };
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xl flex items-center justify-center p-4" onClick={onClose}>
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-50 bg-[#0F172A]/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
       <motion.div initial={{ y: 10 }} animate={{ y: 0 }} className="surface w-full max-w-2xl p-8" onClick={(e) => e.stopPropagation()}>
         <div className="mono-accent">/// {channel}.compose</div>
         <h2 className="text-2xl font-black tracking-tighter mt-1">New {channel === "email" ? "Email" : "WhatsApp"}</h2>

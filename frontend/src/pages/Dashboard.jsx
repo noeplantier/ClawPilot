@@ -10,13 +10,13 @@ import {
 } from "@phosphor-icons/react";
 
 const METRICS = [
-  { key: "sent",      label: "MESSAGES DISPATCHED", icon: PaperPlaneTilt, color: "#00E5FF" },
-  { key: "opened",    label: "OPENED",              icon: Eye,            color: "#BF55EC" },
-  { key: "replied",   label: "REPLIED",             icon: ChatCircleDots, color: "#2962FF" },
+  { key: "sent",      label: "MESSAGES DISPATCHED", icon: PaperPlaneTilt, color: "#DC2626" },
+  { key: "opened",    label: "OPENED",              icon: Eye,            color: "#0F172A" },
+  { key: "replied",   label: "REPLIED",             icon: ChatCircleDots, color: "#475569" },
   { key: "converted", label: "CONVERTED",           icon: Target,         color: "#10B981" },
 ];
 
-const CHANNEL_COLORS = ["#00E5FF", "#BF55EC"];
+const CHANNEL_COLORS = ["#DC2626", "#0F172A"];
 
 export default function Dashboard() {
   const [data, setData] = useState(null);
@@ -28,7 +28,7 @@ export default function Dashboard() {
   }, []);
 
   if (!data) {
-    return <div className="p-12 text-[#8B949E] font-mono">loading telemetry...</div>;
+    return <div className="p-12 text-[#6B6B66] font-mono">loading telemetry...</div>;
   }
 
   const openRate = data.totals.sent ? ((data.totals.opened / data.totals.sent) * 100).toFixed(1) : "0.0";
@@ -41,7 +41,7 @@ export default function Dashboard() {
         <div>
           <div className="mono-accent mb-2">// operations.overview</div>
           <h1 className="text-4xl sm:text-5xl font-black tracking-tighter">Command Dashboard</h1>
-          <p className="text-[#8B949E] mt-2">Real-time telemetry across all active outreach operations.</p>
+          <p className="text-[#6B6B66] mt-2">Real-time telemetry across all active outreach operations.</p>
         </div>
         <div className="flex items-center gap-3">
           <span className="chip chip-success"><span className="w-1.5 h-1.5 rounded-full bg-[#10B981] pulse-dot" /> LIVE</span>
@@ -64,11 +64,11 @@ export default function Dashboard() {
             >
               <div className="flex items-start justify-between">
                 <m.icon size={22} weight="duotone" style={{ color: m.color }} />
-                <ArrowUpRight size={14} className="text-[#4B5563]" />
+                <ArrowUpRight size={14} className="text-[#999995]" />
               </div>
               <div className="mt-6">
                 <div className="mono-accent" style={{ color: m.color }}>{m.label}</div>
-                <div className="font-mono text-4xl font-bold mt-1 text-white">{val.toLocaleString()}</div>
+                <div className="font-mono text-4xl font-bold mt-1 text-[#0A0A0A]">{val.toLocaleString()}</div>
               </div>
             </motion.div>
           );
@@ -85,8 +85,8 @@ export default function Dashboard() {
               <div className="font-display font-bold text-lg mt-0.5">Campaign Performance</div>
             </div>
             <div className="flex gap-3 text-xs font-mono">
-              <span className="flex items-center gap-1.5"><span className="w-2 h-0.5 bg-[#00E5FF]" /> sent</span>
-              <span className="flex items-center gap-1.5"><span className="w-2 h-0.5 bg-[#BF55EC]" /> opened</span>
+              <span className="flex items-center gap-1.5"><span className="w-2 h-0.5 bg-[#DC2626]" /> sent</span>
+              <span className="flex items-center gap-1.5"><span className="w-2 h-0.5 bg-[#0F172A]" /> opened</span>
               <span className="flex items-center gap-1.5"><span className="w-2 h-0.5 bg-[#10B981]" /> replied</span>
             </div>
           </div>
@@ -94,20 +94,20 @@ export default function Dashboard() {
             <AreaChart data={data.timeseries} margin={{ top: 10, right: 10, bottom: 0, left: -20 }}>
               <defs>
                 <linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#00E5FF" stopOpacity={0.35} />
-                  <stop offset="100%" stopColor="#00E5FF" stopOpacity={0} />
+                  <stop offset="0%" stopColor="#DC2626" stopOpacity={0.35} />
+                  <stop offset="100%" stopColor="#DC2626" stopOpacity={0} />
                 </linearGradient>
                 <linearGradient id="g2" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#BF55EC" stopOpacity={0.3} />
-                  <stop offset="100%" stopColor="#BF55EC" stopOpacity={0} />
+                  <stop offset="0%" stopColor="#0F172A" stopOpacity={0.3} />
+                  <stop offset="100%" stopColor="#0F172A" stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid stroke="#1a1a1a" strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="date" stroke="#4B5563" fontSize={11} tickLine={false} axisLine={false} />
-              <YAxis stroke="#4B5563" fontSize={11} tickLine={false} axisLine={false} />
-              <Tooltip contentStyle={{ background: "#0A0A0A", border: "1px solid #262626", borderRadius: 6 }} labelStyle={{ color: "#8B949E", fontFamily: "JetBrains Mono" }} />
-              <Area type="monotone" dataKey="sent" stroke="#00E5FF" strokeWidth={2} fill="url(#g1)" />
-              <Area type="monotone" dataKey="opened" stroke="#BF55EC" strokeWidth={2} fill="url(#g2)" />
+              <CartesianGrid stroke="#E5E5DC" strokeDasharray="3 3" vertical={false} />
+              <XAxis dataKey="date" stroke="#999995" fontSize={11} tickLine={false} axisLine={false} />
+              <YAxis stroke="#999995" fontSize={11} tickLine={false} axisLine={false} />
+              <Tooltip contentStyle={{ background: "#FFFFFF", border: "1px solid #D6D3C8", borderRadius: 6 }} labelStyle={{ color: "#6B6B66", fontFamily: "JetBrains Mono" }} />
+              <Area type="monotone" dataKey="sent" stroke="#DC2626" strokeWidth={2} fill="url(#g1)" />
+              <Area type="monotone" dataKey="opened" stroke="#0F172A" strokeWidth={2} fill="url(#g2)" />
               <Line type="monotone" dataKey="replied" stroke="#10B981" strokeWidth={2} dot={false} />
             </AreaChart>
           </ResponsiveContainer>
@@ -126,7 +126,7 @@ export default function Dashboard() {
                     <Cell key={idx} fill={CHANNEL_COLORS[idx]} />
                   ))}
                 </Pie>
-                <Tooltip contentStyle={{ background: "#0A0A0A", border: "1px solid #262626", borderRadius: 6 }} />
+                <Tooltip contentStyle={{ background: "#FFFFFF", border: "1px solid #D6D3C8", borderRadius: 6 }} />
               </PieChart>
             </ResponsiveContainer>
           </div>
@@ -135,8 +135,8 @@ export default function Dashboard() {
             {data.channel_split.map((c, i) => (
               <div key={c.channel} className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-sm" style={{ background: CHANNEL_COLORS[i] }} />
-                <span className="text-[#8B949E] uppercase">{c.channel}</span>
-                <span className="text-white ml-auto">{c.value}%</span>
+                <span className="text-[#6B6B66] uppercase">{c.channel}</span>
+                <span className="text-[#0A0A0A] ml-auto">{c.value}%</span>
               </div>
             ))}
           </div>
@@ -149,14 +149,14 @@ export default function Dashboard() {
           <div className="mono-accent">/// rates</div>
           <div className="font-display font-bold text-lg mt-0.5 mb-4">Performance Index</div>
           <div className="space-y-5">
-            <RateBar label="OPEN RATE" value={parseFloat(openRate)} color="#00E5FF" />
-            <RateBar label="REPLY RATE" value={parseFloat(replyRate)} color="#BF55EC" />
-            <div className="flex items-center justify-between pt-3 border-t border-[#262626]">
+            <RateBar label="OPEN RATE" value={parseFloat(openRate)} color="#DC2626" />
+            <RateBar label="REPLY RATE" value={parseFloat(replyRate)} color="#0F172A" />
+            <div className="flex items-center justify-between pt-3 border-t border-[#D6D3C8]">
               <div>
                 <div className="mono-accent">total.leads</div>
-                <div className="font-mono text-2xl font-bold text-white mt-1">{data.leads_total}</div>
+                <div className="font-mono text-2xl font-bold text-[#0A0A0A] mt-1">{data.leads_total}</div>
               </div>
-              <Users size={36} weight="duotone" className="text-[#00E5FF]/40" />
+              <Users size={36} weight="duotone" className="text-[#DC2626]/40" />
             </div>
           </div>
         </div>
@@ -176,11 +176,11 @@ export default function Dashboard() {
               return (
                 <div key={stage}>
                   <div className="flex justify-between text-xs font-mono mb-1">
-                    <span className="uppercase text-[#8B949E]">{stage}</span>
-                    <span className="text-white">{count}</span>
+                    <span className="uppercase text-[#6B6B66]">{stage}</span>
+                    <span className="text-[#0A0A0A]">{count}</span>
                   </div>
-                  <div className="h-1.5 bg-[#141414] rounded-sm overflow-hidden">
-                    <motion.div initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.6 }} className="h-full bg-gradient-to-r from-[#00E5FF] to-[#BF55EC]" />
+                  <div className="h-1.5 bg-[#F0F0EA] rounded-sm overflow-hidden">
+                    <motion.div initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.6 }} className="h-full bg-gradient-to-r from-[#DC2626] to-[#0F172A]" />
                   </div>
                 </div>
               );
@@ -200,15 +200,15 @@ export default function Dashboard() {
           <div className="space-y-3 max-h-[280px] overflow-y-auto pr-1">
             {activity.slice(0, 10).map((a) => (
               <div key={a.id} className="flex items-start gap-3 text-sm">
-                <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-[#00E5FF]" />
+                <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-[#DC2626]" />
                 <div className="flex-1 min-w-0">
-                  <div className="text-[#e6edf3] truncate">{a.title}</div>
-                  <div className="mono-accent text-[#4B5563] mt-0.5">{a.kind}</div>
+                  <div className="text-[#1a1a1a] truncate">{a.title}</div>
+                  <div className="mono-accent text-[#999995] mt-0.5">{a.kind}</div>
                 </div>
               </div>
             ))}
             {activity.length === 0 && (
-              <div className="text-[#4B5563] text-sm italic">No activity yet</div>
+              <div className="text-[#999995] text-sm italic">No activity yet</div>
             )}
           </div>
         </div>
@@ -220,11 +220,11 @@ export default function Dashboard() {
         <div className="font-display font-bold text-lg mt-0.5 mb-4">Territories</div>
         <ResponsiveContainer width="100%" height={200}>
           <BarChart data={data.top_countries} margin={{ top: 10, right: 10, bottom: 0, left: -20 }}>
-            <CartesianGrid stroke="#1a1a1a" vertical={false} />
-            <XAxis dataKey="country" stroke="#4B5563" fontSize={11} tickLine={false} />
-            <YAxis stroke="#4B5563" fontSize={11} tickLine={false} axisLine={false} />
-            <Tooltip contentStyle={{ background: "#0A0A0A", border: "1px solid #262626", borderRadius: 6 }} />
-            <Bar dataKey="leads" fill="#00E5FF" radius={[4, 4, 0, 0]} />
+            <CartesianGrid stroke="#E5E5DC" vertical={false} />
+            <XAxis dataKey="country" stroke="#999995" fontSize={11} tickLine={false} />
+            <YAxis stroke="#999995" fontSize={11} tickLine={false} axisLine={false} />
+            <Tooltip contentStyle={{ background: "#FFFFFF", border: "1px solid #D6D3C8", borderRadius: 6 }} />
+            <Bar dataKey="leads" fill="#DC2626" radius={[4, 4, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </div>
@@ -237,9 +237,9 @@ function RateBar({ label, value, color }) {
     <div>
       <div className="flex justify-between items-baseline mb-1.5">
         <span className="mono-accent" style={{ color }}>{label}</span>
-        <span className="font-mono text-2xl font-bold text-white">{value.toFixed(1)}<span className="text-[#4B5563] text-sm">%</span></span>
+        <span className="font-mono text-2xl font-bold text-[#0A0A0A]">{value.toFixed(1)}<span className="text-[#999995] text-sm">%</span></span>
       </div>
-      <div className="h-2 bg-[#141414] rounded-sm overflow-hidden">
+      <div className="h-2 bg-[#F0F0EA] rounded-sm overflow-hidden">
         <motion.div
           initial={{ width: 0 }}
           animate={{ width: `${Math.min(value, 100)}%` }}

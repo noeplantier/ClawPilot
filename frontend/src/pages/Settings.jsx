@@ -16,12 +16,12 @@ export default function Settings() {
       <div>
         <div className="mono-accent">// control.panel</div>
         <h1 className="text-4xl font-black tracking-tighter">Settings</h1>
-        <p className="text-[#8B949E] mt-1">Organization profile and integration status.</p>
+        <p className="text-[#6B6B66] mt-1">Organization profile and integration status.</p>
       </div>
 
       <section className="surface p-6 space-y-4">
         <div className="flex items-center gap-2">
-          <Shield size={18} className="text-[#00E5FF]" />
+          <Shield size={18} className="text-[#DC2626]" />
           <h2 className="font-display text-xl font-bold">Profile</h2>
         </div>
         <div className="grid md:grid-cols-2 gap-4">
@@ -36,7 +36,7 @@ export default function Settings() {
 
       <section className="surface p-6 space-y-4">
         <div className="flex items-center gap-2">
-          <Key size={18} className="text-[#BF55EC]" />
+          <Key size={18} className="text-[#0F172A]" />
           <h2 className="font-display text-xl font-bold">Integrations</h2>
         </div>
 
@@ -71,7 +71,7 @@ export default function Settings() {
         />
       </section>
 
-      <p className="mono-accent text-[#4B5563]">
+      <p className="mono-accent text-[#999995]">
         // To go live with real email/whatsapp sending, provide a verified SendGrid sender and Twilio Account SID (AC...) in backend/.env.
       </p>
     </div>
@@ -91,9 +91,9 @@ function Row({ label, value, mono, truncate }) {
 
 function IntegrationRow({ icon: Icon, name, description, status, statusLabel, details = [] }) {
   return (
-    <div className="surface p-5 bg-[#0c0c0c]">
+    <div className="surface p-5 bg-[#FAFAF7]">
       <div className="flex items-start gap-4">
-        <Icon size={24} weight="duotone" className="text-[#00E5FF] mt-1" />
+        <Icon size={24} weight="duotone" className="text-[#DC2626] mt-1" />
         <div className="flex-1">
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="font-display font-semibold">{name}</h3>
@@ -102,13 +102,13 @@ function IntegrationRow({ icon: Icon, name, description, status, statusLabel, de
               : <span className="chip chip-warn"><XCircle size={10} weight="fill" /> {statusLabel}</span>
             }
           </div>
-          <p className="text-sm text-[#8B949E] mt-1">{description}</p>
+          <p className="text-sm text-[#6B6B66] mt-1">{description}</p>
           {details.length > 0 && (
             <div className="mt-3 grid md:grid-cols-2 gap-2 text-xs">
               {details.map(([k, v]) => (
                 <div key={k} className="flex gap-2 font-mono">
-                  <span className="text-[#4B5563]">{k}:</span>
-                  <span className="text-[#e6edf3] truncate">{v}</span>
+                  <span className="text-[#999995]">{k}:</span>
+                  <span className="text-[#1a1a1a] truncate">{v}</span>
                 </div>
               ))}
             </div>

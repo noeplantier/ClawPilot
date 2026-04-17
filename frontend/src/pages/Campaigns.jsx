@@ -3,8 +3,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 import {
-  Plus, Play, Pause, Trash, Target, PaperPlaneTilt, Eye, ChatCircleDots, Rocket, X, ArrowRight, Sparkle,
+  Plus, Play, Pause, Trash, Target, PaperPlaneTilt, Eye, ChatCircleDots, Rocket, X, ArrowRight, Sparkle, ArrowSquareOut, Users,
 } from "@phosphor-icons/react";
+import CampaignDetailDrawer from "@/components/CampaignDetailDrawer";
 
 const STATUS_CHIP = {
   draft: "chip-warn",
@@ -17,6 +18,7 @@ export default function Campaigns() {
   const [list, setList] = useState([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [drawerId, setDrawerId] = useState(null);
 
   const load = () => api.get("/campaigns").then((r) => setList(r.data));
 
@@ -55,7 +57,7 @@ export default function Campaigns() {
         <div>
           <div className="mono-accent">// outreach.campaigns</div>
           <h1 className="text-4xl font-black tracking-tighter">Campaigns</h1>
-          <p className="text-[#8B949E] mt-1">Multi-step automations dispatched by OpenClaw agents.</p>
+          <p className="text-[#6B6B66] mt-1">Multi-step automations dispatched by OpenClaw agents.</p>
         </div>
         <button onClick={() => { setEditing(null); setOpen(true); }} className="btn-primary" data-testid="new-campaign-button">
           <Plus size={16} weight="bold" /> NEW CAMPAIGN
@@ -75,13 +77,16 @@ export default function Campaigns() {
             <div className="flex items-start justify-between gap-3">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <Target size={16} weight="duotone" className="text-[#00E5FF]" />
+                  <Target size={16} weight="duotone" className="text-[#DC2626]" />
                   <h3 className="font-display font-bold text-lg truncate">{c.name}</h3>
                   <span className={`chip ${STATUS_CHIP[c.status]}`}>{c.status}</span>
                 </div>
-                <p className="text-sm text-[#8B949E] mt-1 line-clamp-1">{c.goal || "—"}</p>
+                <p className="text-sm text-[#6B6B66] mt-1 line-clamp-1">{c.goal || "—"}</p>
               </div>
               <div className="flex gap-2">
+                <button onClick={() => setDrawerId(c.id)} className="btn-ghost !py-1.5 !px-2" title="open" data-testid={`open-${c.id}`}>
+                  <ArrowSquareOut size={14} weight="bold" />
+                </button>
                 <button onClick={() => toggle(c)} className="btn-ghost !py-1.5 !px-2" title="toggle" data-testid={`toggle-${c.id}`}>
                   {c.status === "running" ? <Pause size={14} weight="fill" /> : <Play size={14} weight="fill" />}
                 </button>
@@ -95,9 +100,9 @@ export default function Campaigns() {
             </div>
 
             <div className="grid grid-cols-4 gap-3 mt-5">
-              <Metric icon={PaperPlaneTilt} value={c.sent} label="sent" color="#00E5FF" />
-              <Metric icon={Eye} value={c.opened} label="opened" color="#BF55EC" />
-              <Metric icon={ChatCircleDots} value={c.replied} label="replied" color="#2962FF" />
+              <Metric icon={PaperPlaneTilt} value={c.sent} label="sent" color="#DC2626" />
+              <Metric icon={Eye} value={c.opened} label="opened" color="#0F172A" />
+              <Metric icon={ChatCircleDots} value={c.replied} label="replied" color="#475569" />
               <Metric icon={Target} value={c.converted} label="won" color="#10B981" />
             </div>
 
@@ -106,19 +111,26 @@ export default function Campaigns() {
                 <span key={ch} className="chip chip-cyan">{ch}</span>
               ))}
               <span className="chip">{(c.steps || []).length} steps</span>
-              <span className="chip font-mono text-[#4B5563]">id · {c.id.slice(0, 8)}</span>
+              <span className="chip"><Users size={10} /> {(c.lead_ids || []).length} leads</span>
+              <span className="chip font-mono text-[#999995]">id · {c.id.slice(0, 8)}</span>
             </div>
           </motion.div>
         ))}
 
         {list.length === 0 && (
-          <div className="surface p-10 text-center col-span-full text-[#8B949E]">
-            No campaigns yet. <button onClick={() => setOpen(true)} className="text-[#00E5FF] hover:underline">Create your first.</button>
+          <div className="surface p-10 text-center col-span-full text-[#6B6B66]">
+            No campaigns yet. <button onClick={() => setOpen(true)} className="text-[#DC2626] hover:underline">Create your first.</button>
           </div>
         )}
       </div>
 
       <CampaignBuilder open={open} onClose={() => setOpen(false)} onSave={create} initial={editing} />
+      <CampaignDetailDrawer
+        open={drawerId !== null}
+        campaignId={drawerId}
+        onClose={() => setDrawerId(null)}
+        onUpdate={load}
+      />
     </div>
   );
 }
@@ -169,11 +181,11 @@ function CampaignBuilder({ open, onClose, onSave, initial }) {
     <AnimatePresence>
       {open && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xl flex items-center justify-center p-4" onClick={onClose}>
+          className="fixed inset-0 z-50 bg-[#0F172A]/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
           <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
             className="surface w-full max-w-3xl p-8 relative max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}
             data-testid="campaign-builder-modal">
-            <button onClick={onClose} className="absolute top-4 right-4 text-[#8B949E] hover:text-white" data-testid="close-campaign-builder"><X size={20} /></button>
+            <button onClick={onClose} className="absolute top-4 right-4 text-[#6B6B66] hover:text-[#0A0A0A]" data-testid="close-campaign-builder"><X size={20} /></button>
 
             <div className="mono-accent">/// build.campaign</div>
             <h2 className="text-2xl font-black tracking-tighter mt-1">Multi-step Campaign Builder</h2>
@@ -217,7 +229,7 @@ function CampaignBuilder({ open, onClose, onSave, initial }) {
                     <div key={i} className="surface p-4">
                       <div className="flex items-center justify-between mb-3">
                         <span className="chip chip-purple font-mono">step {i + 1}</span>
-                        {form.steps.length > 1 && <button onClick={() => removeStep(i)} className="text-[#8B949E] hover:text-[#EF4444]"><Trash size={14} /></button>}
+                        {form.steps.length > 1 && <button onClick={() => removeStep(i)} className="text-[#6B6B66] hover:text-[#EF4444]"><Trash size={14} /></button>}
                       </div>
                       <div className="grid md:grid-cols-3 gap-3">
                         <div>

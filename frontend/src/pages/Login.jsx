@@ -29,11 +29,11 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen grid lg:grid-cols-5 bg-[#050505]">
+    <div className="min-h-screen grid lg:grid-cols-5 bg-[#EDEBE0]">
       {/* Left form */}
-      <div className="lg:col-span-2 flex flex-col px-8 md:px-16 py-10 relative">
+      <div className="lg:col-span-2 flex flex-col px-8 md:px-16 py-10 relative bg-[#FFFFFF] border-r-2 border-[#0F172A]">
         <Link to="/" className="flex items-center gap-2" data-testid="brand-logo">
-          <Lightning size={22} weight="fill" className="text-[#00E5FF]" />
+          <Lightning size={22} weight="fill" className="text-[#DC2626]" />
           <span className="font-display font-black tracking-tight text-xl">OPENCLAW</span>
         </Link>
 
@@ -44,10 +44,10 @@ export default function Login() {
           className="flex-1 flex flex-col justify-center max-w-sm w-full"
         >
           <div className="mono-accent mb-4">// SECURE · AUTH</div>
-          <h1 className="text-4xl sm:text-5xl font-black tracking-tighter text-white">
+          <h1 className="text-4xl sm:text-5xl font-black tracking-tighter text-[#0A0A0A]">
             Command your<br /> outreach fleet.
           </h1>
-          <p className="mt-4 text-[#8B949E] leading-relaxed">
+          <p className="mt-4 text-[#6B6B66] leading-relaxed">
             Sign in to orchestrate OpenClaw agents across email, WhatsApp, and global markets.
           </p>
 
@@ -82,42 +82,42 @@ export default function Login() {
             </button>
           </form>
 
-          <p className="mt-8 text-sm text-[#8B949E]">
+          <p className="mt-8 text-sm text-[#6B6B66]">
             No account?{" "}
-            <Link to="/register" className="text-[#00E5FF] hover:underline" data-testid="goto-register-link">
+            <Link to="/register" className="text-[#DC2626] hover:underline" data-testid="goto-register-link">
               Request access →
             </Link>
           </p>
         </motion.div>
 
-        <div className="mono-accent text-[#4B5563] mt-6">v1.0.0 · command-protocol</div>
+        <div className="mono-accent text-[#999995] mt-6">v1.0.0 · command-protocol</div>
       </div>
 
       {/* Right visual */}
-      <div className="hidden lg:block lg:col-span-3 relative overflow-hidden border-l border-[#262626]">
-        <img src={HERO_BG} alt="" className="absolute inset-0 w-full h-full object-cover" />
-        <div className="absolute inset-0 bg-black/50" />
-        <div className="absolute inset-0 grid-bg opacity-40" />
+      <div className="hidden lg:block lg:col-span-3 relative overflow-hidden bg-[#0F172A]">
+        <img src={HERO_BG} alt="" className="absolute inset-0 w-full h-full object-cover opacity-70" />
+        <div className="absolute inset-0 bg-[#0F172A]/60" />
+        <div className="absolute inset-0" style={{ backgroundImage: "linear-gradient(rgba(255,255,255,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.06) 1px, transparent 1px)", backgroundSize: "32px 32px" }} />
         <div className="absolute inset-0 scanline" />
 
-        <div className="relative z-10 h-full flex flex-col justify-between p-14">
+        <div className="relative z-10 h-full flex flex-col justify-between p-14 text-white">
           <div className="flex items-center gap-2">
-            <span className="w-2 h-2 bg-[#00E5FF] rounded-full pulse-dot" />
-            <span className="mono-accent">// 4 AGENTS ONLINE · 482 TASKS IN-FLIGHT</span>
+            <span className="w-2 h-2 bg-[#DC2626] rounded-full pulse-dot" />
+            <span className="mono-accent text-[#DC2626]">// 4 AGENTS ONLINE · 482 TASKS IN-FLIGHT</span>
           </div>
 
           <div className="max-w-xl">
-            <div className="mono-accent mb-3 text-[#BF55EC]">/// orchestrator</div>
+            <div className="mono-accent mb-3 text-[#DC2626]">/// orchestrator</div>
             <h2 className="text-4xl md:text-5xl font-black tracking-tighter leading-[0.95] text-white">
               Deploy autonomous agents.<br />
-              <span className="text-[#00E5FF]">Close globally.</span>
+              <span className="text-[#DC2626]">Close globally.</span>
             </h2>
-            <p className="mt-5 text-[#c9d1d9] max-w-md">
+            <p className="mt-5 text-white/80 max-w-md">
               Multi-language AI messaging, enrichment, and CRM in one dense command console.
             </p>
             <div className="mt-6 flex gap-2 flex-wrap">
               {["email", "whatsapp", "multi-lang", "enrichment", "crm"].map((t) => (
-                <span key={t} className="chip chip-cyan">{t}</span>
+                <span key={t} className="chip chip-red !bg-white/10 !text-white !border-white/30">{t}</span>
               ))}
             </div>
           </div>

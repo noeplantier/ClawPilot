@@ -15,7 +15,7 @@ import Settings from "@/pages/Settings";
 
 function Protected({ children }) {
   const { user, loading } = useAuth();
-  if (loading) return <div className="min-h-screen bg-[#050505] flex items-center justify-center text-[#8B949E] font-mono mono-accent">// booting.command.center</div>;
+  if (loading) return <div className="min-h-screen bg-[#EDEBE0] grid-bg flex items-center justify-center text-[#DC2626] font-mono mono-accent">// booting.command.center</div>;
   if (!user) return <Navigate to="/login" replace />;
   return children;
 }
@@ -32,7 +32,7 @@ function App() {
     <div className="App">
       <BrowserRouter>
         <AuthProvider>
-          <Toaster theme="dark" position="top-right" toastOptions={{ style: { background: "#0A0A0A", border: "1px solid #262626", color: "#F8FAFC", fontFamily: "IBM Plex Sans" } }} />
+          <Toaster theme="light" position="top-right" toastOptions={{ style: { background: "#FFFFFF", border: "1px solid #D6D3C8", color: "#0A0A0A", fontFamily: "IBM Plex Sans" } }} />
           <Routes>
             <Route path="/" element={<Navigate to="/app/dashboard" replace />} />
             <Route path="/login" element={<Public><Login /></Public>} />

@@ -23,21 +23,21 @@ export default function Layout() {
   const [aiOpen, setAiOpen] = useState(false);
 
   return (
-    <div className="min-h-screen flex bg-[#050505] text-[#F8FAFC]">
+    <div className="min-h-screen flex bg-[#EDEBE0] text-[#0A0A0A] grid-bg">
       {/* Sidebar */}
-      <aside className="hidden md:flex w-64 flex-col border-r border-[#262626] bg-[#080808] sticky top-0 h-screen">
-        <div className="px-6 py-6 border-b border-[#262626]">
+      <aside className="hidden md:flex w-64 flex-col border-r-2 border-[#0F172A] bg-[#FFFFFF] sticky top-0 h-screen">
+        <div className="px-6 py-6 border-b border-[#D6D3C8]">
           <div className="flex items-center gap-2">
-            <Lightning size={20} weight="fill" className="text-[#00E5FF]" />
+            <Lightning size={20} weight="fill" className="text-[#DC2626]" />
             <div className="font-display font-black tracking-tight text-lg">OPENCLAW</div>
           </div>
-          <div className="mono-accent text-[#4B5563] mt-1">/// command.center</div>
+          <div className="mono-accent text-[#999995] mt-1">/// command.center</div>
         </div>
 
-        <div className="px-4 py-5 border-b border-[#262626]">
+        <div className="px-4 py-5 border-b border-[#D6D3C8]">
           <div className="mono-accent mb-1">organization</div>
           <div className="font-display font-semibold truncate" data-testid="org-name">{org?.name || "—"}</div>
-          <div className="mono-accent text-[#8B949E] mt-2">plan · <span className="text-[#BF55EC]">{org?.plan || "pro"}</span></div>
+          <div className="mono-accent text-[#6B6B66] mt-2">plan · <span className="text-[#0F172A]">{org?.plan || "pro"}</span></div>
         </div>
 
         <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
@@ -49,8 +49,8 @@ export default function Layout() {
               className={({ isActive }) =>
                 `group flex items-center gap-3 px-3 py-2.5 rounded-md transition-all ${
                   isActive
-                    ? "bg-[#0f1416] text-[#00E5FF] border border-[#1f3a42]"
-                    : "text-[#8B949E] hover:text-white hover:bg-[#101010] border border-transparent"
+                    ? "bg-[#FEF2F2] text-[#DC2626] border border-[#FCA5A5]"
+                    : "text-[#595955] hover:text-[#0A0A0A] hover:bg-[#F4F2E7] border border-transparent"
                 }`
               }
             >
@@ -60,11 +60,11 @@ export default function Layout() {
           ))}
         </nav>
 
-        <div className="p-4 border-t border-[#262626]">
+        <div className="p-4 border-t border-[#D6D3C8]">
           <button onClick={() => setAiOpen(true)} className="btn-purple w-full justify-center" data-testid="open-ai-composer">
             <Sparkle size={14} weight="fill" /> AI COMPOSER
           </button>
-          <button onClick={logout} className="mt-3 w-full text-left flex items-center gap-2 text-sm text-[#8B949E] hover:text-white transition-colors px-2 py-2" data-testid="logout-button">
+          <button onClick={logout} className="mt-3 w-full text-left flex items-center gap-2 text-sm text-[#6B6B66] hover:text-[#DC2626] transition-colors px-2 py-2" data-testid="logout-button">
             <SignOut size={16} /> Sign out · <span className="font-mono truncate">{user?.email}</span>
           </button>
         </div>
@@ -73,20 +73,20 @@ export default function Layout() {
       {/* Main */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Topbar */}
-        <header className="sticky top-0 z-40 border-b border-[#262626] bg-[#050505]/80 backdrop-blur-xl">
+        <header className="sticky top-0 z-40 border-b-2 border-[#0F172A] bg-[#FFFFFF]/95 backdrop-blur-xl">
           <div className="flex items-center justify-between px-6 py-4">
             <div className="flex items-center gap-3">
               <span className="w-2 h-2 rounded-full bg-[#10B981] pulse-dot" />
               <span className="mono-accent">// all systems nominal</span>
             </div>
             <div className="flex items-center gap-3">
-              <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 border border-[#262626] rounded-md bg-[#0A0A0A]">
-                <MagnifyingGlass size={14} className="text-[#4B5563]" />
+              <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 border border-[#D6D3C8] rounded-md bg-[#FFFFFF]">
+                <MagnifyingGlass size={14} className="text-[#999995]" />
                 <input placeholder="Search leads, campaigns…" className="bg-transparent outline-none text-sm w-56 font-mono" data-testid="global-search-input" />
-                <span className="mono-accent text-[#4B5563]">⌘K</span>
+                <span className="mono-accent text-[#999995]">⌘K</span>
               </div>
-              <div className="flex items-center gap-2 px-3 py-1.5 border border-[#262626] rounded-md bg-[#0A0A0A]">
-                <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#00E5FF] to-[#BF55EC] flex items-center justify-center text-xs font-bold text-black">
+              <div className="flex items-center gap-2 px-3 py-1.5 border border-[#D6D3C8] rounded-md bg-[#FFFFFF]">
+                <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#DC2626] to-[#0F172A] flex items-center justify-center text-xs font-bold text-white">
                   {(user?.full_name || "U").charAt(0).toUpperCase()}
                 </div>
                 <span className="text-sm font-medium hidden sm:inline" data-testid="user-name">{user?.full_name}</span>

@@ -33,20 +33,20 @@ export default function Register() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#050505] grid-bg px-6 py-12 relative">
+    <div className="min-h-screen flex items-center justify-center bg-[#EDEBE0] grid-bg px-6 py-12 relative">
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-md surface p-10 relative z-10"
       >
         <Link to="/" className="flex items-center gap-2 mb-8" data-testid="brand-logo">
-          <Lightning size={22} weight="fill" className="text-[#00E5FF]" />
+          <Lightning size={22} weight="fill" className="text-[#DC2626]" />
           <span className="font-display font-black tracking-tight text-xl">OPENCLAW</span>
         </Link>
 
         <div className="mono-accent mb-3">// new.operator · init</div>
         <h1 className="text-3xl font-black tracking-tighter">Forge your command center</h1>
-        <p className="text-[#8B949E] mt-2">Provision an organization and deploy your first agents.</p>
+        <p className="text-[#6B6B66] mt-2">Provision an organization and deploy your first agents.</p>
 
         <form onSubmit={submit} className="mt-8 space-y-4" data-testid="register-form">
           <div>
@@ -71,9 +71,9 @@ export default function Register() {
           </button>
         </form>
 
-        <p className="mt-6 text-sm text-[#8B949E]">
+        <p className="mt-6 text-sm text-[#6B6B66]">
           Existing operator?{" "}
-          <Link to="/login" className="text-[#00E5FF] hover:underline" data-testid="goto-login-link">
+          <Link to="/login" className="text-[#DC2626] hover:underline" data-testid="goto-login-link">
             Sign in →
           </Link>
         </p>

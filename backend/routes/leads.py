@@ -1,6 +1,7 @@
 """Leads / CRM routes."""
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import List, Optional
+from pydantic import BaseModel
 
 from models import Lead, LeadCreate, LeadUpdate, Activity
 from deps import db, get_current_user
@@ -13,6 +14,22 @@ async def _log(org_id: str, kind: str, title: str, meta: dict | None = None):
     d = act.model_dump()
     d["created_at"] = d["created_at"].isoformat()
     await db.activity.insert_one(d)
+
+
+class BulkLeadsIn(BaseModel):
+    leads: List[LeadCreate]
+
+
+class BulkLeadsOut(BaseModel):
+    created: int
+    skipped: int
+    errors: List[str]
+    lead_ids: List[str]
+
+
+class BulkStageIn(BaseModel):
+    lead_ids: List[str]
+    stage: str
 
 
 @router.get("", response_model=List[Lead])
@@ -43,6 +60,55 @@ async def create_lead(payload: LeadCreate, user: dict = Depends(get_current_user
     await db.leads.insert_one(d)
     await _log(user["org_id"], "lead.created", f"New lead added — {lead.full_name}")
     return lead
+
+
+@router.post("/bulk", response_model=BulkLeadsOut)
+async def bulk_create_leads(payload: BulkLeadsIn, user: dict = Depends(get_current_user)):
+    """Bulk import — dedupes by email within org."""
+    created = 0
+    skipped = 0
+    errors: List[str] = []
+    lead_ids: List[str] = []
+
+    # Preload existing emails for dedup
+    existing_emails = set()
+    if any(l.email for l in payload.leads):
+        async for row in db.leads.find({"org_id": user["org_id"], "email": {"$ne": None}}, {"_id": 0, "email": 1}):
+            if row.get("email"):
+                existing_emails.add(row["email"].lower())
+
+    docs = []
+    for row in payload.leads:
+        try:
+            if row.email and row.email.lower() in existing_emails:
+                skipped += 1
+                continue
+            lead = Lead(org_id=user["org_id"], **row.model_dump())
+            d = lead.model_dump()
+            d["created_at"] = d["created_at"].isoformat()
+            docs.append(d)
+            lead_ids.append(lead.id)
+            if row.email:
+                existing_emails.add(row.email.lower())
+            created += 1
+        except Exception as e:
+            errors.append(f"{row.full_name}: {str(e)[:80]}")
+
+    if docs:
+        await db.leads.insert_many(docs)
+
+    await _log(user["org_id"], "lead.bulk", f"Bulk import · +{created} leads ({skipped} duplicates skipped)")
+    return BulkLeadsOut(created=created, skipped=skipped, errors=errors, lead_ids=lead_ids)
+
+
+@router.post("/bulk-stage")
+async def bulk_update_stage(payload: BulkStageIn, user: dict = Depends(get_current_user)):
+    res = await db.leads.update_many(
+        {"id": {"$in": payload.lead_ids}, "org_id": user["org_id"]},
+        {"$set": {"stage": payload.stage}},
+    )
+    await _log(user["org_id"], "lead.bulk_stage", f"Bulk stage update → {payload.stage} · {res.modified_count} leads")
+    return {"updated": res.modified_count}
 
 
 @router.patch("/{lead_id}", response_model=Lead)
