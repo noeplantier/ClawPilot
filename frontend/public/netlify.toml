@@ -1,7 +1,7 @@
 [build]
+  base = "frontend"
+  publish = "dist"      # set to your actual publish folder (e.g. build, dist, public)
   command = "npm run build"
-  publish = "dist"
-  functions = "netlify/functions"
 
 [[redirects]]
   from = "/*"
