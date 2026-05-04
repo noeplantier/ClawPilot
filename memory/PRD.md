@@ -79,3 +79,29 @@ Frontend additions:
 ### Test status (iteration_2)
 - Backend: 100% (28/28 tests pass)
 - Frontend: 95% → fixed (renamed `open-{id}` → `view-campaign-{id}` to avoid testid collision with sidebar AI button)
+
+## Iteration 3 (2026-02) — Production-grade automation
+
+### Webhooks (PUBLIC endpoints, no JWT)
+- `POST /api/webhooks/sendgrid` — handles `delivered`, `open`, `click`, `bounce`, `dropped`, `spamreport` events. Auto-upgrades Message status (won't downgrade) and bumps `campaign.opened` counter.
+- `POST /api/webhooks/twilio` — handles **inbound WhatsApp replies** (creates inbound Message + activity + bumps last outbound campaign's `replied`) and outbound status callbacks (`queued/sent/delivered/read/failed`).
+
+### Background Scheduler (in-process asyncio)
+- `services/scheduler.py` — async polling task started on FastAPI lifespan startup, polls `scheduled_jobs` collection every 10s, atomically claims due jobs via `find_one_and_update`, executes via same `send_email`/`send_whatsapp` services with full `{{token}}` rendering. Re-queues +1h if campaign is paused.
+- `POST /api/campaigns/{id}/schedule` — enqueues every step × every assigned lead with cumulative `delay_hours` offsets.
+- `GET /api/campaigns/{id}/schedule` — returns `{jobs[], counts: {pending, running, done, failed}, total}`.
+- `POST /api/campaigns/{id}/cancel-schedule` — deletes pending jobs.
+
+### CSV upload + Bulk lead actions
+- `POST /api/leads/upload-csv` — multipart file, header-row CSV, recognized columns (case-insensitive): `full_name|name, email, phone, company, title, country, language, tags, source, notes`. Reuses bulk-create dedup.
+- `POST /api/leads/bulk-delete` — `{lead_ids}` removes leads in org.
+- `POST /api/leads/bulk-tag` — `{lead_ids, tags, mode}` with `add` (`$addToSet`) or `replace` (`$set`).
+
+### Frontend additions
+- Leads page — checkbox column + sticky `LeadsBulkBar` (Stage / Tags / Delete) appearing when ≥1 selected.
+- `BulkLeadsModal` — added **PASTE TEXT** and **CSV FILE** tabs with drag-drop zone.
+- `CampaignDetailDrawer` — added **SCHEDULE ALL STEPS** button + 4-stat counter (pending/running/done/failed) + CANCEL.
+
+### Test status (iteration_3)
+- Backend: **100%** (35/35) tests pass
+- Frontend: **100%** all flows work
