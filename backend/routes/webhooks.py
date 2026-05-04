@@ -1,11 +1,16 @@
 """Webhook endpoints for SendGrid and Twilio — public (no JWT)."""
 import logging
+from datetime import datetime, timezone
 from typing import List
 from fastapi import APIRouter, Request
 from deps import db
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 # Map provider event type → internal Message.status + campaign counter field
@@ -82,7 +87,7 @@ async def sendgrid_webhook(request: Request):
             "kind": f"email.{event_type}",
             "title": f"Email {event_type} · {msg.get('to')}",
             "meta": {"campaign_id": msg.get("campaign_id"), "lead_id": msg.get("lead_id")},
-            "created_at": (ev.get("timestamp") and str(ev["timestamp"])) or "",
+            "created_at": _now_iso(),
         })
         processed += 1
 
@@ -123,7 +128,7 @@ async def twilio_webhook(request: Request):
             "status": "replied",
             "provider_id": message_sid,
             "error": None,
-            "created_at": "",
+            "created_at": _now_iso(),
         })
 
         if org_id:
@@ -133,7 +138,7 @@ async def twilio_webhook(request: Request):
                 "kind": "whatsapp.inbound",
                 "title": f"📩 Reply from {from_}: {incoming_body[:80]}",
                 "meta": {"lead_id": lead.get("id") if lead else None},
-                "created_at": "",
+                "created_at": _now_iso(),
             })
             # Bump the most recent campaign's replied counter if we have lead linkage
             if lead:
