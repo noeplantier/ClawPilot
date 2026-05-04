@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
-import { X, UploadSimple, CheckCircle, Warning, Info } from "@phosphor-icons/react";
+import { X, UploadSimple, CheckCircle, Warning, Info, ClipboardText, FileCsv } from "@phosphor-icons/react";
 
 // Parses lines like "Name, email@x.com, Company, Title, Country"
 // Flexible: fields in order, comma-separated. First field (name) is required.
@@ -24,11 +24,14 @@ function parseRows(text) {
 }
 
 export default function BulkLeadsModal({ open, onClose, onDone }) {
+  const [tab, setTab] = useState("paste");
   const [text, setText] = useState(
     "Priya Shah, priya@example.com, Acme Labs, VP Growth, IN\nLucas Moreau, lucas@vivelab.fr, ViveLab, CEO, FR\nHana Kobayashi, hana@kaze.jp, Kaze, Head of Sales, JP"
   );
+  const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
+  const fileRef = useRef(null);
 
   const parsed = parseRows(text);
 
@@ -50,8 +53,31 @@ export default function BulkLeadsModal({ open, onClose, onDone }) {
     }
   };
 
+  const submitCsv = async () => {
+    if (!file) {
+      toast.error("Choose a CSV file first");
+      return;
+    }
+    setLoading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const { data } = await api.post("/leads/upload-csv", fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      setResult(data);
+      toast.success(`CSV imported · ${data.created} created (${data.skipped} duplicates)`);
+      onDone?.();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "CSV upload failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const closeReset = () => {
     setResult(null);
+    setFile(null);
     onClose();
   };
 
@@ -80,7 +106,19 @@ export default function BulkLeadsModal({ open, onClose, onDone }) {
               <UploadSimple size={22} weight="duotone" className="text-[#DC2626]" />
               Bulk Import Leads
             </h2>
-            <p className="text-[#595955] mt-1 text-sm">
+
+            <div className="mt-5 flex gap-1 border-b border-[#D6D3C8]">
+              <button onClick={() => setTab("paste")} className={`px-4 py-2 text-sm font-display font-semibold tracking-wide border-b-2 -mb-px transition ${tab === "paste" ? "border-[#DC2626] text-[#DC2626]" : "border-transparent text-[#595955] hover:text-[#0A0A0A]"}`} data-testid="tab-paste">
+                <ClipboardText size={14} className="inline mr-1.5" /> PASTE TEXT
+              </button>
+              <button onClick={() => setTab("csv")} className={`px-4 py-2 text-sm font-display font-semibold tracking-wide border-b-2 -mb-px transition ${tab === "csv" ? "border-[#DC2626] text-[#DC2626]" : "border-transparent text-[#595955] hover:text-[#0A0A0A]"}`} data-testid="tab-csv">
+                <FileCsv size={14} className="inline mr-1.5" /> CSV FILE
+              </button>
+            </div>
+
+            {tab === "paste" && (
+              <div className="mt-4">
+                <p className="text-[#595955] mt-1 text-sm">
               One lead per line · comma-separated: <span className="font-mono text-[#0F172A]">name, email, company, title, country</span>
             </p>
 
@@ -119,6 +157,45 @@ export default function BulkLeadsModal({ open, onClose, onDone }) {
                 )}
               </div>
             </div>
+              </div>
+            )}
+
+            {tab === "csv" && (
+              <div className="mt-4">
+                <p className="text-[#595955] text-sm mb-3">
+                  Upload a <span className="font-mono text-[#0F172A]">.csv</span> with header row. Recognized columns:
+                  <span className="font-mono text-[#0F172A]"> full_name (or name), email, phone, company, title, country, language, tags, source, notes</span>
+                </p>
+                <div
+                  onClick={() => fileRef.current?.click()}
+                  onDrop={(e) => { e.preventDefault(); if (e.dataTransfer.files[0]) setFile(e.dataTransfer.files[0]); }}
+                  onDragOver={(e) => e.preventDefault()}
+                  className="surface bg-[#FAFAF7] border-2 border-dashed border-[#D6D3C8] hover:border-[#DC2626] cursor-pointer p-12 text-center transition-colors"
+                  data-testid="csv-drop-zone"
+                >
+                  <FileCsv size={48} weight="duotone" className="text-[#DC2626] mx-auto mb-3" />
+                  {file ? (
+                    <div>
+                      <div className="font-display font-bold text-[#0A0A0A]">{file.name}</div>
+                      <div className="text-xs font-mono text-[#595955] mt-1">{(file.size / 1024).toFixed(1)} KB · click to change</div>
+                    </div>
+                  ) : (
+                    <div>
+                      <div className="font-display font-semibold">Drop CSV here or click to browse</div>
+                      <div className="text-xs font-mono text-[#595955] mt-1">Header row required</div>
+                    </div>
+                  )}
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    accept=".csv"
+                    className="hidden"
+                    onChange={(e) => e.target.files[0] && setFile(e.target.files[0])}
+                    data-testid="csv-file-input"
+                  />
+                </div>
+              </div>
+            )}
 
             {result && (
               <div className="surface bg-[#F4FDF9] border-[#10B981]/40 p-4 mt-4 flex gap-3" data-testid="bulk-result">
@@ -139,9 +216,15 @@ export default function BulkLeadsModal({ open, onClose, onDone }) {
             )}
 
             <div className="flex gap-3 mt-6 items-center">
-              <button onClick={submit} disabled={loading || parsed.length === 0} className="btn-primary" data-testid="bulk-import-submit">
-                {loading ? "IMPORTING..." : <><UploadSimple size={14} weight="bold" /> IMPORT {parsed.length} LEADS</>}
-              </button>
+              {tab === "paste" ? (
+                <button onClick={submit} disabled={loading || parsed.length === 0} className="btn-primary" data-testid="bulk-import-submit">
+                  {loading ? "IMPORTING..." : <><UploadSimple size={14} weight="bold" /> IMPORT {parsed.length} LEADS</>}
+                </button>
+              ) : (
+                <button onClick={submitCsv} disabled={loading || !file} className="btn-primary" data-testid="csv-upload-submit">
+                  {loading ? "UPLOADING..." : <><UploadSimple size={14} weight="bold" /> UPLOAD CSV</>}
+                </button>
+              )}
               <button onClick={closeReset} className="btn-ghost">CLOSE</button>
               <div className="ml-auto flex items-center gap-1.5 text-xs font-mono text-[#595955]">
                 <Info size={12} /> duplicates are auto-skipped by email

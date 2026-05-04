@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
@@ -175,7 +175,7 @@ export default function Leads() {
                 </motion.tr>
               ))}
               {leads.length === 0 && (
-                <tr><td colSpan="7" className="p-10 text-center text-[#6B6B66]">No leads. Add your first or import.</td></tr>
+                <tr><td colSpan="8" className="p-10 text-center text-[#6B6B66]">No leads. Add your first or import.</td></tr>
               )}
             </tbody>
           </table>

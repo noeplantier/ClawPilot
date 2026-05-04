@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 import {
-  X, Rocket, Users, Plus, Check, CircleNotch, Envelope, WhatsappLogo, Play, ChartBar, ArrowsClockwise,
+  X, Rocket, Users, Plus, Check, CircleNotch, Envelope, WhatsappLogo, Play, ChartBar, ArrowsClockwise, Clock, StopCircle,
 } from "@phosphor-icons/react";
 
 const CHIP = { email: <Envelope size={11} />, whatsapp: <WhatsappLogo size={11} weight="fill" /> };
@@ -15,6 +15,8 @@ export default function CampaignDetailDrawer({ open, campaignId, onClose, onUpda
   const [showAssign, setShowAssign] = useState(false);
   const [runningStep, setRunningStep] = useState(null);
   const [stepResult, setStepResult] = useState(null);
+  const [scheduling, setScheduling] = useState(false);
+  const [schedule, setSchedule] = useState(null);
 
   const load = async () => {
     if (!campaignId) return;
@@ -26,6 +28,13 @@ export default function CampaignDetailDrawer({ open, campaignId, onClose, onUpda
       setLeads(rs.data.filter((l) => data.lead_ids.includes(l.id)));
     } else {
       setLeads([]);
+    }
+    // Load schedule status
+    try {
+      const schedResp = await api.get(`/campaigns/${campaignId}/schedule`);
+      setSchedule(schedResp.data);
+    } catch (e) {
+      setSchedule(null);
     }
   };
 
@@ -50,6 +59,39 @@ export default function CampaignDetailDrawer({ open, campaignId, onClose, onUpda
       toast.error(e?.response?.data?.detail || "Run failed");
     } finally {
       setRunningStep(null);
+    }
+  };
+
+  const scheduleAll = async () => {
+    if (!c.steps?.length) {
+      toast.error("Add at least one step first");
+      return;
+    }
+    if (!leads.length) {
+      toast.error("Assign leads first");
+      return;
+    }
+    setScheduling(true);
+    try {
+      const { data } = await api.post(`/campaigns/${campaignId}/schedule`);
+      toast.success(`Scheduled ${data.scheduled} jobs (${data.steps} steps × ${data.leads} leads)`);
+      load();
+      onUpdate?.();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Schedule failed");
+    } finally {
+      setScheduling(false);
+    }
+  };
+
+  const cancelSchedule = async () => {
+    if (!window.confirm("Cancel all pending scheduled jobs for this campaign?")) return;
+    try {
+      const { data } = await api.post(`/campaigns/${campaignId}/cancel-schedule`);
+      toast.success(`Cancelled ${data.cancelled} pending jobs`);
+      load();
+    } catch (e) {
+      toast.error("Cancel failed");
     }
   };
 
@@ -118,6 +160,35 @@ export default function CampaignDetailDrawer({ open, campaignId, onClose, onUpda
                       <div className="font-mono text-[#595955] truncate">{l.email || l.phone || "—"}</div>
                     </div>
                   ))}
+                </div>
+              )}
+            </div>
+
+            {/* Schedule controls */}
+            <div className="surface p-5 bg-[#FEF7F0] border-[#F59E0B]/30">
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+                <div>
+                  <div className="mono-accent !text-[#92400E]">/// automation.queue</div>
+                  <div className="font-display font-bold text-lg flex items-center gap-1.5"><Clock size={16} /> Background Scheduler</div>
+                  <p className="text-xs text-[#595955] mt-1">Runs every step automatically with cumulative <span className="font-mono">delay_hours</span>.</p>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={scheduleAll} disabled={scheduling || leads.length === 0} className="btn-primary !py-1.5 !px-3" data-testid="schedule-all-button">
+                    {scheduling ? <><CircleNotch size={12} className="spin-slow" /> SCHEDULING</> : <><Clock size={12} weight="fill" /> SCHEDULE ALL STEPS</>}
+                  </button>
+                  {schedule?.counts?.pending > 0 && (
+                    <button onClick={cancelSchedule} className="btn-ghost !py-1.5 !px-3" data-testid="cancel-schedule-button">
+                      <StopCircle size={12} /> CANCEL
+                    </button>
+                  )}
+                </div>
+              </div>
+              {schedule && schedule.total > 0 && (
+                <div className="grid grid-cols-4 gap-2 mt-4">
+                  <ScheduleStat label="pending" value={schedule.counts.pending || 0} color="#F59E0B" />
+                  <ScheduleStat label="running" value={schedule.counts.running || 0} color="#0F172A" />
+                  <ScheduleStat label="done" value={schedule.counts.done || 0} color="#10B981" />
+                  <ScheduleStat label="failed" value={schedule.counts.failed || 0} color="#DC2626" />
                 </div>
               )}
             </div>
@@ -199,6 +270,15 @@ function Mini({ label, value, color }) {
     <div>
       <div className="mono-accent" style={{ color, fontSize: 9 }}>{label}</div>
       <div className="font-mono text-sm font-bold tabular" style={{ color }}>{value || 0}</div>
+    </div>
+  );
+}
+
+function ScheduleStat({ label, value, color }) {
+  return (
+    <div className="surface bg-white p-2 text-center">
+      <div className="mono-accent" style={{ color, fontSize: 10 }}>{label}</div>
+      <div className="font-mono text-lg font-bold tabular" style={{ color }}>{value}</div>
     </div>
   );
 }
