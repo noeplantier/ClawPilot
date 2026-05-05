@@ -1,12 +1,15 @@
 """Leads / CRM routes."""
 import csv
 import io
+import asyncio
+import random
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from typing import List, Optional
 from pydantic import BaseModel
 
 from models import Lead, LeadCreate, LeadUpdate, Activity
 from deps import db, get_current_user
+from services import engagement
 
 router = APIRouter(prefix="/leads", tags=["leads"])
 
@@ -240,3 +243,85 @@ async def enrich_leads(user: dict = Depends(get_current_user)):
         count += 1
     await _log(user["org_id"], "lead.enriched", f"Enriched {count} leads via agent Nyx")
     return {"enriched": count}
+
+
+# ============================================================
+# DYNAMIC CONVERSION ENGINE
+# ============================================================
+
+class EngagementIn(BaseModel):
+    event: str  # delivered | opened | clicked | replied | bounced | unsubscribed | spam
+    channel: str = "email"
+    campaign_id: Optional[str] = None
+
+
+@router.post("/{lead_id}/engagement", response_model=Lead)
+async def apply_engagement(lead_id: str, payload: EngagementIn, user: dict = Depends(get_current_user)):
+    """Manually fire an engagement event on a lead — updates score, stage, activity, campaign counters.
+
+    Useful as a manual override or for the conversion demo. The webhooks (SendGrid + Twilio)
+    automatically call the same engine when real events arrive.
+    """
+    lead = await db.leads.find_one({"id": lead_id, "org_id": user["org_id"]}, {"_id": 0})
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+
+    updated = await engagement.apply(
+        db,
+        lead_id,
+        payload.event,
+        channel=payload.channel,
+        campaign_id=payload.campaign_id,
+    )
+    if not updated:
+        raise HTTPException(status_code=400, detail=f"Unknown engagement event: {payload.event}")
+    if payload.event in ("bounced", "unsubscribed", "spam"):
+        await engagement.remove_from_active_campaigns(db, lead_id, user["org_id"])
+    return updated
+
+
+@router.post("/conversion-demo")
+async def conversion_demo(user: dict = Depends(get_current_user)):
+    """Pick 6 random leads and walk them through a realistic engagement funnel.
+
+    Demonstrates the dynamic conversion engine end-to-end without needing real SendGrid/Twilio events.
+    Sequences: 6 delivered → 5 opened → 3 clicked → 2 replied → 1 bounced.
+    Returns timeline of events.
+    """
+    leads = await db.leads.find(
+        {"org_id": user["org_id"], "suppressed": {"$ne": True}}, {"_id": 0, "id": 1, "full_name": 1, "stage": 1, "score": 1}
+    ).limit(20).to_list(20)
+
+    if len(leads) < 4:
+        raise HTTPException(status_code=400, detail="Need at least 4 active leads")
+
+    sample = random.sample(leads, min(6, len(leads)))
+    timeline = []
+
+    funnel_steps = [
+        ("delivered", sample),                              # all 6
+        ("opened",    sample[:5]),                          # 5
+        ("clicked",   sample[:3]),                          # 3
+        ("replied",   sample[:2]),                          # 2 → qualified
+        ("bounced",   sample[5:6] if len(sample) >= 6 else []),  # 1 bounced
+    ]
+
+    for event, batch in funnel_steps:
+        for lead in batch:
+            updated = await engagement.apply(db, lead["id"], event, channel="email")
+            if updated:
+                timeline.append({
+                    "lead": lead["full_name"],
+                    "event": event,
+                    "score": updated.get("score"),
+                    "stage": updated.get("stage"),
+                    "suppressed": updated.get("suppressed", False),
+                })
+        await asyncio.sleep(0.05)  # tiny pause for activity ordering
+
+    await _log(user["org_id"], "conversion.demo", f"Conversion demo · {len(timeline)} events fired across {len(sample)} leads")
+    return {
+        "leads_touched": len(sample),
+        "events_fired": len(timeline),
+        "timeline": timeline,
+    }

@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { api } from "@/lib/api";
+import { toast } from "sonner";
 import {
   LineChart, Line, AreaChart, Area, BarChart, Bar,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell,
 } from "recharts";
 import {
-  PaperPlaneTilt, Eye, ChatCircleDots, Target, Robot, Users, TrendUp, Lightning, ArrowUpRight,
+  PaperPlaneTilt, Eye, ChatCircleDots, Target, Robot, Users, TrendUp, Lightning, ArrowUpRight, Pulse, CircleNotch,
 } from "@phosphor-icons/react";
 
 const METRICS = [
@@ -21,11 +22,34 @@ const CHANNEL_COLORS = ["#DC2626", "#0F172A"];
 export default function Dashboard() {
   const [data, setData] = useState(null);
   const [activity, setActivity] = useState([]);
+  const [demoRunning, setDemoRunning] = useState(false);
+  const [demoResult, setDemoResult] = useState(null);
 
-  useEffect(() => {
-    api.get("/analytics/overview").then((r) => setData(r.data));
-    api.get("/analytics/activity").then((r) => setActivity(r.data));
-  }, []);
+  const reload = async () => {
+    const [a, b] = await Promise.all([
+      api.get("/analytics/overview"),
+      api.get("/analytics/activity"),
+    ]);
+    setData(a.data);
+    setActivity(b.data);
+  };
+
+  useEffect(() => { reload(); }, []);
+
+  const runConversionDemo = async () => {
+    setDemoRunning(true);
+    setDemoResult(null);
+    try {
+      const { data: r } = await api.post("/leads/conversion-demo");
+      setDemoResult(r);
+      toast.success(`🚀 ${r.events_fired} engagement events fired across ${r.leads_touched} leads`);
+      await reload();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Demo failed");
+    } finally {
+      setDemoRunning(false);
+    }
+  };
 
   if (!data) {
     return <div className="p-12 text-[#6B6B66] font-mono">loading telemetry...</div>;
@@ -43,11 +67,61 @@ export default function Dashboard() {
           <h1 className="text-4xl sm:text-5xl font-black tracking-tighter">Command Dashboard</h1>
           <p className="text-[#6B6B66] mt-2">Real-time telemetry across all active outreach operations.</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          <button
+            onClick={runConversionDemo}
+            disabled={demoRunning}
+            className="btn-primary"
+            data-testid="run-conversion-demo"
+          >
+            {demoRunning ? <><CircleNotch size={14} className="spin-slow" /> RUNNING…</> : <><Pulse size={14} weight="fill" /> RUN CONVERSION DEMO</>}
+          </button>
           <span className="chip chip-success"><span className="w-1.5 h-1.5 rounded-full bg-[#10B981] pulse-dot" /> LIVE</span>
           <span className="chip chip-cyan font-mono">{data.agents_running}/{data.agents_total} agents online</span>
         </div>
       </div>
+
+      {demoResult && (
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="surface bg-[#FEF7F0] border-[#F59E0B]/40 p-5"
+          data-testid="demo-result-card"
+        >
+          <div className="flex items-center gap-2 mb-3">
+            <Pulse size={18} weight="fill" className="text-[#DC2626]" />
+            <div className="font-display font-bold text-lg">Conversion Engine — Live Run</div>
+            <span className="chip chip-red font-mono ml-auto">
+              {demoResult.events_fired} events / {demoResult.leads_touched} leads
+            </span>
+          </div>
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-[220px] overflow-y-auto">
+            {demoResult.timeline.map((t, i) => (
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, x: -4 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: i * 0.03 }}
+                className="surface bg-white p-2 text-xs flex items-center gap-2"
+              >
+                <span
+                  className="chip"
+                  style={{
+                    color: t.event === "replied" ? "#10B981" : t.event === "bounced" ? "#DC2626" : "#0F172A",
+                    borderColor: t.event === "replied" ? "rgba(16,185,129,.4)" : t.event === "bounced" ? "rgba(220,38,38,.4)" : "rgba(15,23,42,.3)",
+                  }}
+                >
+                  {t.event}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold text-[#0A0A0A] truncate">{t.lead}</div>
+                  <div className="font-mono text-[#6B6B66]">stage: {t.stage} · score: {t.score}{t.suppressed ? " · suppressed" : ""}</div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </motion.div>
+      )}
 
       {/* Metric cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

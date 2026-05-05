@@ -74,6 +74,7 @@ class Lead(BaseModel):
     source: Optional[str] = None
     notes: Optional[str] = None
     score: int = 0
+    suppressed: bool = False
     created_at: datetime = Field(default_factory=_now)
 
 

@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 import {
-  Plus, MagnifyingGlass, Envelope, Phone, Trash, Table, Kanban, Sparkle, X, UploadSimple, PaperPlaneTilt,
+  Plus, MagnifyingGlass, Envelope, Phone, Trash, Table, Kanban, Sparkle, X, UploadSimple, PaperPlaneTilt, Pulse,
 } from "@phosphor-icons/react";
 import AIComposerModal from "@/components/AIComposerModal";
 import BulkLeadsModal from "@/components/BulkLeadsModal";
@@ -64,6 +64,17 @@ export default function Leads() {
   const writeFor = (l) => {
     setAiDefaults({ recipient_name: l.full_name, company: l.company || "", language: l.language || "en" });
     setAiOpen(true);
+  };
+
+  const simulateEngagement = async (lead, event) => {
+    try {
+      const { data } = await api.post(`/leads/${lead.id}/engagement`, { event, channel: "email" });
+      const stageStr = data.stage !== lead.stage ? ` · ${lead.stage} → ${data.stage}` : "";
+      toast.success(`${event} fired · score ${lead.score}→${data.score}${stageStr}`);
+      load();
+    } catch (e) {
+      toast.error("Engagement failed");
+    }
   };
 
   return (
@@ -166,6 +177,7 @@ export default function Leads() {
                   </td>
                   <td className="p-3">
                     <div className="flex justify-end gap-1">
+                      <EngagementMenu lead={l} onFire={simulateEngagement} />
                       <button onClick={() => writeFor(l)} className="btn-ghost !py-1 !px-2" title="AI write" data-testid={`ai-${l.id}`}><Sparkle size={12} /></button>
                       {l.email && <a href={`mailto:${l.email}`} className="btn-ghost !py-1 !px-2"><Envelope size={12} /></a>}
                       {l.phone && <a href={`tel:${l.phone}`} className="btn-ghost !py-1 !px-2"><Phone size={12} /></a>}
@@ -222,6 +234,47 @@ export default function Leads() {
         onCleared={() => setSelected(new Set())}
         onDone={() => { setSelected(new Set()); load(); }}
       />
+    </div>
+  );
+}
+
+function EngagementMenu({ lead, onFire }) {
+  const [open, setOpen] = useState(false);
+  const events = [
+    { e: "delivered", label: "Delivered (+1)" },
+    { e: "opened",    label: "Opened (+5)" },
+    { e: "clicked",   label: "Clicked (+10)" },
+    { e: "replied",   label: "Replied (+30)" },
+    { e: "bounced",   label: "Bounced (suppress)", danger: true },
+  ];
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen(!open)}
+        className="btn-ghost !py-1 !px-2"
+        title="Simulate engagement"
+        data-testid={`simulate-${lead.id}`}
+      >
+        <Pulse size={12} weight="fill" />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-full mt-1 surface bg-white py-1 min-w-[180px] z-20 shadow-lg">
+            <div className="mono-accent px-3 py-1.5 border-b border-[#D6D3C8]">simulate.event</div>
+            {events.map((ev) => (
+              <button
+                key={ev.e}
+                onClick={() => { onFire(lead, ev.e); setOpen(false); }}
+                className={`w-full text-left px-3 py-1.5 text-xs font-mono hover:bg-[#FEF2F2] ${ev.danger ? "text-[#DC2626]" : "text-[#0A0A0A]"}`}
+                data-testid={`simulate-${lead.id}-${ev.e}`}
+              >
+                {ev.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }

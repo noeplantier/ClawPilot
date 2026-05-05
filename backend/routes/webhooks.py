@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from typing import List
 from fastapi import APIRouter, Request
 from deps import db
+from services import engagement
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
@@ -13,16 +14,16 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-# Map provider event type → internal Message.status + campaign counter field
+# Map provider event type → internal Message.status + engagement event
 SENDGRID_EVENT_MAP = {
-    "delivered": ("delivered", None),
-    "open": ("opened", "opened"),
-    "click": ("opened", "opened"),  # click implies opened
-    "bounce": ("failed", None),
-    "dropped": ("failed", None),
-    "deferred": ("queued", None),
-    "spamreport": ("failed", None),
-    "unsubscribe": ("failed", None),
+    "delivered":   ("delivered", "delivered"),
+    "open":        ("opened",    "opened"),
+    "click":       ("opened",    "clicked"),
+    "bounce":      ("failed",    "bounced"),
+    "dropped":     ("failed",    "bounced"),
+    "deferred":    ("queued",    None),
+    "spamreport":  ("failed",    "spam"),
+    "unsubscribe": ("failed",    "unsubscribed"),
 }
 
 
@@ -49,10 +50,10 @@ async def sendgrid_webhook(request: Request):
 
         # SendGrid appends a suffix to sg_message_id; match by prefix
         base_id = sg_msg_id.split(".")[0] if sg_msg_id else None
-        status_map = SENDGRID_EVENT_MAP.get(event_type)
-        if not status_map:
+        mapping = SENDGRID_EVENT_MAP.get(event_type)
+        if not mapping:
             continue
-        new_status, counter_field = status_map
+        new_status, engagement_event = mapping
 
         # Find matching message by provider_id prefix or exact
         msg = await db.messages.find_one(
@@ -69,26 +70,22 @@ async def sendgrid_webhook(request: Request):
         rank = {"queued": 0, "mock": 0, "sent": 1, "delivered": 2, "opened": 3, "replied": 4, "failed": -1}
         current_rank = rank.get(msg.get("status", "queued"), 0)
         new_rank = rank.get(new_status, 0)
-        if new_rank <= current_rank and new_status != "failed":
-            processed += 1
-            continue
+        if new_rank > current_rank or new_status == "failed":
+            await db.messages.update_one({"id": msg["id"]}, {"$set": {"status": new_status}})
 
-        await db.messages.update_one({"id": msg["id"]}, {"$set": {"status": new_status}})
-
-        if counter_field and msg.get("campaign_id") and msg.get("org_id"):
-            await db.campaigns.update_one(
-                {"id": msg["campaign_id"], "org_id": msg["org_id"]},
-                {"$inc": {counter_field: 1}},
+        # Trigger engagement engine — this updates lead score/stage and bumps campaign counter
+        if engagement_event and msg.get("lead_id"):
+            await engagement.apply(
+                db,
+                msg["lead_id"],
+                engagement_event,
+                channel="email",
+                campaign_id=msg.get("campaign_id"),
             )
+            # If event is suppressive, cancel pending jobs for this lead
+            if engagement_event in ("bounced", "unsubscribed", "spam"):
+                await engagement.remove_from_active_campaigns(db, msg["lead_id"], msg.get("org_id"))
 
-        await db.activity.insert_one({
-            "id": f"wh-{sg_msg_id}-{event_type}"[:120],
-            "org_id": msg.get("org_id"),
-            "kind": f"email.{event_type}",
-            "title": f"Email {event_type} · {msg.get('to')}",
-            "meta": {"campaign_id": msg.get("campaign_id"), "lead_id": msg.get("lead_id")},
-            "created_at": _now_iso(),
-        })
         processed += 1
 
     return {"ok": True, "processed": processed, "total": len(events)}
