@@ -41,7 +41,7 @@ export default function Register() {
       >
         <Link to="/" className="flex items-center gap-2 mb-8" data-testid="brand-logo">
           <Lightning size={22} weight="fill" className="text-[#DC2626]" />
-          <span className="font-display font-black tracking-tight text-xl">OPENCLAW</span>
+          <span className="font-display font-black tracking-tight text-xl">ClawPilot</span>
         </Link>
 
         <div className="mono-accent mb-3">// new.operator · init</div>

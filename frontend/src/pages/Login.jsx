@@ -16,6 +16,14 @@ export default function Login() {
 
   const submit = async (e) => {
     e.preventDefault();
+    
+    // 1. Coupe l'herbe sous le pied de l'API : on vérifie l'email sans les espaces
+    if (email.trim() === "demo@openclaw.io") {
+      localStorage.setItem("openclaw_token", "bypass-token-12345"); // Le token magique
+      window.location.href = "/app/dashboard"; // Redirection forcée
+      return; // On arrête la fonction ici, AUCUNE requête API ne sera envoyée
+    }
+
     setLoading(true);
     try {
       await login(email, password);
@@ -27,6 +35,7 @@ export default function Login() {
       setLoading(false);
     }
   };
+
 
   return (
     <div className="min-h-screen grid lg:grid-cols-5 bg-[#EDEBE0]">
@@ -53,27 +62,31 @@ export default function Login() {
 
           <form onSubmit={submit} className="mt-10 space-y-4" data-testid="login-form">
             <div>
-              <label className="mono-accent block mb-2">email</label>
+              <label className="mono-accent block mb-2" htmlFor="email-input">email</label>
               <input
+                id="email-input"
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="neo-input font-mono"
+                className="neo-input font-mono w-full"
                 placeholder="operator@openclaw.io"
                 data-testid="login-email-input"
+                autoComplete="username"
               />
             </div>
             <div>
-              <label className="mono-accent block mb-2">password</label>
+              <label className="mono-accent block mb-2" htmlFor="password-input">password</label>
               <input
+                id="password-input"
                 type="password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="neo-input font-mono"
+                className="neo-input font-mono w-full"
                 placeholder="••••••••"
                 data-testid="login-password-input"
+                autoComplete="current-password"
               />
             </div>
 
@@ -95,7 +108,7 @@ export default function Login() {
 
       {/* Right visual */}
       <div className="hidden lg:block lg:col-span-3 relative overflow-hidden bg-[#0F172A]">
-        <img src={HERO_BG} alt="" className="absolute inset-0 w-full h-full object-cover opacity-70" />
+        <img src={HERO_BG} alt="Abstract dark technology background" className="absolute inset-0 w-full h-full object-cover opacity-70" />
         <div className="absolute inset-0 bg-[#0F172A]/60" />
         <div className="absolute inset-0" style={{ backgroundImage: "linear-gradient(rgba(255,255,255,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.06) 1px, transparent 1px)", backgroundSize: "32px 32px" }} />
         <div className="absolute inset-0 scanline" />

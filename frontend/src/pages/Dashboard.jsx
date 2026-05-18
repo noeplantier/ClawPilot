@@ -21,18 +21,45 @@ const CHANNEL_COLORS = ["#DC2626", "#0F172A"];
 export default function Dashboard() {
   const [data, setData] = useState(null);
   const [activity, setActivity] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.get("/analytics/overview").then((r) => setData(r.data));
-    api.get("/analytics/activity").then((r) => setActivity(r.data));
+    let isMounted = true;
+    
+    const fetchData = async () => {
+      try {
+        const [overviewRes, activityRes] = await Promise.all([
+          api.get("/analytics/overview"),
+          api.get("/analytics/activity")
+        ]);
+        if (isMounted) {
+          setData(overviewRes.data);
+          setActivity(activityRes.data || []);
+        }
+      } catch (error) {
+        console.error("Erreur lors de la récupération des données:", error);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+
+    fetchData();
+    return () => { isMounted = false; };
   }, []);
 
-  if (!data) {
-    return <div className="p-12 text-[#6B6B66] font-mono">loading telemetry...</div>;
+  if (loading || !data) {
+    return <div className="flex h-screen items-center justify-center font-mono">Chargement...</div>;
   }
 
-  const openRate = data.totals.sent ? ((data.totals.opened / data.totals.sent) * 100).toFixed(1) : "0.0";
-  const replyRate = data.totals.sent ? ((data.totals.replied / data.totals.sent) * 100).toFixed(1) : "0.0";
+  // Sécurisation globale des objets de données
+  const totals = data.totals || {};
+  const channelSplit = data.channel_split || [];
+  const pipeline = data.pipeline || {};
+  const timeseries = data.timeseries || [];
+  const topCountries = data.top_countries || [];
+
+  const openRate = totals.sent ? ((totals.opened / totals.sent) * 100).toFixed(1) : "0.0";
+  const replyRate = totals.sent ? ((totals.replied / totals.sent) * 100).toFixed(1) : "0.0";
 
   return (
     <div className="p-6 md:p-10 space-y-8">
@@ -45,14 +72,14 @@ export default function Dashboard() {
         </div>
         <div className="flex items-center gap-3">
           <span className="chip chip-success"><span className="w-1.5 h-1.5 rounded-full bg-[#10B981] pulse-dot" /> LIVE</span>
-          <span className="chip chip-cyan font-mono">{data.agents_running}/{data.agents_total} agents online</span>
+          <span className="chip chip-cyan font-mono">{data.agents_running || 0}/{data.agents_total || 0} agents online</span>
         </div>
       </div>
 
       {/* Metric cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {METRICS.map((m, i) => {
-          const val = data.totals[m.key] || 0;
+          const val = totals[m.key] || 0;
           return (
             <motion.div
               key={m.key}
@@ -91,7 +118,7 @@ export default function Dashboard() {
             </div>
           </div>
           <ResponsiveContainer width="100%" height={260}>
-            <AreaChart data={data.timeseries} margin={{ top: 10, right: 10, bottom: 0, left: -20 }}>
+            <AreaChart data={timeseries} margin={{ top: 10, right: 10, bottom: 0, left: -20 }}>
               <defs>
                 <linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#DC2626" stopOpacity={0.35} />
@@ -121,9 +148,9 @@ export default function Dashboard() {
           <div className="flex-1 flex items-center justify-center min-h-[200px]">
             <ResponsiveContainer width="100%" height={200}>
               <PieChart>
-                <Pie data={data.channel_split} dataKey="value" nameKey="channel" cx="50%" cy="50%" innerRadius={50} outerRadius={78} strokeWidth={0}>
-                  {data.channel_split.map((_, idx) => (
-                    <Cell key={idx} fill={CHANNEL_COLORS[idx]} />
+                <Pie data={channelSplit} dataKey="value" nameKey="channel" cx="50%" cy="50%" innerRadius={50} outerRadius={78} strokeWidth={0}>
+                  {channelSplit.map((_, idx) => (
+                    <Cell key={idx} fill={CHANNEL_COLORS[idx % CHANNEL_COLORS.length]} />
                   ))}
                 </Pie>
                 <Tooltip contentStyle={{ background: "#FFFFFF", border: "1px solid #D6D3C8", borderRadius: 6 }} />
@@ -132,9 +159,9 @@ export default function Dashboard() {
           </div>
 
           <div className="grid grid-cols-2 gap-3 text-xs font-mono">
-            {data.channel_split.map((c, i) => (
+            {channelSplit.map((c, i) => (
               <div key={c.channel} className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-sm" style={{ background: CHANNEL_COLORS[i] }} />
+                <span className="w-2.5 h-2.5 rounded-sm" style={{ background: CHANNEL_COLORS[i % CHANNEL_COLORS.length] }} />
                 <span className="text-[#6B6B66] uppercase">{c.channel}</span>
                 <span className="text-[#0A0A0A] ml-auto">{c.value}%</span>
               </div>
@@ -154,7 +181,7 @@ export default function Dashboard() {
             <div className="flex items-center justify-between pt-3 border-t border-[#D6D3C8]">
               <div>
                 <div className="mono-accent">total.leads</div>
-                <div className="font-mono text-2xl font-bold text-[#0A0A0A] mt-1">{data.leads_total}</div>
+                <div className="font-mono text-2xl font-bold text-[#0A0A0A] mt-1">{data.leads_total || 0}</div>
               </div>
               <Users size={36} weight="duotone" className="text-[#DC2626]/40" />
             </div>
@@ -170,8 +197,8 @@ export default function Dashboard() {
             <TrendUp size={18} className="text-[#10B981]" />
           </div>
           <div className="space-y-2">
-            {Object.entries(data.pipeline).map(([stage, count]) => {
-              const max = Math.max(...Object.values(data.pipeline), 1);
+            {Object.entries(pipeline).map(([stage, count]) => {
+              const max = Math.max(...Object.values(pipeline), 1);
               const pct = (count / max) * 100;
               return (
                 <div key={stage}>
@@ -198,16 +225,17 @@ export default function Dashboard() {
             <Lightning size={18} className="text-[#F59E0B]" />
           </div>
           <div className="space-y-3 max-h-[280px] overflow-y-auto pr-1">
-            {activity.slice(0, 10).map((a) => (
-              <div key={a.id} className="flex items-start gap-3 text-sm">
-                <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-[#DC2626]" />
-                <div className="flex-1 min-w-0">
-                  <div className="text-[#1a1a1a] truncate">{a.title}</div>
-                  <div className="mono-accent text-[#999995] mt-0.5">{a.kind}</div>
+            {activity.length > 0 ? (
+              activity.slice(0, 10).map((a) => (
+                <div key={a.id} className="flex items-start gap-3 text-sm">
+                  <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-[#DC2626]" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[#1a1a1a] truncate">{a.title}</div>
+                    <div className="mono-accent text-[#999995] mt-0.5">{a.kind}</div>
+                  </div>
                 </div>
-              </div>
-            ))}
-            {activity.length === 0 && (
+              ))
+            ) : (
               <div className="text-[#999995] text-sm italic">No activity yet</div>
             )}
           </div>
@@ -219,7 +247,7 @@ export default function Dashboard() {
         <div className="mono-accent">/// global.reach</div>
         <div className="font-display font-bold text-lg mt-0.5 mb-4">Territories</div>
         <ResponsiveContainer width="100%" height={200}>
-          <BarChart data={data.top_countries} margin={{ top: 10, right: 10, bottom: 0, left: -20 }}>
+          <BarChart data={topCountries} margin={{ top: 10, right: 10, bottom: 0, left: -20 }}>
             <CartesianGrid stroke="#E5E5DC" vertical={false} />
             <XAxis dataKey="country" stroke="#999995" fontSize={11} tickLine={false} />
             <YAxis stroke="#999995" fontSize={11} tickLine={false} axisLine={false} />
