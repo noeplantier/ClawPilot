@@ -11,13 +11,16 @@ export default function Analytics() {
 
   if (!data) return <div className="p-10 text-[#6B6B66] font-mono">loading telemetry...</div>;
 
-  const { totals, timeseries, pipeline, top_countries } = data;
+  const totals = data.totals || {};
+  const timeseries = data.timeseries || [];
+  const pipeline = data.pipeline || {};
+  const topCountries = data.top_countries || [];
 
   const funnel = [
-    { name: "Sent",      value: totals.sent,      fill: "#DC2626" },
-    { name: "Opened",    value: totals.opened,    fill: "#0F172A" },
-    { name: "Replied",   value: totals.replied,   fill: "#475569" },
-    { name: "Converted", value: totals.converted, fill: "#10B981" },
+    { name: "Sent",      value: totals.sent || 0,      fill: "#DC2626" },
+    { name: "Opened",    value: totals.opened || 0,    fill: "#0F172A" },
+    { name: "Replied",   value: totals.replied || 0,   fill: "#475569" },
+    { name: "Converted", value: totals.converted || 0, fill: "#10B981" },
   ];
 
   return (
@@ -92,7 +95,7 @@ export default function Analytics() {
           <div className="mono-accent">/// territories</div>
           <div className="font-display font-bold text-lg mt-0.5 mb-4">Geographic Reach</div>
           <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={top_countries} margin={{ top: 10, right: 10, bottom: 0, left: -20 }}>
+            <BarChart data={topCountries} margin={{ top: 10, right: 10, bottom: 0, left: -20 }}>
               <CartesianGrid stroke="#F0F0EA" vertical={false} />
               <XAxis dataKey="country" stroke="#999995" fontSize={11} />
               <YAxis stroke="#999995" fontSize={11} tickLine={false} axisLine={false} />
