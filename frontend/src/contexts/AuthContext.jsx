@@ -3,13 +3,13 @@ import { api } from "@/lib/api";
 
 const AuthContext = createContext(null);
 
-const DEMO_EMAIL = "demo@openclaw.io";
+const DEMO_EMAIL = "demo@clawpilot.io";
 const DEMO_PASSWORD = "Demo12345!";
 const DEMO_TOKEN = "bypass-token-12345";
 
 const DEMO_USER_DATA = {
   user: { id: "demo-1", email: DEMO_EMAIL, name: "Operator" },
-  organization: { id: "org-1", name: "OpenClaw Demo" }
+  organization: { id: "org-1", name: "ClawPilot Demo" }
 };
 
 export function AuthProvider({ children }) {

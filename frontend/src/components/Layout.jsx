@@ -29,7 +29,7 @@ export default function Layout() {
         <div className="px-6 py-6 border-b border-[#D6D3C8]">
           <div className="flex items-center gap-2">
             <Lightning size={20} weight="fill" className="text-[#DC2626]" />
-            <div className="font-display font-black tracking-tight text-lg">OPENCLAW</div>
+            <div className="font-display font-black tracking-tight text-lg">CLAWPILOT</div>
           </div>
           <div className="mono-accent text-[#999995] mt-1">/// command.center</div>
         </div>
@@ -72,28 +72,7 @@ export default function Layout() {
 
       {/* Main */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Topbar */}
-        <header className="sticky top-0 z-40 border-b-2 border-[#0F172A] bg-[#FFFFFF]/95 backdrop-blur-xl">
-          <div className="flex items-center justify-between px-6 py-4">
-            <div className="flex items-center gap-3">
-              <span className="w-2 h-2 rounded-full bg-[#10B981] pulse-dot" />
-              <span className="mono-accent">// all systems nominal</span>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 border border-[#D6D3C8] rounded-md bg-[#FFFFFF]">
-                <MagnifyingGlass size={14} className="text-[#999995]" />
-                <input placeholder="Search leads, campaigns…" className="bg-transparent outline-none text-sm w-56 font-mono" data-testid="global-search-input" />
-                <span className="mono-accent text-[#999995]">⌘K</span>
-              </div>
-              <div className="flex items-center gap-2 px-3 py-1.5 border border-[#D6D3C8] rounded-md bg-[#FFFFFF]">
-                <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#DC2626] to-[#0F172A] flex items-center justify-center text-xs font-bold text-white">
-                  {(user?.full_name || "U").charAt(0).toUpperCase()}
-                </div>
-                <span className="text-sm font-medium hidden sm:inline" data-testid="user-name">{user?.full_name}</span>
-              </div>
-            </div>
-          </div>
-        </header>
+       
 
         <main className="flex-1 overflow-y-auto">
           <motion.div
