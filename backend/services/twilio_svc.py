@@ -1,6 +1,7 @@
 """Twilio WhatsApp wrapper with graceful mock fallback."""
-import os
+
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,7 @@ def send_whatsapp(to_number: str, body: str) -> dict:
 
     try:
         from twilio.rest import Client
+
         client = Client(SID, TOKEN)
         msg = client.messages.create(from_=FROM, to=to_wa, body=body)
         return {"status": "sent", "provider_id": msg.sid, "error": None}

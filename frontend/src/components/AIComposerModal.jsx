@@ -16,7 +16,7 @@ export default function AIComposerModal({ open, onClose, defaults }) {
   const [form, setForm] = useState({
     recipient_name: defaults?.recipient_name || "",
     company: defaults?.company || "",
-    product: defaults?.product || "OpenClaw agent-powered outreach platform",
+    product: defaults?.product || "ClawPilot agent-powered outreach platform",
     language: defaults?.language || "en",
     tone: "professional",
     channel: "email",

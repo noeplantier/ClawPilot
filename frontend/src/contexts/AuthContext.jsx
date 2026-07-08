@@ -18,7 +18,7 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   const loadMe = useCallback(async () => {
-    const token = localStorage.getItem("openclaw_token");
+    const token = localStorage.getItem("clawpilot_token");
     if (!token) { 
       setLoading(false); 
       return; 
@@ -37,7 +37,7 @@ export function AuthProvider({ children }) {
       setUser(data.user);
       setOrg(data.organization);
     } catch (e) {
-      localStorage.removeItem("openclaw_token");
+      localStorage.removeItem("clawpilot_token");
       setUser(null);
       setOrg(null);
     } finally {
@@ -50,14 +50,14 @@ export function AuthProvider({ children }) {
   const login = async (email, password) => {
     // Interception pour le mode Démo
     if (email === DEMO_EMAIL && password === DEMO_PASSWORD) {
-      localStorage.setItem("openclaw_token", DEMO_TOKEN);
+      localStorage.setItem("clawpilot_token", DEMO_TOKEN);
       setUser(DEMO_USER_DATA.user);
       setOrg(DEMO_USER_DATA.organization);
       return { access_token: DEMO_TOKEN, ...DEMO_USER_DATA };
     }
 
     const { data } = await api.post("/auth/login", { email, password });
-    localStorage.setItem("openclaw_token", data.access_token);
+    localStorage.setItem("clawpilot_token", data.access_token);
     setUser(data.user);
     setOrg(data.organization);
     return data;
@@ -65,14 +65,14 @@ export function AuthProvider({ children }) {
 
   const register = async (payload) => {
     const { data } = await api.post("/auth/register", payload);
-    localStorage.setItem("openclaw_token", data.access_token);
+    localStorage.setItem("clawpilot_token", data.access_token);
     setUser(data.user);
     setOrg(data.organization);
     return data;
   };
 
   const logout = () => {
-    localStorage.removeItem("openclaw_token");
+    localStorage.removeItem("clawpilot_token");
     setUser(null);
     setOrg(null);
     window.location.href = "/login";

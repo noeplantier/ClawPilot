@@ -1,11 +1,13 @@
 """AI message generation route."""
+
+import asyncio
+from typing import List
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
-from typing import List
-import asyncio
 
-from models import AIGenerateIn, AIGenerateOut
 from deps import get_current_user
+from models import AIGenerateIn, AIGenerateOut
 from services.ai_svc import generate_message
 
 router = APIRouter(prefix="/ai", tags=["ai"])

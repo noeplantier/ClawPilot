@@ -1,11 +1,12 @@
 """SendGrid email sending wrapper with graceful mock fallback."""
-import os
+
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
 API_KEY = os.environ.get("SENDGRID_API_KEY")
-FROM_EMAIL = os.environ.get("SENDGRID_FROM_EMAIL") or "noreply@openclaw.app"
+FROM_EMAIL = os.environ.get("SENDGRID_FROM_EMAIL") or "noreply@clawpilot.io"
 
 
 def is_configured() -> bool:
@@ -23,10 +24,13 @@ def send_email(to_email: str, subject: str, body: str, from_email: str | None = 
 
     try:
         from sendgrid import SendGridAPIClient
-        from sendgrid.helpers.mail import Mail, TrackingSettings, ClickTracking, OpenTracking
+        from sendgrid.helpers.mail import ClickTracking, Mail, OpenTracking, TrackingSettings
 
-        html = "<div style=\"font-family:system-ui,-apple-system,sans-serif;line-height:1.6;color:#111\">" \
-               + body.replace("\n", "<br/>") + "</div>"
+        html = (
+            '<div style="font-family:system-ui,-apple-system,sans-serif;line-height:1.6;color:#111">'
+            + body.replace("\n", "<br/>")
+            + "</div>"
+        )
 
         message = Mail(from_email=sender, to_emails=to_email, subject=subject, html_content=html)
         ts = TrackingSettings()

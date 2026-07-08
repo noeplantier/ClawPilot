@@ -9,6 +9,7 @@ import AIComposerModal from "@/components/AIComposerModal";
 import BulkLeadsModal from "@/components/BulkLeadsModal";
 import BatchComposerModal from "@/components/BatchComposerModal";
 import LeadsBulkBar from "@/components/LeadsBulkBar";
+import LeadDetailDrawer from "@/components/LeadDetailDrawer";
 
 const STAGES = ["new", "contacted", "engaged", "qualified", "won", "lost"];
 const STAGE_COLORS = {
@@ -26,6 +27,7 @@ export default function Leads() {
   const [aiOpen, setAiOpen] = useState(false);
   const [aiDefaults, setAiDefaults] = useState(null);
   const [selected, setSelected] = useState(new Set());
+  const [detailLeadId, setDetailLeadId] = useState(null);
 
   const allVisible = leads.map((l) => l.id);
   const toggleOne = (id) =>
@@ -119,10 +121,11 @@ export default function Leads() {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ delay: i * 0.02 }}
-                  className={`border-b border-[#F0F0EA] hover:bg-[#FAFAF7] transition-colors ${selected.has(l.id) ? "bg-[#FEF2F2]" : ""}`}
+                  onClick={() => setDetailLeadId(l.id)}
+                  className={`border-b border-[#F0F0EA] hover:bg-[#FAFAF7] transition-colors cursor-pointer ${selected.has(l.id) ? "bg-[#FEF2F2]" : ""}`}
                   data-testid={`lead-row-${l.id}`}
                 >
-                  <td className="p-3">
+                  <td className="p-3" onClick={(e) => e.stopPropagation()}>
                     <input
                       type="checkbox"
                       checked={selected.has(l.id)}
@@ -145,7 +148,7 @@ export default function Leads() {
                   <td className="p-3 text-[#6B6B66]">{l.company}</td>
                   <td className="p-3 font-mono text-xs text-[#6B6B66]">{l.email}</td>
                   <td className="p-3 font-mono text-xs">{l.country}</td>
-                  <td className="p-3">
+                  <td className="p-3" onClick={(e) => e.stopPropagation()}>
                     <select
                       value={l.stage}
                       onChange={(e) => updateStage(l.id, e.target.value)}
@@ -164,7 +167,7 @@ export default function Leads() {
                       <span className="font-mono text-xs w-6 text-right">{l.score}</span>
                     </div>
                   </td>
-                  <td className="p-3">
+                  <td className="p-3" onClick={(e) => e.stopPropagation()}>
                     <div className="flex justify-end gap-1">
                       <button onClick={() => writeFor(l)} className="btn-ghost !py-1 !px-2" title="AI write" data-testid={`ai-${l.id}`}><Sparkle size={12} /></button>
                       {l.email && <a href={`mailto:${l.email}`} className="btn-ghost !py-1 !px-2"><Envelope size={12} /></a>}
@@ -196,7 +199,9 @@ export default function Leads() {
                       key={l.id}
                       initial={{ opacity: 0, y: 4 }}
                       animate={{ opacity: 1, y: 0 }}
+                      onClick={() => setDetailLeadId(l.id)}
                       className="surface p-3 text-xs cursor-pointer hover:border-[#DC2626]/40 transition"
+                      data-testid={`kanban-card-${l.id}`}
                     >
                       <div className="font-semibold text-sm text-[#0A0A0A]">{l.full_name}</div>
                       <div className="text-[#6B6B66] mt-0.5">{l.company}</div>
@@ -217,6 +222,7 @@ export default function Leads() {
       <BulkLeadsModal open={showBulk} onClose={() => setShowBulk(false)} onDone={load} />
       <BatchComposerModal open={showBatch} onClose={() => setShowBatch(false)} />
       <AIComposerModal open={aiOpen} onClose={() => setAiOpen(false)} defaults={aiDefaults} />
+      <LeadDetailDrawer open={!!detailLeadId} leadId={detailLeadId} onClose={() => setDetailLeadId(null)} onUpdate={load} />
       <LeadsBulkBar
         selectedIds={Array.from(selected)}
         onCleared={() => setSelected(new Set())}

@@ -1,14 +1,27 @@
-"""Webhook endpoints for SendGrid and Twilio — public (no JWT)."""
+"""Webhook endpoints for SendGrid and Twilio — public (no JWT).
+
+Every inbound call is logged to `webhook_events` first (fast, durable receipt)
+before any processing — see repositories/outreach_repo.py. Processing updates
+the matching `email_sends`/`whatsapp_sends` row and records an `outreach_events`
+entry, replacing the legacy polymorphic `messages` Mongo collection.
+"""
+
 import logging
+import uuid
 from typing import List
-from fastapi import APIRouter, Request
+
+from fastapi import APIRouter, Depends, Request
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from db.session import get_db_session
 from deps import db
+from repositories import campaign_repo, consent_repo, lead_repo, outreach_repo
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
 
-# Map provider event type → internal Message.status + campaign counter field
+# Map provider event type → internal send status + campaign counter field
 SENDGRID_EVENT_MAP = {
     "delivered": ("delivered", None),
     "open": ("opened", "opened"),
@@ -20,9 +33,18 @@ SENDGRID_EVENT_MAP = {
     "unsubscribe": ("failed", None),
 }
 
+# Compliance requires immediate opt-out on request — checked as a whole-word,
+# case-insensitive match against the inbound message body (English + French,
+# matching the primary languages seen in this codebase's demo data).
+WHATSAPP_OPT_OUT_KEYWORDS = {"stop", "unsubscribe", "arret", "arrêt", "cancel", "desabonner", "désabonner"}
+
+
+def _is_opt_out_message(body: str) -> bool:
+    return body.strip().strip(".!?").lower() in WHATSAPP_OPT_OUT_KEYWORDS
+
 
 @router.post("/sendgrid")
-async def sendgrid_webhook(request: Request):
+async def sendgrid_webhook(request: Request, session: AsyncSession = Depends(get_db_session)):
     """Handle SendGrid event webhook. Body is a JSON array of events.
 
     Configure in SendGrid: Settings → Mail Settings → Event Webhook → POST URL = /api/webhooks/sendgrid
@@ -39,65 +61,76 @@ async def sendgrid_webhook(request: Request):
     for ev in events:
         sg_msg_id = ev.get("sg_message_id") or ev.get("smtp-id")
         event_type = ev.get("event")
+        webhook_log = await outreach_repo.log_webhook_event(session, "sendgrid", event_type, ev)
+
         if not sg_msg_id or not event_type:
+            await outreach_repo.mark_webhook_processed(session, webhook_log, error="missing sg_message_id or event")
             continue
 
-        # SendGrid appends a suffix to sg_message_id; match by prefix
-        base_id = sg_msg_id.split(".")[0] if sg_msg_id else None
         status_map = SENDGRID_EVENT_MAP.get(event_type)
         if not status_map:
+            await outreach_repo.mark_webhook_processed(session, webhook_log, error=f"unhandled event type {event_type}")
             continue
         new_status, counter_field = status_map
 
-        # Find matching message by provider_id prefix or exact
-        msg = await db.messages.find_one(
-            {"$or": [
-                {"provider_id": sg_msg_id},
-                {"provider_id": {"$regex": f"^{base_id}"}} if base_id else {},
-            ]},
-            {"_id": 0},
-        )
-        if not msg:
+        send = await outreach_repo.upgrade_email_status_by_provider_id(session, sg_msg_id)
+        if not send:
+            await outreach_repo.mark_webhook_processed(session, webhook_log, error="no matching email_send")
             continue
 
         # Only upgrade status (sent → delivered → opened → replied)
-        rank = {"queued": 0, "mock": 0, "sent": 1, "delivered": 2, "opened": 3, "replied": 4, "failed": -1}
-        current_rank = rank.get(msg.get("status", "queued"), 0)
-        new_rank = rank.get(new_status, 0)
-        if new_rank <= current_rank and new_status != "failed":
+        if outreach_repo.status_rank(new_status) <= outreach_repo.status_rank(send.status) and new_status != "failed":
+            await outreach_repo.mark_webhook_processed(session, webhook_log)
             processed += 1
             continue
 
-        await db.messages.update_one({"id": msg["id"]}, {"$set": {"status": new_status}})
+        send.status = new_status
 
-        if counter_field and msg.get("campaign_id") and msg.get("org_id"):
-            await db.campaigns.update_one(
-                {"id": msg["campaign_id"], "org_id": msg["org_id"]},
-                {"$inc": {counter_field: 1}},
-            )
+        # counter_field is only ever "opened" in SENDGRID_EVENT_MAP today.
+        if counter_field == "opened" and send.campaign_id:
+            await campaign_repo.increment_counters(session, send.account_id, str(send.campaign_id), opened=1)
 
-        await db.activity.insert_one({
-            "id": f"wh-{sg_msg_id}-{event_type}"[:120],
-            "org_id": msg.get("org_id"),
-            "kind": f"email.{event_type}",
-            "title": f"Email {event_type} · {msg.get('to')}",
-            "meta": {"campaign_id": msg.get("campaign_id"), "lead_id": msg.get("lead_id")},
-            "created_at": (ev.get("timestamp") and str(ev["timestamp"])) or "",
-        })
+        if event_type == "unsubscribe":
+            contact_id = await consent_repo.get_contact_id_by_email(session, send.account_id, send.to_email)
+            if contact_id:
+                await consent_repo.record_consent(
+                    session,
+                    send.account_id,
+                    contact_id,
+                    channel="email",
+                    status="opted_out",
+                    source="sendgrid_unsubscribe_webhook",
+                    evidence={"sg_message_id": sg_msg_id},
+                )
+
+        lead_id = await consent_repo.get_lead_id_by_contact(session, send.contact_id) if send.contact_id else None
+        await outreach_repo.record_outreach_event(
+            session,
+            send.account_id,
+            channel="email",
+            event_type=new_status,
+            campaign_id=str(send.campaign_id) if send.campaign_id else None,
+            lead_id=str(lead_id) if lead_id else None,
+            meta={"provider_event": event_type, "to": send.to_email},
+        )
+        await outreach_repo.mark_webhook_processed(session, webhook_log)
         processed += 1
 
     return {"ok": True, "processed": processed, "total": len(events)}
 
 
 @router.post("/twilio")
-async def twilio_webhook(request: Request):
+async def twilio_webhook(request: Request, session: AsyncSession = Depends(get_db_session)):
     """Handle Twilio message status callbacks AND inbound WhatsApp messages.
 
-    Configure in Twilio: Messaging → WhatsApp Sandbox (or Number) → 'WHEN A MESSAGE COMES IN' + 'STATUS CALLBACK' → POST URL = /api/webhooks/twilio
+    Configure in Twilio: Messaging -> WhatsApp Sandbox (or Number) ->
+    'WHEN A MESSAGE COMES IN' + 'STATUS CALLBACK' -> POST URL = /api/webhooks/twilio
     Twilio sends form-encoded data (not JSON).
     """
     form = await request.form()
-    data = dict(form)
+    # Twilio webhooks are always form-encoded text fields, never file uploads.
+    data: dict[str, str] = {k: v for k, v in form.items() if isinstance(v, str)}
+    webhook_log = await outreach_repo.log_webhook_event(session, "twilio", None, data)
 
     message_sid = data.get("MessageSid") or data.get("SmsSid")
     message_status = data.get("MessageStatus") or data.get("SmsStatus")
@@ -106,66 +139,99 @@ async def twilio_webhook(request: Request):
     incoming_body = data.get("Body")
     from_ = (data.get("From") or "").replace("whatsapp:", "")
     if incoming_body and from_:
-        # Find lead by phone
-        lead = await db.leads.find_one({"phone": from_}, {"_id": 0})
+        # Find lead by phone (leads live in Postgres — see repositories/lead_repo.py)
+        lead = await lead_repo.get_lead_by_phone(session, from_)
         org_id = lead.get("org_id") if lead else None
+        account_id = uuid.UUID(org_id) if org_id else None
 
-        await db.messages.insert_one({
-            "id": f"in-{message_sid or from_}"[:120],
-            "org_id": org_id,
-            "campaign_id": None,
-            "lead_id": lead.get("id") if lead else None,
-            "channel": "whatsapp",
-            "direction": "inbound",
-            "to": data.get("To", "").replace("whatsapp:", ""),
-            "subject": None,
-            "body": incoming_body,
-            "status": "replied",
-            "provider_id": message_sid,
-            "error": None,
-            "created_at": "",
-        })
+        await outreach_repo.create_whatsapp_send(
+            session,
+            account_id,
+            direction="inbound",
+            from_number=from_,
+            to_number=data.get("To", "").replace("whatsapp:", ""),
+            body=incoming_body,
+            status="replied",
+            provider_message_sid=message_sid,
+        )
 
-        if org_id:
-            await db.activity.insert_one({
-                "id": f"wh-in-{message_sid or from_}"[:120],
-                "org_id": org_id,
-                "kind": "whatsapp.inbound",
-                "title": f"📩 Reply from {from_}: {incoming_body[:80]}",
-                "meta": {"lead_id": lead.get("id") if lead else None},
-                "created_at": "",
-            })
+        if account_id:
+            await outreach_repo.record_outreach_event(
+                session,
+                account_id,
+                channel="whatsapp",
+                event_type="replied",
+                direction="inbound",
+                lead_id=lead.get("id") if lead else None,
+                meta={"from": from_, "body": incoming_body[:200]},
+            )
+            await db.activity.insert_one(
+                {
+                    "id": f"wh-in-{message_sid or from_}"[:120],
+                    "org_id": org_id,
+                    "kind": "whatsapp.inbound",
+                    "title": f"📩 Reply from {from_}: {incoming_body[:80]}",
+                    "meta": {"lead_id": lead.get("id") if lead else None},
+                    "created_at": "",
+                }
+            )
             # Bump the most recent campaign's replied counter if we have lead linkage
             if lead:
-                last_out = await db.messages.find_one(
-                    {"lead_id": lead["id"], "direction": "outbound", "channel": "whatsapp"},
-                    {"_id": 0, "campaign_id": 1},
-                    sort=[("created_at", -1)],
-                )
-                if last_out and last_out.get("campaign_id"):
-                    await db.campaigns.update_one(
-                        {"id": last_out["campaign_id"], "org_id": org_id},
-                        {"$inc": {"replied": 1}},
-                    )
+                messages = await outreach_repo.list_messages(session, account_id, channel="whatsapp", limit=200)
+                last_out = next((m for m in messages if m["direction"] == "outbound" and m.get("campaign_id")), None)
+                if last_out:
+                    await campaign_repo.increment_counters(session, account_id, last_out["campaign_id"], replied=1)
 
+            # Immediate opt-out on request (STOP/UNSUBSCRIBE/etc.) — compliance
+            # requirement, takes priority over any campaign bookkeeping above.
+            if lead and lead.get("contact_id") and _is_opt_out_message(incoming_body):
+                await consent_repo.record_consent(
+                    session,
+                    account_id,
+                    uuid.UUID(lead["contact_id"]),
+                    channel="whatsapp",
+                    status="opted_out",
+                    source="whatsapp_stop_keyword",
+                    evidence={"message_sid": message_sid, "body": incoming_body},
+                )
+
+        await outreach_repo.mark_webhook_processed(session, webhook_log)
         return {"ok": True, "kind": "inbound"}
 
     # --- Delivery status callback ---
     if message_sid and message_status:
         status_map = {
-            "queued": "queued", "sending": "queued", "sent": "sent",
-            "delivered": "delivered", "read": "opened",
-            "failed": "failed", "undelivered": "failed",
+            "queued": "queued",
+            "sending": "queued",
+            "sent": "sent",
+            "delivered": "delivered",
+            "read": "opened",
+            "failed": "failed",
+            "undelivered": "failed",
         }
         new_status = status_map.get(message_status, "sent")
-        msg = await db.messages.find_one({"provider_id": message_sid}, {"_id": 0})
-        if msg:
-            await db.messages.update_one({"id": msg["id"]}, {"$set": {"status": new_status}})
-            if new_status == "opened" and msg.get("campaign_id"):
-                await db.campaigns.update_one(
-                    {"id": msg["campaign_id"], "org_id": msg["org_id"]},
-                    {"$inc": {"opened": 1}},
+        send = await outreach_repo.upgrade_whatsapp_status_by_sid(session, message_sid)
+        if send:
+            send.status = new_status
+            # account_id is only ever null for inbound sends that never resolved
+            # a lead; outbound sends (the ones getting a status callback) always
+            # have it set at creation time in routes/messages.py.
+            if send.account_id:
+                if new_status == "opened" and send.campaign_id:
+                    await campaign_repo.increment_counters(session, send.account_id, str(send.campaign_id), opened=1)
+                lead_id = (
+                    await consent_repo.get_lead_id_by_contact(session, send.contact_id) if send.contact_id else None
                 )
+                await outreach_repo.record_outreach_event(
+                    session,
+                    send.account_id,
+                    channel="whatsapp",
+                    event_type=new_status,
+                    campaign_id=str(send.campaign_id) if send.campaign_id else None,
+                    lead_id=str(lead_id) if lead_id else None,
+                )
+            await outreach_repo.mark_webhook_processed(session, webhook_log)
             return {"ok": True, "kind": "status", "new_status": new_status}
 
+    await outreach_repo.mark_webhook_processed(session, webhook_log, error="noop: no matching handler")
     return {"ok": True, "kind": "noop"}

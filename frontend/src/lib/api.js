@@ -6,7 +6,7 @@ export const API = `${BACKEND_URL}/api`;
 export const api = axios.create({ baseURL: API });
 
 api.interceptors.request.use((cfg) => {
-  const token = localStorage.getItem("openclaw_token");
+  const token = localStorage.getItem("clawpilot_token");
   
   // --- AJOUT : Interception en mode Démo ---
   if (token === "bypass-token-12345") {
@@ -33,7 +33,7 @@ api.interceptors.response.use(
     // -------------------------------------------
 
     if (err?.response?.status === 401) {
-      localStorage.removeItem("openclaw_token");
+      localStorage.removeItem("clawpilot_token");
       if (!window.location.pathname.startsWith("/login") && !window.location.pathname.startsWith("/register")) {
         window.location.href = "/login";
       }
