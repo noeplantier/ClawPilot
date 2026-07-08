@@ -1,11 +1,12 @@
-"""Pydantic models for OpenClaw SaaS platform."""
+"""Pydantic models for ClawPilot SaaS platform."""
+
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import List, Optional, Literal
 import uuid
+from datetime import datetime, timezone
+from typing import List, Literal, Optional
 
-from pydantic import BaseModel, Field, EmailStr, ConfigDict
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 
 def _uid() -> str:
@@ -58,6 +59,9 @@ class TokenOut(BaseModel):
 LeadStage = Literal["new", "contacted", "engaged", "qualified", "won", "lost"]
 
 
+ConsentStatus = Literal["opted_in", "opted_out", "unknown"]
+
+
 class Lead(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=_uid)
@@ -74,6 +78,8 @@ class Lead(BaseModel):
     source: Optional[str] = None
     notes: Optional[str] = None
     score: int = 0
+    email_consent: ConsentStatus = "unknown"
+    whatsapp_consent: ConsentStatus = "unknown"
     created_at: datetime = Field(default_factory=_now)
 
 
@@ -88,6 +94,12 @@ class LeadCreate(BaseModel):
     tags: List[str] = Field(default_factory=list)
     source: Optional[str] = None
     notes: Optional[str] = None
+    # Consent captured at ingestion time (e.g. a CSV column, a form checkbox).
+    # Anything else (manual opt-in later, unsubscribe webhooks) goes through
+    # POST /api/leads/{id}/consent instead of this one-shot flag.
+    email_opt_in: bool = False
+    whatsapp_opt_in: bool = False
+    consent_source: Optional[str] = None
 
 
 class LeadUpdate(BaseModel):
@@ -103,9 +115,19 @@ class LeadUpdate(BaseModel):
     score: Optional[int] = None
 
 
+class ConsentUpdateIn(BaseModel):
+    channel: Literal["email", "whatsapp"]
+    status: ConsentStatus
+    source: str = "manual"
+
+
 # ------------------------ Campaigns ------------------------
 CampaignStatus = Literal["draft", "running", "paused", "completed"]
 Channel = Literal["email", "whatsapp"]
+
+
+def _default_channels() -> List[Channel]:
+    return ["email"]
 
 
 class CampaignStep(BaseModel):
@@ -124,7 +146,7 @@ class Campaign(BaseModel):
     name: str
     goal: Optional[str] = None
     status: CampaignStatus = "draft"
-    channels: List[Channel] = Field(default_factory=lambda: ["email"])
+    channels: List[Channel] = Field(default_factory=_default_channels)
     steps: List[CampaignStep] = Field(default_factory=list)
     lead_ids: List[str] = Field(default_factory=list)
     agent_id: Optional[str] = None
@@ -138,7 +160,7 @@ class Campaign(BaseModel):
 class CampaignCreate(BaseModel):
     name: str
     goal: Optional[str] = None
-    channels: List[Channel] = Field(default_factory=lambda: ["email"])
+    channels: List[Channel] = Field(default_factory=_default_channels)
     steps: List[CampaignStep] = Field(default_factory=list)
     lead_ids: List[str] = Field(default_factory=list)
     agent_id: Optional[str] = None
@@ -154,7 +176,7 @@ class CampaignUpdate(BaseModel):
     agent_id: Optional[str] = None
 
 
-# ------------------------ Agents (OpenClaw) ------------------------
+# ------------------------ Agents (ClawPilot) ------------------------
 AgentStatus = Literal["idle", "running", "paused", "error"]
 
 
@@ -238,6 +260,75 @@ class Activity(BaseModel):
     title: str
     meta: dict = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=_now)
+
+
+# ------------------------ CRM: Notes, Tasks, Tags ------------------------
+TaskStatus = Literal["open", "in_progress", "done", "cancelled"]
+
+
+class Note(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=_uid)
+    org_id: str
+    lead_id: Optional[str] = None
+    campaign_id: Optional[str] = None
+    author_user_id: str
+    body: str
+    created_at: datetime = Field(default_factory=_now)
+
+
+class NoteCreate(BaseModel):
+    lead_id: Optional[str] = None
+    campaign_id: Optional[str] = None
+    body: str
+
+    @model_validator(mode="after")
+    def _require_a_target(self) -> "NoteCreate":
+        if not self.lead_id and not self.campaign_id:
+            raise ValueError("lead_id or campaign_id is required")
+        return self
+
+
+class Task(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=_uid)
+    org_id: str
+    lead_id: Optional[str] = None
+    campaign_id: Optional[str] = None
+    assigned_to_user_id: Optional[str] = None
+    title: str
+    status: TaskStatus = "open"
+    due_at: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=_now)
+
+
+class TaskCreate(BaseModel):
+    lead_id: Optional[str] = None
+    campaign_id: Optional[str] = None
+    assigned_to_user_id: Optional[str] = None
+    title: str
+    due_at: Optional[datetime] = None
+
+
+class TaskUpdate(BaseModel):
+    title: Optional[str] = None
+    status: Optional[TaskStatus] = None
+    assigned_to_user_id: Optional[str] = None
+    due_at: Optional[datetime] = None
+
+
+class Tag(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=_uid)
+    org_id: str
+    name: str
+    color: Optional[str] = None
+    created_at: datetime = Field(default_factory=_now)
+
+
+class TagCreate(BaseModel):
+    name: str
+    color: Optional[str] = None
 
 
 # ------------------------ Settings ------------------------

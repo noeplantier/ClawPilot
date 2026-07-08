@@ -126,3 +126,18 @@ websockets==16.0
 Werkzeug==3.1.8
 yarl==1.23.0
 zipp==3.23.0
+
+# --- Data layer: PostgreSQL + Celery/Redis (replaces MongoDB/motor + in-process scheduler) ---
+SQLAlchemy==2.0.51
+asyncpg==0.31.0
+alembic==1.18.5
+greenlet==3.5.3
+celery==5.6.3
+redis==8.0.1
+amqp==5.3.1
+billiard==4.2.4
+kombu==5.6.2
+vine==5.1.0
+click-didyoumean==0.3.1
+click-plugins==1.1.1.2
+click-repl==0.3.0

@@ -10,7 +10,7 @@ const HERO_BG = "https://images.unsplash.com/photo-1754738381772-897447d10eb6?cr
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
-  const [email, setEmail] = useState("demo@openclaw.io");
+  const [email, setEmail] = useState("demo@clawpilot.io");
   const [password, setPassword] = useState("Demo12345!");
   const [loading, setLoading] = useState(false);
 
@@ -18,8 +18,8 @@ export default function Login() {
     e.preventDefault();
     
     // 1. Coupe l'herbe sous le pied de l'API : on vérifie l'email sans les espaces
-    if (email.trim() === "demo@openclaw.io") {
-      localStorage.setItem("openclaw_token", "bypass-token-12345"); // Le token magique
+    if (email.trim() === "demo@clawpilot.io") {
+      localStorage.setItem("clawpilot_token", "bypass-token-12345"); // Le token magique
       window.location.href = "/app/dashboard"; // Redirection forcée
       return; // On arrête la fonction ici, AUCUNE requête API ne sera envoyée
     }
@@ -43,7 +43,7 @@ export default function Login() {
       <div className="lg:col-span-2 flex flex-col px-8 md:px-16 py-10 relative bg-[#FFFFFF] border-r-2 border-[#0F172A]">
         <Link to="/" className="flex items-center gap-2" data-testid="brand-logo">
           <Lightning size={22} weight="fill" className="text-[#DC2626]" />
-          <span className="font-display font-black tracking-tight text-xl">OPENCLAW</span>
+          <span className="font-display font-black tracking-tight text-xl">CLAWPILOT</span>
         </Link>
 
         <motion.div
@@ -57,7 +57,7 @@ export default function Login() {
             Command your<br /> outreach fleet.
           </h1>
           <p className="mt-4 text-[#6B6B66] leading-relaxed">
-            Sign in to orchestrate OpenClaw agents across email, WhatsApp, and global markets.
+            Sign in to orchestrate ClawPilot agents across email, WhatsApp, and global markets.
           </p>
 
           <form onSubmit={submit} className="mt-10 space-y-4" data-testid="login-form">
@@ -70,7 +70,7 @@ export default function Login() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="neo-input font-mono w-full"
-                placeholder="operator@openclaw.io"
+                placeholder="operator@clawpilot.io"
                 data-testid="login-email-input"
                 autoComplete="username"
               />

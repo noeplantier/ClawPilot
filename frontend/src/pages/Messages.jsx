@@ -102,7 +102,7 @@ function Composer({ channel, onClose, onSent }) {
     try {
       const { data } = await api.post("/ai/generate", {
         recipient_name: to.split("@")[0] || to,
-        product: "OpenClaw agent-powered outreach platform",
+        product: "ClawPilot agent-powered outreach platform",
         language: "en",
         tone: "professional",
         channel,

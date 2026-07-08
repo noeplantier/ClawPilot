@@ -1,72 +1,73 @@
 """Analytics + dashboard aggregation routes."""
-from datetime import datetime, timedelta, timezone
-from fastapi import APIRouter, Depends
 
+import uuid
+from datetime import datetime, timedelta, timezone
+
+from fastapi import APIRouter, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from db.session import get_db_session
 from deps import db, get_current_user
+from repositories import agent_repo, campaign_repo, lead_repo, outreach_repo
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
 
 @router.get("/overview")
-async def overview(user: dict = Depends(get_current_user)):
+async def overview(
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+):
     org_id = user["org_id"]
-    # campaign aggregate
-    agg = await db.campaigns.aggregate([
-        {"$match": {"org_id": org_id}},
-        {"$group": {
-            "_id": None,
-            "sent": {"$sum": "$sent"},
-            "opened": {"$sum": "$opened"},
-            "replied": {"$sum": "$replied"},
-            "converted": {"$sum": "$converted"},
-            "count": {"$sum": 1},
-        }},
-    ]).to_list(1)
-    totals = agg[0] if agg else {"sent": 0, "opened": 0, "replied": 0, "converted": 0, "count": 0}
-    totals.pop("_id", None)
+    account_id = uuid.UUID(org_id)
+    # campaign aggregate (campaigns now live in Postgres — see repositories/campaign_repo.py)
+    totals = await campaign_repo.aggregate_totals(session, account_id)
 
-    leads_total = await db.leads.count_documents({"org_id": org_id})
-    agents_running = await db.agents.count_documents({"org_id": org_id, "status": "running"})
-    agents_total = await db.agents.count_documents({"org_id": org_id})
+    leads_total = await lead_repo.count_leads(session, account_id)
+    agents_running = await agent_repo.count_agents(session, account_id, status="running")
+    agents_total = await agent_repo.count_agents(session, account_id)
 
-    # Pipeline breakdown
-    pipeline_cursor = db.leads.aggregate([
-        {"$match": {"org_id": org_id}},
-        {"$group": {"_id": "$stage", "count": {"$sum": 1}}},
-    ])
+    # Pipeline breakdown (leads now live in Postgres — see repositories/lead_repo.py)
+    counts = await lead_repo.pipeline_breakdown(session, account_id)
     pipeline = {s: 0 for s in ["new", "contacted", "engaged", "qualified", "won", "lost"]}
-    async for row in pipeline_cursor:
-        pipeline[row["_id"]] = row["count"]
+    pipeline.update(counts)
 
-    # Timeseries last 14 days (synthetic based on campaign history)
-    import random
-    random.seed(hash(org_id) & 0xFFFFFFFF)
+    # Timeseries last 14 days — real counts from outreach_events (replaces the
+    # legacy synthetic `random.seed(hash(org_id))` data).
+    daily = await outreach_repo.daily_event_counts(session, account_id, days=14)
     now = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     timeseries = []
     for i in range(13, -1, -1):
         day = now - timedelta(days=i)
-        sent = random.randint(40, 180)
-        opened = int(sent * random.uniform(0.4, 0.7))
-        replied = int(opened * random.uniform(0.05, 0.2))
-        timeseries.append({
-            "date": day.strftime("%b %d"),
-            "sent": sent,
-            "opened": opened,
-            "replied": replied,
-        })
+        key = day.strftime("%Y-%m-%d")
+        sent = daily.get((key, "sent"), 0)
+        opened = daily.get((key, "opened"), 0) + daily.get((key, "clicked"), 0)
+        replied = daily.get((key, "replied"), 0)
+        timeseries.append(
+            {
+                "date": day.strftime("%b %d"),
+                "sent": sent,
+                "opened": opened,
+                "replied": replied,
+            }
+        )
 
+    channel_counts = await outreach_repo.channel_send_counts(session, account_id)
+    email_count = channel_counts.get("email", 0)
+    whatsapp_count = channel_counts.get("whatsapp", 0)
+    channel_total = email_count + whatsapp_count
+    if channel_total:
+        email_pct = round(email_count / channel_total * 100)
+        whatsapp_pct = 100 - email_pct
+    else:
+        email_pct = whatsapp_pct = 0
     channel_split = [
-        {"channel": "Email", "value": 68},
-        {"channel": "WhatsApp", "value": 32},
+        {"channel": "Email", "value": email_pct},
+        {"channel": "WhatsApp", "value": whatsapp_pct},
     ]
 
     top_countries = [
-        {"country": "US", "leads": await db.leads.count_documents({"org_id": org_id, "country": "US"})},
-        {"country": "DE", "leads": await db.leads.count_documents({"org_id": org_id, "country": "DE"})},
-        {"country": "FR", "leads": await db.leads.count_documents({"org_id": org_id, "country": "FR"})},
-        {"country": "JP", "leads": await db.leads.count_documents({"org_id": org_id, "country": "JP"})},
-        {"country": "BR", "leads": await db.leads.count_documents({"org_id": org_id, "country": "BR"})},
-        {"country": "IN", "leads": await db.leads.count_documents({"org_id": org_id, "country": "IN"})},
+        {"country": country, "leads": count} for country, count in await lead_repo.top_countries(session, account_id)
     ]
 
     return {
@@ -83,7 +84,10 @@ async def overview(user: dict = Depends(get_current_user)):
 
 @router.get("/activity")
 async def activity(limit: int = 30, user: dict = Depends(get_current_user)):
-    items = await db.activity.find(
-        {"org_id": user["org_id"]}, {"_id": 0}
-    ).sort("created_at", -1).limit(limit).to_list(limit)
+    items = (
+        await db.activity.find({"org_id": user["org_id"]}, {"_id": 0})
+        .sort("created_at", -1)
+        .limit(limit)
+        .to_list(limit)
+    )
     return items

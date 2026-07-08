@@ -15,7 +15,7 @@ export default function BatchComposerModal({ open, onClose, defaultChannel = "em
   const [search, setSearch] = useState("");
   const [subject, setSubject] = useState("Quick idea for {{company}}");
   const [body, setBody] = useState(
-    "Hi {{first_name}},\n\nI saw {{company}} is scaling fast — wanted to share how OpenClaw agents can 3x your outreach without adding headcount.\n\nWorth a 15-min chat this week?"
+    "Hi {{first_name}},\n\nI saw {{company}} is scaling fast — wanted to share how ClawPilot agents can 3x your outreach without adding headcount.\n\nWorth a 15-min chat this week?"
   );
   const [loading, setLoading] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
@@ -65,7 +65,7 @@ export default function BatchComposerModal({ open, onClose, defaultChannel = "em
       const { data } = await api.post("/ai/generate", {
         recipient_name: sample?.full_name || "there",
         company: sample?.company || "",
-        product: "OpenClaw agent-powered outreach platform",
+        product: "ClawPilot agent-powered outreach platform",
         language: sample?.language || "en",
         tone: "professional",
         channel,

@@ -1,14 +1,62 @@
-"""Messaging routes — send email & whatsapp, list threads."""
-from fastapi import APIRouter, Depends, HTTPException
-from typing import List, Optional
-from pydantic import BaseModel
+"""Messaging routes — send email & whatsapp, list threads.
 
-from models import Message, SendEmailIn, SendWhatsAppIn, Activity
+Postgres-backed: `email_sends`/`whatsapp_sends` (detail) + `outreach_events`
+(unified timeline that real analytics timeseries are built from).
+"""
+
+import uuid
+from typing import List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from db.session import get_db_session
 from deps import db, get_current_user
+from models import Activity, SendEmailIn, SendWhatsAppIn
+from repositories import (
+    audit_repo,
+    campaign_repo,
+    consent_repo,
+    lead_repo,
+    outreach_repo,
+)
 from services.sendgrid_svc import send_email
+from services.templating import render as _render
 from services.twilio_svc import send_whatsapp
 
 router = APIRouter(prefix="/messages", tags=["messages"])
+
+
+def _event_type_for(status: str) -> str:
+    return "failed" if status == "failed" else "sent"
+
+
+async def _enforce_consent_for_lead(
+    session: AsyncSession, account_id: uuid.UUID, lead_id: Optional[str], channel: str
+) -> Optional[uuid.UUID]:
+    """Raises 403 if this specific lead has not consented for `channel`. Returns
+    the lead's primary contact_id (or None) so the caller can stamp it on the
+    email_send/whatsapp_send row it's about to create — without this, webhook
+    status updates can't attribute engagement back to a lead for scoring (see
+    repositories/lead_repo.py::_gather_signals)."""
+    if not lead_id:
+        return None
+    contact_id = await consent_repo.get_primary_contact_id(session, uuid.UUID(lead_id))
+    if not contact_id:
+        return None
+    status = await consent_repo.get_status(session, contact_id, channel)
+    if not consent_repo.can_send(channel, status):
+        await audit_repo.log(
+            session,
+            account_id,
+            action="send.blocked_consent",
+            resource_type="lead",
+            resource_id=uuid.UUID(lead_id),
+            diff={"channel": channel, "consent_status": status},
+        )
+        raise HTTPException(status_code=403, detail=f"Recipient has not consented to {channel} outreach")
+    return contact_id
 
 
 class BatchSendIn(BaseModel):
@@ -18,24 +66,6 @@ class BatchSendIn(BaseModel):
     campaign_id: Optional[str] = None
 
 
-def _render(template: str, lead: dict) -> str:
-    """Simple {{var}} substitution using lead fields."""
-    if not template:
-        return ""
-    first = (lead.get("full_name") or "").split(" ")[0] or "there"
-    mapping = {
-        "{{first_name}}": first,
-        "{{full_name}}": lead.get("full_name") or "",
-        "{{company}}": lead.get("company") or "",
-        "{{title}}": lead.get("title") or "",
-        "{{country}}": lead.get("country") or "",
-    }
-    out = template
-    for k, v in mapping.items():
-        out = out.replace(k, v)
-    return out
-
-
 async def _log(org_id: str, kind: str, title: str):
     act = Activity(org_id=org_id, kind=kind, title=title)
     d = act.model_dump()
@@ -43,116 +73,156 @@ async def _log(org_id: str, kind: str, title: str):
     await db.activity.insert_one(d)
 
 
-@router.get("", response_model=List[Message])
+@router.get("", response_model=List[dict])
 async def list_messages(
     user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
     channel: Optional[str] = None,
+    lead_id: Optional[str] = None,
     limit: int = 200,
 ):
-    q = {"org_id": user["org_id"]}
-    if channel:
-        q["channel"] = channel
-    return await db.messages.find(q, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
+    return await outreach_repo.list_messages(
+        session, uuid.UUID(user["org_id"]), channel=channel, lead_id=lead_id, limit=limit
+    )
 
 
 @router.post("/email")
-async def send_email_route(payload: SendEmailIn, user: dict = Depends(get_current_user)):
+async def send_email_route(
+    payload: SendEmailIn,
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+):
+    account_id = uuid.UUID(user["org_id"])
+    contact_id = await _enforce_consent_for_lead(session, account_id, payload.lead_id, "email")
     result = send_email(payload.to, payload.subject, payload.body)
 
-    msg = Message(
-        org_id=user["org_id"],
-        campaign_id=payload.campaign_id,
-        lead_id=payload.lead_id,
-        channel="email",
-        to=payload.to,
+    send = await outreach_repo.create_email_send(
+        session,
+        account_id,
+        campaign_id=uuid.UUID(payload.campaign_id) if payload.campaign_id else None,
+        contact_id=contact_id,
+        to_email=payload.to,
         subject=payload.subject,
         body=payload.body,
         status=result["status"],
-        provider_id=result.get("provider_id"),
+        provider_message_id=result.get("provider_id"),
         error=result.get("error"),
     )
-    d = msg.model_dump()
-    d["created_at"] = d["created_at"].isoformat()
-    await db.messages.insert_one(d)
+    await outreach_repo.record_outreach_event(
+        session,
+        account_id,
+        channel="email",
+        event_type=_event_type_for(result["status"]),
+        campaign_id=payload.campaign_id,
+        lead_id=payload.lead_id,
+    )
     await _log(user["org_id"], "message.email", f"Email {result['status']} → {payload.to}")
 
     if payload.campaign_id:
-        await db.campaigns.update_one(
-            {"id": payload.campaign_id, "org_id": user["org_id"]},
-            {"$inc": {"sent": 1}},
-        )
-    return {"message": msg, "result": result}
+        await campaign_repo.increment_counters(session, account_id, payload.campaign_id, sent=1)
+    lead_uuid = uuid.UUID(payload.lead_id) if payload.lead_id else None
+    return {
+        "message": outreach_repo.email_to_message(send, lead_uuid),
+        "result": result,
+    }
 
 
 @router.post("/whatsapp")
-async def send_whatsapp_route(payload: SendWhatsAppIn, user: dict = Depends(get_current_user)):
+async def send_whatsapp_route(
+    payload: SendWhatsAppIn,
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+):
+    account_id = uuid.UUID(user["org_id"])
+    contact_id = await _enforce_consent_for_lead(session, account_id, payload.lead_id, "whatsapp")
     result = send_whatsapp(payload.to, payload.body)
 
-    msg = Message(
-        org_id=user["org_id"],
-        campaign_id=payload.campaign_id,
-        lead_id=payload.lead_id,
-        channel="whatsapp",
-        to=payload.to,
+    send = await outreach_repo.create_whatsapp_send(
+        session,
+        account_id,
+        campaign_id=uuid.UUID(payload.campaign_id) if payload.campaign_id else None,
+        contact_id=contact_id,
+        direction="outbound",
+        from_number="",
+        to_number=payload.to,
         body=payload.body,
         status=result["status"],
-        provider_id=result.get("provider_id"),
+        provider_message_sid=result.get("provider_id"),
         error=result.get("error"),
     )
-    d = msg.model_dump()
-    d["created_at"] = d["created_at"].isoformat()
-    await db.messages.insert_one(d)
-    await _log(user["org_id"], "message.whatsapp", f"WhatsApp {result['status']} → {payload.to}")
+    await outreach_repo.record_outreach_event(
+        session,
+        account_id,
+        channel="whatsapp",
+        event_type=_event_type_for(result["status"]),
+        campaign_id=payload.campaign_id,
+        lead_id=payload.lead_id,
+    )
+    await _log(
+        user["org_id"],
+        "message.whatsapp",
+        f"WhatsApp {result['status']} → {payload.to}",
+    )
 
     if payload.campaign_id:
-        await db.campaigns.update_one(
-            {"id": payload.campaign_id, "org_id": user["org_id"]},
-            {"$inc": {"sent": 1}},
-        )
-    return {"message": msg, "result": result}
+        await campaign_repo.increment_counters(session, account_id, payload.campaign_id, sent=1)
+    lead_uuid = uuid.UUID(payload.lead_id) if payload.lead_id else None
+    return {
+        "message": outreach_repo.whatsapp_to_message(send, lead_uuid),
+        "result": result,
+    }
 
 
 @router.post("/email/batch")
-async def batch_send_email(payload: BatchSendIn, user: dict = Depends(get_current_user)):
+async def batch_send_email(
+    payload: BatchSendIn,
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+):
     """Send personalized emails to multiple leads in one call."""
     if not payload.subject:
         raise HTTPException(status_code=400, detail="Subject is required for email batch")
 
-    leads = await db.leads.find(
-        {"id": {"$in": payload.lead_ids}, "org_id": user["org_id"]}, {"_id": 0}
-    ).to_list(len(payload.lead_ids))
+    account_id = uuid.UUID(user["org_id"])
+    leads = await lead_repo.get_leads_by_ids(session, account_id, payload.lead_ids)
 
     results = []
-    docs = []
-    sent = 0
-    mocked = 0
-    failed = 0
-    skipped = 0
+    sent = mocked = failed = skipped = 0
 
     for lead in leads:
         if not lead.get("email"):
             skipped += 1
             results.append({"lead_id": lead["id"], "status": "skipped", "reason": "no email"})
             continue
+        if not consent_repo.can_send("email", lead["email_consent"]):
+            skipped += 1
+            results.append({"lead_id": lead["id"], "status": "skipped", "reason": "opted out"})
+            continue
         subj = _render(payload.subject, lead)
         body = _render(payload.body, lead)
         result = send_email(lead["email"], subj, body)
 
-        msg = Message(
-            org_id=user["org_id"],
-            campaign_id=payload.campaign_id,
-            lead_id=lead["id"],
-            channel="email",
-            to=lead["email"],
+        contact_id = uuid.UUID(lead["contact_id"]) if lead.get("contact_id") else None
+        await outreach_repo.create_email_send(
+            session,
+            account_id,
+            campaign_id=uuid.UUID(payload.campaign_id) if payload.campaign_id else None,
+            contact_id=contact_id,
+            to_email=lead["email"],
             subject=subj,
             body=body,
             status=result["status"],
-            provider_id=result.get("provider_id"),
+            provider_message_id=result.get("provider_id"),
             error=result.get("error"),
         )
-        d = msg.model_dump()
-        d["created_at"] = d["created_at"].isoformat()
-        docs.append(d)
+        await outreach_repo.record_outreach_event(
+            session,
+            account_id,
+            channel="email",
+            event_type=_event_type_for(result["status"]),
+            campaign_id=payload.campaign_id,
+            lead_id=lead["id"],
+        )
 
         if result["status"] == "sent":
             sent += 1
@@ -162,16 +232,14 @@ async def batch_send_email(payload: BatchSendIn, user: dict = Depends(get_curren
             failed += 1
         results.append({"lead_id": lead["id"], "email": lead["email"], "status": result["status"]})
 
-    if docs:
-        await db.messages.insert_many(docs)
-
     if payload.campaign_id:
-        await db.campaigns.update_one(
-            {"id": payload.campaign_id, "org_id": user["org_id"]},
-            {"$inc": {"sent": sent + mocked}},
-        )
+        await campaign_repo.increment_counters(session, account_id, payload.campaign_id, sent=sent + mocked)
 
-    await _log(user["org_id"], "message.email.batch", f"Batch email · {sent} sent, {mocked} mocked, {failed} failed, {skipped} skipped")
+    await _log(
+        user["org_id"],
+        "message.email.batch",
+        f"Batch email · {sent} sent, {mocked} mocked, {failed} failed, {skipped} skipped",
+    )
     return {
         "dispatched": sent + mocked,
         "sent": sent,
@@ -184,40 +252,51 @@ async def batch_send_email(payload: BatchSendIn, user: dict = Depends(get_curren
 
 
 @router.post("/whatsapp/batch")
-async def batch_send_whatsapp(payload: BatchSendIn, user: dict = Depends(get_current_user)):
-    leads = await db.leads.find(
-        {"id": {"$in": payload.lead_ids}, "org_id": user["org_id"]}, {"_id": 0}
-    ).to_list(len(payload.lead_ids))
+async def batch_send_whatsapp(
+    payload: BatchSendIn,
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+):
+    account_id = uuid.UUID(user["org_id"])
+    leads = await lead_repo.get_leads_by_ids(session, account_id, payload.lead_ids)
 
     results = []
-    docs = []
-    sent = 0
-    mocked = 0
-    failed = 0
-    skipped = 0
+    sent = mocked = failed = skipped = 0
 
     for lead in leads:
         if not lead.get("phone"):
             skipped += 1
             results.append({"lead_id": lead["id"], "status": "skipped", "reason": "no phone"})
             continue
+        if not consent_repo.can_send("whatsapp", lead["whatsapp_consent"]):
+            skipped += 1
+            results.append({"lead_id": lead["id"], "status": "skipped", "reason": "not opted in"})
+            continue
         body = _render(payload.body, lead)
         result = send_whatsapp(lead["phone"], body)
 
-        msg = Message(
-            org_id=user["org_id"],
-            campaign_id=payload.campaign_id,
-            lead_id=lead["id"],
-            channel="whatsapp",
-            to=lead["phone"],
+        contact_id = uuid.UUID(lead["contact_id"]) if lead.get("contact_id") else None
+        await outreach_repo.create_whatsapp_send(
+            session,
+            account_id,
+            campaign_id=uuid.UUID(payload.campaign_id) if payload.campaign_id else None,
+            contact_id=contact_id,
+            direction="outbound",
+            from_number="",
+            to_number=lead["phone"],
             body=body,
             status=result["status"],
-            provider_id=result.get("provider_id"),
+            provider_message_sid=result.get("provider_id"),
             error=result.get("error"),
         )
-        d = msg.model_dump()
-        d["created_at"] = d["created_at"].isoformat()
-        docs.append(d)
+        await outreach_repo.record_outreach_event(
+            session,
+            account_id,
+            channel="whatsapp",
+            event_type=_event_type_for(result["status"]),
+            campaign_id=payload.campaign_id,
+            lead_id=lead["id"],
+        )
 
         if result["status"] == "sent":
             sent += 1
@@ -227,16 +306,14 @@ async def batch_send_whatsapp(payload: BatchSendIn, user: dict = Depends(get_cur
             failed += 1
         results.append({"lead_id": lead["id"], "phone": lead["phone"], "status": result["status"]})
 
-    if docs:
-        await db.messages.insert_many(docs)
-
     if payload.campaign_id:
-        await db.campaigns.update_one(
-            {"id": payload.campaign_id, "org_id": user["org_id"]},
-            {"$inc": {"sent": sent + mocked}},
-        )
+        await campaign_repo.increment_counters(session, account_id, payload.campaign_id, sent=sent + mocked)
 
-    await _log(user["org_id"], "message.whatsapp.batch", f"Batch WhatsApp · {sent} sent, {mocked} mocked, {failed} failed, {skipped} skipped")
+    await _log(
+        user["org_id"],
+        "message.whatsapp.batch",
+        f"Batch WhatsApp · {sent} sent, {mocked} mocked, {failed} failed, {skipped} skipped",
+    )
     return {
         "dispatched": sent + mocked,
         "sent": sent,

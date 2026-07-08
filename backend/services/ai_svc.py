@@ -1,7 +1,8 @@
 """AI message generation via Emergent Universal LLM key (Gemini 3 Flash)."""
-import os
+
 import json
 import logging
+import os
 import re
 
 logger = logging.getLogger(__name__)
@@ -14,7 +15,7 @@ def _fallback(recipient_name: str, product: str, language: str, tone: str, chann
     body = (
         f"Hi {recipient_name},\n\n"
         f"I noticed {company or 'your team'} is doing great work and thought {product} might help you move faster.\n\n"
-        f"Worth a 15-min chat this week?\n\nBest,\nThe OpenClaw Team"
+        f"Worth a 15-min chat this week?\n\nBest,\nThe ClawPilot Team"
     )
     return {"subject": subj if channel == "email" else None, "body": body, "language": language}
 
@@ -41,7 +42,7 @@ async def generate_message(
     system = (
         "You are an expert B2B outreach copywriter. "
         "Write concise, personalized, high-converting messages. "
-        "Output STRICT JSON only: {\"subject\": string|null, \"body\": string}. "
+        'Output STRICT JSON only: {"subject": string|null, "body": string}. '
         "No markdown, no code fences, no extra commentary."
     )
 
@@ -65,9 +66,8 @@ async def generate_message(
     )
 
     try:
-        chat = (
-            LlmChat(api_key=EMERGENT_KEY, session_id=f"gen-{recipient_name}", system_message=system)
-            .with_model("gemini", "gemini-2.5-flash")
+        chat = LlmChat(api_key=EMERGENT_KEY, session_id=f"gen-{recipient_name}", system_message=system).with_model(
+            "gemini", "gemini-2.5-flash"
         )
         resp = await chat.send_message(UserMessage(text=prompt))
         raw = resp if isinstance(resp, str) else str(resp)

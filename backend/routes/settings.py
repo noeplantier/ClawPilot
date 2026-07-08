@@ -1,5 +1,7 @@
 """Settings — integration status."""
+
 import os
+
 from fastapi import APIRouter, Depends
 
 from deps import get_current_user

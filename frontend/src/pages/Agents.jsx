@@ -51,7 +51,7 @@ export default function Agents() {
     <div className="p-6 md:p-10 space-y-6">
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
-          <div className="mono-accent">// orchestrator.openclaw</div>
+          <div className="mono-accent">// orchestrator.clawpilot</div>
           <h1 className="text-4xl font-black tracking-tighter">Agents</h1>
           <p className="text-[#6B6B66] mt-1">{list.filter((a) => a.status === "running").length} active · {list.length} total</p>
         </div>
@@ -128,7 +128,7 @@ function CreateAgent({ onClose, onSave }) {
       <motion.div initial={{ y: 10 }} animate={{ y: 0 }} className="surface w-full max-w-md p-8 relative" onClick={(e) => e.stopPropagation()}>
         <button onClick={onClose} className="absolute top-4 right-4 text-[#6B6B66] hover:text-[#0A0A0A]"><X size={20} /></button>
         <div className="mono-accent">/// spawn.agent</div>
-        <h2 className="text-2xl font-black tracking-tighter mt-1">Deploy new OpenClaw</h2>
+        <h2 className="text-2xl font-black tracking-tighter mt-1">Deploy new ClawPilot</h2>
 
         <div className="space-y-3 mt-6">
           <div>

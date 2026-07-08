@@ -3,6 +3,7 @@
 # IDE and editors
 .idea/
 .vscode/
+.claude/*.lock
 
 # Dependencies
 node_modules/

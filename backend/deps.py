@@ -1,14 +1,27 @@
-"""Shared dependencies: DB client and JWT auth."""
+"""Shared dependencies: DB clients (Mongo legacy + Postgres) and JWT auth.
+
+`db` (Mongo) stays until every route listed in the migration plan is cut over
+(plan doc, section "Séquence de migration") — leads/campaigns/messages/webhooks/
+analytics/agents/settings still read/write it. `get_current_user` itself is
+already Postgres-backed: new accounts/users are created there, and their UUIDs
+flow through unchanged as the `org_id` scoping key for the not-yet-migrated
+Mongo collections.
+"""
+
 import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import jwt
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from motor.motor_asyncio import AsyncIOMotorClient
 from passlib.context import CryptContext
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from db.session import get_db_session
+from repositories import account_repo
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
@@ -51,6 +64,7 @@ def create_access_token(user_id: str, org_id: str, email: str, role: str) -> str
 
 async def get_current_user(
     creds: HTTPAuthorizationCredentials | None = Depends(security),
+    session: AsyncSession = Depends(get_db_session),
 ) -> dict:
     if creds is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
@@ -61,10 +75,20 @@ async def get_current_user(
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
-    user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0, "password_hash": 0})
+    user = await account_repo.get_user_by_id(session, payload["sub"])
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
-    return user
+
+    # dict shape preserved exactly as the legacy Mongo document (minus password_hash)
+    # so every existing route/test reading user["org_id"] etc. keeps working unchanged.
+    return {
+        "id": str(user.id),
+        "email": user.email,
+        "full_name": user.full_name,
+        "org_id": str(user.account_id),
+        "role": user.role,
+        "created_at": user.created_at,
+    }
 
 
 def require_roles(*roles: str):
@@ -72,4 +96,5 @@ def require_roles(*roles: str):
         if user.get("role") not in roles:
             raise HTTPException(status_code=403, detail="Insufficient permissions")
         return user
+
     return checker

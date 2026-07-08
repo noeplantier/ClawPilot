@@ -1,0 +1,169 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "20"
+
+jobs:
+  lint-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install -r requirements.txt
+        working-directory: backend
+      - run: black --check --line-length 120 --extend-exclude "alembic/versions" .
+        working-directory: backend
+      - run: isort --check-only .
+        working-directory: backend
+      - run: flake8 .
+        working-directory: backend
+      - name: mypy (informational — pre-existing AI-route code isn't fully typed yet)
+        run: mypy --ignore-missing-imports db/ repositories/ routes/ services/ scripts/ deps.py models.py
+        working-directory: backend
+        continue-on-error: true
+
+  lint-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci --legacy-peer-deps
+        working-directory: frontend
+      - run: npm run lint
+        working-directory: frontend
+
+  alembic-check:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: clawpilot_ci
+          POSTGRES_USER: clawpilot
+          POSTGRES_PASSWORD: ci-password
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U clawpilot"
+          --health-interval 5s --health-timeout 3s --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install -r requirements.txt
+        working-directory: backend
+      - name: alembic upgrade head
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql+asyncpg://clawpilot:ci-password@localhost:5432/clawpilot_ci
+        run: alembic upgrade head
+      - name: alembic check (no model/migration drift)
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql+asyncpg://clawpilot:ci-password@localhost:5432/clawpilot_ci
+        run: alembic check
+
+  test-backend:
+    runs-on: ubuntu-latest
+    needs: [lint-backend, alembic-check]
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: clawpilot_ci
+          POSTGRES_USER: clawpilot
+          POSTGRES_PASSWORD: ci-password
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U clawpilot"
+          --health-interval 5s --health-timeout 3s --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 5
+      mongo:
+        image: mongo:7
+        ports: ["27017:27017"]
+        options: >-
+          --health-cmd "mongosh --eval 'db.adminCommand(\"ping\")'"
+          --health-interval 5s --health-timeout 3s --health-retries 5
+    env:
+      DATABASE_URL: postgresql+asyncpg://clawpilot:ci-password@localhost:5432/clawpilot_ci
+      MONGO_URL: mongodb://localhost:27017
+      DB_NAME: clawpilot_ci
+      JWT_SECRET: ci-only-secret-not-used-in-prod-32b
+      CORS_ORIGINS: "*"
+      REACT_APP_BACKEND_URL: http://localhost:8000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install -r requirements.txt
+        working-directory: backend
+      - run: alembic upgrade head
+        working-directory: backend
+      - name: Start API server in background
+        working-directory: backend
+        run: |
+          nohup uvicorn server:app --host 0.0.0.0 --port 8000 > server.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8000/api/health && exit 0
+            sleep 1
+          done
+          echo "Server failed to become healthy" && cat server.log && exit 1
+      - name: Run backend test suite
+        working-directory: backend
+        run: pytest tests/ -v
+
+  build-frontend:
+    runs-on: ubuntu-latest
+    needs: [lint-frontend]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci --legacy-peer-deps
+        working-directory: frontend
+      - run: npm run build
+        working-directory: frontend
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: frontend/build
+          retention-days: 7
+
+  deploy-render:
+    runs-on: ubuntu-latest
+    needs: [test-backend, build-frontend]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: Trigger Render deploy hook
+        run: |
+          if [ -z "${{ secrets.RENDER_DEPLOY_HOOK_URL }}" ]; then
+            echo "RENDER_DEPLOY_HOOK_URL secret not set — skipping deploy trigger." && exit 0
+          fi
+          curl -f "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"
