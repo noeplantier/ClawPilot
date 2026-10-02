@@ -94,13 +94,17 @@ SendGrid/Twilio/AI all fall back to graceful mocks when unconfigured.
 | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM` | WhatsApp (mock when unset) |
 | `TWILIO_WEBHOOK_URL` | Exact public URL Twilio calls (e.g. `https://api.example.com/api/webhooks/twilio`); used to verify `X-Twilio-Signature` |
 | `SENDGRID_WEBHOOK_PUBLIC_KEY` | Verification key for `X-Twilio-Email-Event-Webhook-Signature` on `POST /api/webhooks/sendgrid` |
+| `OUTREACH_SENDER_NAME`, `_COMPANY`, `_ADDRESS`, `_EMAIL` | Sender identity printed in drafts; all four required, no default |
+| `PUBLIC_BASE_URL` | Public API URL (https in production), used in unsubscribe links |
+| `FEATURE_LIVE_SENDING`, `FEATURE_EXTERNAL_SOURCES` | Dangerous capabilities, off unless `true` (no real adapter or source exists yet) |
+| `SEND_KILL_SWITCH` | `true` halts every send immediately (dry-run dispatch, SendGrid, Twilio) |
 | `EMERGENT_LLM_KEY` | AI composer (mock when unset) |
 | `REACT_APP_BACKEND_URL` (frontend) | API base URL |
 
 ## OutreachOS: local prospect journey (dry-run, no network)
 
 Fixture directory → normalisation → deduplication → signals → explainable score → human review → e-mail draft.
-Nothing is sent: `FEATURE_LIVE_SENDING` is off and no sending adapter exists yet. Design: [`docs/architecture.md`](docs/architecture.md);
+Nothing is sent: `FEATURE_LIVE_SENDING` is off and the only channel adapter is a dry-run one that never opens a socket. Design: [`docs/architecture.md`](docs/architecture.md);
 rules: [`docs/compliance.md`](docs/compliance.md), [`docs/threat-model.md`](docs/threat-model.md),
 [`docs/cost-control.md`](docs/cost-control.md), [`docs/deployment.md`](docs/deployment.md).
 
@@ -122,7 +126,36 @@ curl -s -X POST localhost:8000/api/prospects/<id>/drafts -H "$H"                
 Endpoints (`/api/prospects`): `discovery/run`, list, detail, `review`, `rescore`, `drafts`, `drafts/{id}/review`, `events`
 (audit history), `erase`, `suppressions`, `score-config`, `settings`; public `GET|POST /api/unsubscribe/{token}`.
 The score is 0–100; a signal is `detected`, `not_detected` or `unknown`, and only `detected` adds points — a missing
-observation never counts against a prospect. There is no UI for this yet (next slice).
+observation never counts against a prospect. There is no UI for this yet.
+
+### Controlled e-mail dispatch (dry-run)
+
+An approved draft can be *dispatched* through a `ChannelAdapter`; only the dry-run adapter exists, so the "send" is recorded
+and nothing leaves the process. Order of checks: kill switch → account pause → draft and prospect approved → not suppressed,
+not opted out → draft carries sender identity, data origin and unsubscribe link → send limits → adapter. A draft produces at
+most one message (idempotent). Every refusal is audited, even though the call returns 4xx.
+
+```bash
+curl -s -X POST localhost:8000/api/outbound/dispatch -H "$H" -H 'content-type: application/json' -d '{"draft_id":"<id>"}'
+curl -s localhost:8000/api/outbound/status -H "$H"                       # counts, next allowed time, what blocks
+curl -s -X PUT localhost:8000/api/outbound/limits -H "$H" -H 'content-type: application/json' \
+  -d '{"max_per_day":20,"max_per_hour":10,"min_delay_seconds":60}'      # defaults are 20 / 100 / 60
+curl -s -X PUT localhost:8000/api/outbound/limits -H "$H" -H 'content-type: application/json' -d '{"sending_paused":true}'
+curl -s -X POST localhost:8000/api/outbound/<message_id>/simulate -H "$H" -H 'content-type: application/json' \
+  -d '{"event":"replied","text":"STOP"}'                                # or {"event":"bounced"}
+```
+
+- **Limits** (per organisation, per day in the organisation's timezone): daily cap, rolling hourly cap, minimum delay.
+  Over a limit ⇒ `429` with `retry_at` and `Retry-After`.
+- **Pause** (`sending_paused`) ⇒ `423`. **`SEND_KILL_SWITCH=true`** (environment, applies to everyone, no database needed)
+  refuses dry-run dispatch **and** the existing SendGrid and Twilio senders.
+- **Bounce** (simulated) suppresses the address. **Reply**: a STOP-style reply opts the prospect out immediately; any
+  other reply is only recorded. Real providers will drive the same code from their webhooks.
+- Every message carries `List-Unsubscribe` / `List-Unsubscribe-Post` (RFC 8058) next to the link in the body.
+- `FEATURE_LIVE_SENDING=true` **without a real adapter is refused** (`501`) rather than silently falling back.
+
+Endpoints (`/api/outbound`): `dispatch`, list, detail (with events), `simulate`, `limits` (GET/PUT), `status`.
+Go-live requirements are in [`docs/deployment.md`](docs/deployment.md).
 
 Tests: `pytest tests/unit` runs offline with no server or database; `pytest tests/test_outreach_prospects.py` is the end-to-end
 journey against a running server (needs the `OUTREACH_SENDER_*` variables above on the server).

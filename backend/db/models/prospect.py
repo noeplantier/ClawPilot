@@ -32,7 +32,7 @@ SIGNAL_STATES = ("unknown", "detected", "not_detected")
 DRAFT_STATUSES = ("draft", "approved", "rejected")
 SUPPRESSION_KINDS = ("email", "phone", "domain")
 SUPPRESSION_REASONS = ("opt_out", "erasure", "bounce", "manual")
-USAGE_KINDS = ("discovery_run", "signals_analyzed", "drafts_generated")
+USAGE_KINDS = ("discovery_run", "signals_analyzed", "drafts_generated", "messages_dispatched")
 
 
 def _account_fk() -> Mapped[uuid.UUID]:
@@ -186,7 +186,9 @@ class UsageRecord(Base, UUIDPKMixin, CreatedAtMixin):
 
     __tablename__ = "usage_records"
     __table_args__ = (
-        CheckConstraint("kind IN ('discovery_run','signals_analyzed','drafts_generated')", name="kind"),
+        CheckConstraint(
+            "kind IN ('discovery_run','signals_analyzed','drafts_generated','messages_dispatched')", name="kind"
+        ),
         CheckConstraint("quantity >= 0", name="quantity"),
         Index("ix_usage_records_account_created", "account_id", text("created_at DESC")),
     )

@@ -480,3 +480,67 @@ class OutreachSettingsOut(BaseModel):
     sender_configured: bool
     usage: dict[str, int]
     active_score_version: Optional[int] = None
+
+
+# ------------------------ Outbound dispatch (dry-run) ------------------------
+class DispatchIn(BaseModel):
+    draft_id: str
+
+
+class OutboundMessageOut(BaseModel):
+    id: str
+    lead_id: str
+    draft_id: Optional[str] = None
+    channel: str
+    to_email: Optional[str] = None
+    subject: str
+    status: str  # sent | failed | bounced | replied
+    dry_run: bool
+    adapter: str
+    provider_message_id: Optional[str] = None
+    error: Optional[str] = None
+    dispatched_at: datetime
+    created: bool = True  # False when an idempotent replay returned an existing message
+
+
+class OutboundEventOut(BaseModel):
+    id: str
+    event_type: str
+    detail: dict
+    created_at: datetime
+
+
+class OutboundMessageDetail(OutboundMessageOut):
+    body: str
+    events: List[OutboundEventOut]
+
+
+class SimulateIn(BaseModel):
+    event: Literal["bounced", "replied"]
+    text: Optional[str] = Field(default=None, max_length=5000)
+
+
+class LimitsPatch(BaseModel):
+    max_per_day: Optional[int] = Field(default=None, ge=0, le=100000)
+    max_per_hour: Optional[int] = Field(default=None, ge=0, le=100000)
+    min_delay_seconds: Optional[int] = Field(default=None, ge=0, le=86400)
+    sending_paused: Optional[bool] = None
+
+
+class LimitsOut(BaseModel):
+    max_per_day: int
+    max_per_hour: int
+    min_delay_seconds: int
+    sending_paused: bool
+
+
+class SendStatusOut(BaseModel):
+    dry_run: bool
+    kill_switch: bool
+    paused: bool
+    limits: LimitsOut
+    sent_today: int
+    sent_last_hour: int
+    last_dispatched_at: Optional[datetime] = None
+    next_allowed_at: Optional[datetime] = None
+    blocked_by: Optional[str] = None

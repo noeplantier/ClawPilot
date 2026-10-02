@@ -4,6 +4,7 @@
     FEATURE_EXTERNAL_SOURCES=true  allow network-backed discovery sources (not implemented yet)
 
 `dry_run()` is the inverse of live sending: with no flag set, nothing leaves the system.
+`SEND_KILL_SWITCH=true` (see `kill_switch()`) halts every send regardless of the flags above.
 """
 
 from __future__ import annotations
@@ -24,4 +25,13 @@ def dry_run() -> bool:
 
 
 def snapshot() -> dict[str, bool]:
-    return {name: is_enabled(name) for name in KNOWN_FLAGS} | {"dry_run": dry_run()}
+    return {name: is_enabled(name) for name in KNOWN_FLAGS} | {"dry_run": dry_run(), "kill_switch": kill_switch()}
+
+
+def kill_switch() -> bool:
+    """Emergency stop (`SEND_KILL_SWITCH=true`): refuses every outbound send — dry-run dispatch, SendGrid and Twilio.
+
+    Deliberately an environment variable, not a database row: it must work when the database is slow, or
+    when someone with only deploy access has to halt sending immediately.
+    """
+    return os.environ.get("SEND_KILL_SWITCH", "").strip().lower() in {"1", "true", "yes", "on"}

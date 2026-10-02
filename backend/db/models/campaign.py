@@ -6,6 +6,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -98,6 +99,8 @@ class SendPolicy(Base, UUIDPKMixin, TimestampMixin):
             "timezone_source IN ('lead_country','account_default')",
             name="tz_source",
         ),
+        CheckConstraint("max_per_day BETWEEN 0 AND 100000", name="max_per_day"),
+        CheckConstraint("min_delay_seconds BETWEEN 0 AND 86400", name="min_delay_seconds"),
         Index("uq_send_policies_account_channel", "account_id", "channel", unique=True),
     )
 
@@ -110,3 +113,7 @@ class SendPolicy(Base, UUIDPKMixin, TimestampMixin):
     window_end_hour: Mapped[int] = mapped_column(Integer, nullable=False, server_default="18")
     timezone_source: Mapped[str] = mapped_column(String, nullable=False, server_default="lead_country")
     account_default_timezone: Mapped[str] = mapped_column(String, nullable=False, server_default="UTC")
+    # --- OutreachOS dispatch limits (conservative defaults) and the per-account kill switch ---
+    max_per_day: Mapped[int] = mapped_column(Integer, nullable=False, server_default="20")
+    min_delay_seconds: Mapped[int] = mapped_column(Integer, nullable=False, server_default="60")
+    sending_paused: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))

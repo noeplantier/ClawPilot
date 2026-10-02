@@ -6,6 +6,7 @@ from db.models.agent import Agent
 from db.models.campaign import Campaign, CampaignLead, CampaignStep, SendPolicy
 from db.models.consent import ConsentCurrent, ConsentRecord
 from db.models.lead import Contact, Lead, LeadScore, LeadSource
+from db.models.outbound import OutboundEvent, OutboundMessage
 from db.models.outreach import EmailSend, OutreachEvent, WhatsappSend
 from db.models.prospect import (
     MessageDraft,
@@ -51,4 +52,6 @@ __all__ = [
     "ScoreVersion",
     "SuppressionEntry",
     "UsageRecord",
+    "OutboundEvent",
+    "OutboundMessage",
 ]

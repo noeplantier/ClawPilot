@@ -21,6 +21,8 @@ from db.models import (
     Contact,
     Lead,
     MessageDraft,
+    OutboundEvent,
+    OutboundMessage,
     ProspectScore,
     ProspectSignal,
     ProspectSource,
@@ -351,6 +353,13 @@ async def erase(session: AsyncSession, account_id: uuid.UUID, lead: Lead) -> Non
     await session.execute(update(ProspectSource).where(ProspectSource.lead_id == lead.id).values(fields={}))
     await session.execute(update(ProspectSignal).where(ProspectSignal.lead_id == lead.id).values(evidence="[erased]"))
     await session.execute(update(ProspectScore).where(ProspectScore.lead_id == lead.id).values(breakdown=[]))
+    sent_ids = select(OutboundMessage.id).where(OutboundMessage.lead_id == lead.id)
+    await session.execute(update(OutboundEvent).where(OutboundEvent.message_id.in_(sent_ids)).values(detail={}))
+    await session.execute(
+        update(OutboundMessage)
+        .where(OutboundMessage.lead_id == lead.id)
+        .values(to_email=None, subject="[erased]", body="[erased]", error=None)
+    )
     await session.execute(
         update(MessageDraft)
         .where(MessageDraft.lead_id == lead.id)

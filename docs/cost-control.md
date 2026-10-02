@@ -11,14 +11,15 @@ aucun fournisseur d'e-mail, aucun appel à un LLM (les brouillons sont rendus pa
 | `discovery_run` | 1 par exécution | `POST /prospects/discovery/run` |
 | `signals_analyzed` | entités analysées | idem |
 | `drafts_generated` | 1 par brouillon créé | `POST /prospects/{id}/drafts` |
+| `messages_dispatched` | 1 par message passé par l'adaptateur (`meta.dry_run`) | `POST /outbound/dispatch` |
 
 Lecture : `GET /api/prospects/settings` → `usage`. Les rejeux idempotents (même clé d'idempotence, mêmes données) n'ajoutent ni
 source, ni signal, ni score, ni brouillon : relancer un run est quasi gratuit.
 
 ## Leviers de maîtrise prévus (non implémentés)
 
-- Quota quotidien et délai minimal entre messages, appliqués par organisation (`send_policies.max_per_hour` existe mais n'est lu
-  nulle part aujourd'hui ; c'est le chantier de la tranche e-mail).
+- ~~Quota quotidien et délai minimal~~ : **en place** pour le dispatch (`/api/outbound/limits`, défauts 20/jour, 100/heure,
+  60 s). Les anciens chemins d'envoi (campagnes) ne les appliquent pas encore.
 - Plafond d'enregistrements d'usage par jour et par organisation pour limiter les imports.
 - Si un fetcher réseau est ajouté : délai entre requêtes, timeouts, taille maximale de page, cache par `content_hash`.
 - Si un LLM est ajouté pour la rédaction : budget mensuel en `usage_records`, modèle le plus petit suffisant, mise en cache.
