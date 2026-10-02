@@ -140,7 +140,9 @@ alembic check                                       # verify no model/migration 
 
 ## Deployment
 
-- **Frontend**: Netlify (already configured, see `frontend/public/netlify.toml`).
+- **Frontend**: Netlify, configured by [`netlify.toml`](netlify.toml) at the repo root (base `frontend`, publish
+  `build`). Leave the UI "Base directory" empty or set it to `frontend`, and set `REACT_APP_BACKEND_URL` in the
+  site's environment variables.
 - **Backend**: Docker image via `backend/Dockerfile`, deployed to Render. CI
   triggers a deploy on every push to `main` via `RENDER_DEPLOY_HOOK_URL` (repo
   secret) once tests and the frontend build pass.

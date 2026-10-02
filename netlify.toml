@@ -1,0 +1,24 @@
+# Netlify build for the React frontend (the API is deployed separately, see render.yaml).
+# This file must live at the repository root; Netlify ignores one under frontend/public/.
+# In the Netlify UI, "Base directory" must be empty or "frontend" — not "public".
+[build]
+  base = "frontend"
+  command = "npm ci --legacy-peer-deps && npm run build"
+  publish = "build"
+
+[build.environment]
+  NODE_VERSION = "20"
+  CI = "false" # CRA turns lint warnings into build errors when CI=true; 21 warnings pre-exist
+
+# SPA fallback: react-router handles every path client-side.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
