@@ -346,6 +346,10 @@ class OutreachStatus(BaseModel):
     kill_switch: bool = False
     sender_configured: bool = False
     sender_email: Optional[str] = None
+    smtp_configured: bool = False  # SMTP_HOST, SMTP_USERNAME and SMTP_PASSWORD are all set and valid
+    smtp_host: Optional[str] = None  # never the username or the password
+    sandbox: bool = True  # live sending only reaches OUTREACH_LIVE_ALLOWLIST while this is true
+    allowlist_size: int = 0
 
 
 class WebhookStatus(BaseModel):
@@ -520,7 +524,7 @@ class OutboundMessageOut(BaseModel):
     channel: str
     to_email: Optional[str] = None
     subject: str
-    status: str  # sent | failed | bounced | replied
+    status: str  # sending | sent | failed | bounced | replied (sending = outcome not yet known)
     dry_run: bool
     adapter: str
     provider_message_id: Optional[str] = None
@@ -539,6 +543,18 @@ class OutboundEventOut(BaseModel):
 class OutboundMessageDetail(OutboundMessageOut):
     body: str
     events: List[OutboundEventOut]
+
+
+class SmtpCheckIn(BaseModel):
+    to: EmailStr
+
+
+class SmtpCheckOut(BaseModel):
+    status: str  # sent | failed | unknown
+    to: str
+    adapter: str
+    provider_message_id: Optional[str] = None
+    error: Optional[str] = None
 
 
 class SimulateIn(BaseModel):

@@ -1,8 +1,8 @@
 """Channel adapters: the only place a message could ever leave the system.
 
-`ChannelAdapter` is a Protocol so a real provider can be added behind it later. Only `DryRunEmailAdapter` exists:
-it validates the message and returns a deterministic result, and never opens a socket. Switching on live sending
-without a real adapter must fail closed (see `select_adapter`).
+`ChannelAdapter` is a Protocol. `DryRunEmailAdapter` validates the message and returns a deterministic result, and never
+opens a socket. The real one (`services/smtp_svc.SmtpEmailAdapter`) is injected by the caller, so this module stays free
+of I/O. Switching on live sending without a real adapter must fail closed (see `select_adapter`).
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ class ChannelMessage:
 
 @dataclass(frozen=True)
 class SendResult:
-    status: str  # "sent" | "failed"
+    status: str  # "sent" | "failed" | "unknown" (a real adapter lost the connection mid-send: never retry blindly)
     provider_id: str | None
     error: str | None = None
     simulated: bool = True
@@ -76,11 +76,17 @@ class LiveSendingNotAvailable(RuntimeError):
     """Live sending was requested but no real adapter is implemented: refuse instead of falling back silently."""
 
 
-def select_adapter(channel: str, *, live_sending_enabled: bool) -> ChannelAdapter:
+def select_adapter(
+    channel: str, *, live_sending_enabled: bool, live_adapter: ChannelAdapter | None = None
+) -> ChannelAdapter:
+    """Dry-run unless live sending is on; live needs a configured real adapter, else it refuses (fail closed)."""
     if channel != "email":
         raise LiveSendingNotAvailable(f"channel '{channel}' has no adapter")
     if live_sending_enabled:
-        raise LiveSendingNotAvailable(
-            "FEATURE_LIVE_SENDING is on but no real email adapter is implemented: refusing to send"
-        )
+        if live_adapter is None:
+            raise LiveSendingNotAvailable(
+                "FEATURE_LIVE_SENDING is on but the SMTP settings are incomplete (SMTP_HOST, SMTP_USERNAME, "
+                "SMTP_PASSWORD): refusing to send"
+            )
+        return live_adapter
     return DryRunEmailAdapter()

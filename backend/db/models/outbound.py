@@ -1,9 +1,10 @@
 """Dispatch ledger for outbound messages and their lifecycle events.
 
 Kept apart from `email_sends`/`outreach_events` on purpose: those feed the real analytics, and a dry-run
-dispatch must never show up as a delivered message in a KPI. A real adapter will write both.
+dispatch must never show up as a delivered message in a KPI.
 `OutboundEvent` is append-only (erasure blanks `detail`, see docs/compliance.md); `OutboundMessage.status`
-advances with bounces and replies.
+advances with bounces and replies. `sending` is the marker committed *before* a real adapter is called: a row that
+stays there has an unknown outcome and is never retried by the system (at most once).
 """
 
 from __future__ import annotations
@@ -25,7 +26,7 @@ class OutboundMessage(Base, UUIDPKMixin, TimestampMixin):
     __tablename__ = "outbound_messages"
     __table_args__ = (
         CheckConstraint("channel IN ('email')", name="channel"),
-        CheckConstraint("status IN ('sent','failed','bounced','replied')", name="status"),
+        CheckConstraint("status IN ('sending','sent','failed','bounced','replied')", name="status"),
         Index("uq_outbound_messages_account_idempotency", "account_id", "idempotency_key", unique=True),
         Index("ix_outbound_messages_account_dispatched", "account_id", text("dispatched_at DESC")),
         Index("ix_outbound_messages_lead", "lead_id"),

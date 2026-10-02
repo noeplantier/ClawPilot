@@ -18,7 +18,10 @@ const BASE = {
   twilio_account_sid_configured: false,
   sendgrid_configured: false,
   ai: { key_configured: false, library_available: false, active: false, mode: "template", reason: "EMERGENT_LLM_KEY is not set" },
-  outreach: { dry_run: true, live_sending_flag: false, kill_switch: false, sender_configured: false, sender_email: null },
+  outreach: {
+    dry_run: true, live_sending_flag: false, kill_switch: false, sender_configured: false, sender_email: null,
+    smtp_configured: false, smtp_host: null, sandbox: true, allowlist_size: 0,
+  },
   webhooks: { production: false, twilio_signature_ready: false, twilio_webhook_url_set: false, sendgrid_signature_ready: false },
 };
 
@@ -78,8 +81,19 @@ describe("Settings integrations", () => {
     expect(byId("row-outreach-status").textContent).toContain("DRY-RUN");
     await act(async () => root.unmount());
     root = createRoot(container);
-    await show(merge({ outreach: { ...BASE.outreach, dry_run: false, live_sending_flag: true, sender_configured: true, sender_email: "founder@plantiers.com" } }));
-    expect(byId("row-outreach-status").textContent).toContain("LIVE SENDING ENABLED");
+    const live = { ...BASE.outreach, dry_run: false, live_sending_flag: true, sender_configured: true, sender_email: "founder@plantiers.com" };
+    await show(merge({ outreach: live }));
+    expect(byId("row-outreach-status").textContent).toContain("SMTP INCOMPLETE");
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    await show(merge({ outreach: { ...live, smtp_configured: true, smtp_host: "smtp.example", sandbox: true, allowlist_size: 1 } }));
+    expect(byId("row-outreach-status").textContent).toContain("SANDBOX");
+    expect(byId("row-outreach").textContent).toContain("smtp.example");
+    expect(byId("row-outreach").textContent).toContain("on (1 allowed)");
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    await show(merge({ outreach: { ...live, smtp_configured: true, smtp_host: "smtp.example", sandbox: false } }));
+    expect(byId("row-outreach-status").textContent).toContain("REAL E-MAIL");
     await act(async () => root.unmount());
     root = createRoot(container);
     await show(merge({ outreach: { ...BASE.outreach, kill_switch: true } }));
@@ -90,7 +104,7 @@ describe("Settings integrations", () => {
     await show({
       sendgrid_from_email: "a@b.example", twilio_whatsapp_from: "whatsapp:+1", twilio_account_sid_configured: true, sendgrid_configured: true,
       ai: { ...BASE.ai, key_configured: true, library_available: true, active: true, mode: "live", reason: null },
-      outreach: { dry_run: true, live_sending_flag: false, kill_switch: false, sender_configured: true, sender_email: "a@b.example" },
+      outreach: { ...BASE.outreach, sender_configured: true, sender_email: "a@b.example", smtp_configured: true, smtp_host: "smtp.example" },
       webhooks: { production: true, twilio_signature_ready: true, twilio_webhook_url_set: true, sendgrid_signature_ready: true },
     });
     expect(byId("missing-config")).toBeNull();

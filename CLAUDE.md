@@ -42,7 +42,10 @@ pour l'installation et `docs/cloud-sessions.md` pour la feuille de route en cour
   `services/outreach_os/dispatch.py` : kill switch (`SEND_KILL_SWITCH`), pause du compte, limites (jour, heure, délai),
   conformité du contenu, idempotence. Les anciens chemins (envoi unitaire, lot, campagne, tâches Celery) appellent le même
   point d'application, `services/send_gate.py` (`send_gate.check` **avant** `send_email`/`send_whatsapp` ; un test AST
-  l'impose). Tout nouveau chemin d'envoi passe par là. Activer `FEATURE_LIVE_SENDING` sans adapter réel doit échouer (fail closed). Un refus
+  l'impose). Tout nouveau chemin d'envoi passe par là. L'adaptateur réel (SMTP, `services/smtp_svc.py`) est injecté dans
+  `dispatch_draft` ; activer `FEATURE_LIVE_SENDING` sans `SMTP_*` complet doit échouer (fail closed), le sandbox
+  (`OUTREACH_SANDBOX`, `OUTREACH_LIVE_ALLOWLIST`) est actif par défaut, et la ligne `sending` est validée **avant** l'appel du
+  fournisseur (au plus une fois ; issue inconnue = jamais de renvoi automatique). Voir `docs/go-live-email.md`. Un refus
   est journalisé **avant** de lever l'`HTTPException` (`get_db_session` annule la transaction sur erreur).
 - Journal d'événements : horodater avec `clock_timestamp()`, pas `now()`, quand plusieurs lignes d'une même transaction
   doivent garder leur ordre.

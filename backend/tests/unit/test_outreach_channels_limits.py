@@ -83,6 +83,21 @@ def test_live_sending_without_a_real_adapter_fails_closed():
         select_adapter("whatsapp", live_sending_enabled=False)
 
 
+def test_live_sending_uses_the_injected_real_adapter_and_dry_run_never_does():
+    class Real:
+        channel, name, dry_run = "email", "real", False
+
+        def send(self, message):  # pragma: no cover - never called here
+            raise AssertionError("not called")
+
+    real = Real()
+    assert select_adapter("email", live_sending_enabled=True, live_adapter=real) is real
+    # An adapter is ignored unless live sending is on: dry-run is the default and cannot be bypassed by injection.
+    assert isinstance(select_adapter("email", live_sending_enabled=False, live_adapter=real), DryRunEmailAdapter)
+    with pytest.raises(LiveSendingNotAvailable, match="SMTP"):
+        select_adapter("email", live_sending_enabled=True, live_adapter=None)
+
+
 # ---- limits --------------------------------------------------------------------------------------------
 LIMITS = SendLimits(max_per_day=3, max_per_hour=2, min_delay_seconds=60)
 

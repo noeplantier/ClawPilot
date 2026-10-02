@@ -22,6 +22,7 @@ STATUS_FOR_CODE = {
     "limit_hourly": 429,
     "limit_delay": 429,
     "live_not_available": 501,
+    "sandbox_recipient": 422,
     "not_compliant": 422,
     "sender_not_configured": 409,
 }

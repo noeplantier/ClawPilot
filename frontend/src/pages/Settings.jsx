@@ -62,6 +62,7 @@ function Integrations({ s }) {
   if (!s.sendgrid_configured) missing.push("SENDGRID_API_KEY and SENDGRID_FROM_EMAIL");
   if (!s.twilio_account_sid_configured) missing.push("TWILIO_ACCOUNT_SID (starts with AC) and TWILIO_AUTH_TOKEN");
   if (!out.sender_configured) missing.push("OUTREACH_SENDER_NAME, _COMPANY, _ADDRESS and _EMAIL");
+  if (!out.smtp_configured) missing.push("SMTP_HOST, SMTP_USERNAME and SMTP_PASSWORD (real prospect e-mail)");
   if (!hooks.twilio_signature_ready) missing.push("TWILIO_AUTH_TOKEN (webhook signature)");
   if (!hooks.sendgrid_signature_ready) missing.push("SENDGRID_WEBHOOK_PUBLIC_KEY");
 
@@ -70,9 +71,15 @@ function Integrations({ s }) {
   if (out.kill_switch) {
     outreachTone = "danger";
     outreachLabel = "HALTED BY THE KILL SWITCH";
+  } else if (!out.dry_run && !out.smtp_configured) {
+    outreachTone = "danger";
+    outreachLabel = "LIVE FLAG ON BUT SMTP INCOMPLETE: SENDS ARE REFUSED";
+  } else if (!out.dry_run && out.sandbox) {
+    outreachTone = "warn";
+    outreachLabel = "LIVE · SANDBOX: ALLOWLISTED RECIPIENTS ONLY";
   } else if (!out.dry_run) {
     outreachTone = "warn";
-    outreachLabel = "LIVE SENDING ENABLED";
+    outreachLabel = "LIVE · REAL E-MAIL TO APPROVED PROSPECTS";
   }
 
   return (
@@ -121,6 +128,8 @@ function Integrations({ s }) {
           ["sender.identity", out.sender_configured ? "configured" : "not configured"],
           ["sender.email", out.sender_email || "not set"],
           ["FEATURE_LIVE_SENDING", out.live_sending_flag ? "on" : "off"],
+          ["smtp.host", out.smtp_configured ? out.smtp_host : "not configured"],
+          ["OUTREACH_SANDBOX", out.sandbox ? `on (${out.allowlist_size} allowed)` : "off"],
         ]}
         testId="row-outreach"
       />

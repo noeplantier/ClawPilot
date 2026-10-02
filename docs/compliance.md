@@ -22,7 +22,10 @@ fournisseurs). Les points à valider avec un juriste sont marqués **[à valider
 | Rebond | Un rebond dur suspend l'adresse (raison `bounce`). |
 | Réponse STOP | Une réponse de type STOP/désinscription désinscrit immédiatement (même chemin que le lien). Les autres réponses sont seulement enregistrées (extrait de 500 caractères, effacé avec le prospect). |
 | Un brouillon, un message | La même clé d'idempotence, ou un autre identifiant pour le même brouillon, ne produit jamais un second message. |
-| Aucun envoi par défaut | `dry_run` actif tant que `FEATURE_LIVE_SENDING` n'est pas explicitement à `true`. Aucun adapter d'envoi n'existe dans cette tranche. |
+| Aucun envoi par défaut | `dry_run` actif tant que `FEATURE_LIVE_SENDING` n'est pas explicitement à `true`. L'adaptateur SMTP exige `SMTP_*` complet (sinon 501) et TLS vérifié. |
+| Sandbox | Tant que `OUTREACH_SANDBOX` n'est pas mis à `false` explicitement, un envoi réel n'atteint que `OUTREACH_LIVE_ALLOWLIST` (liste vide = personne), vérifié au dispatch **et** dans l'adaptateur. |
+| Au plus un envoi | Le message est écrit `sending` et validé avant l'appel SMTP ; une issue inconnue n'est jamais renvoyée seule. |
+| Test de connexion | `POST /outbound/test-send` : un message technique (identité imprimée, en-tête `List-Unsubscribe` en `mailto:`), uniquement vers l'adresse de l'expéditeur ou la liste blanche, même limites et kill switch que le reste ; pas d'événement d'outreach, donc pas de KPI faussé. |
 | Secrets | Aucun secret dans le code, les tests (valeurs aléatoires par exécution) ni les logs. Les identités suspendues sont stockées en empreintes. |
 
 ## Choix à connaître

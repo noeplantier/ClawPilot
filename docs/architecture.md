@@ -64,14 +64,16 @@ et **tous** tant que `FEATURE_LIVE_SENDING` est éteint. Le refus est journalis�
 ## Envoi contrôlé (dry-run)
 
 ```
-brouillon approuvé ─► dispatch ─► kill switch ─► pause du compte ─► éligibilité ─► suppression/consentement ─► conformité ─► limites ─► ChannelAdapter
+brouillon approuvé ─► dispatch ─► kill switch ─► pause du compte ─► éligibilité ─► suppression/consentement ─► conformité ─► limites ─► adaptateur ─► sandbox ─► ligne `sending` (validée) ─► ChannelAdapter ─► `sent` | `failed` | reste `sending`
                                                                                                                                   │
                                                           outbound_messages + outbound_events + audit_logs + usage_records ◄─────┘
 ```
 
 | Élément | Fichier | Rôle |
 |---|---|---|
-| `ChannelAdapter` (Protocol), `DryRunEmailAdapter`, `select_adapter` | `services/outreach_os/channels.py` | Seul endroit d'où un message pourrait sortir. L'adaptateur dry-run n'ouvre aucun socket. `FEATURE_LIVE_SENDING` sans adaptateur réel ⇒ refus (501). |
+| `ChannelAdapter` (Protocol), `DryRunEmailAdapter`, `select_adapter` | `services/outreach_os/channels.py` | Seul endroit d'où un message peut sortir. L'adaptateur dry-run n'ouvre aucun socket. L'adaptateur réel est **injecté** par l'appelant (le module reste sans E/S) ; `FEATURE_LIVE_SENDING` sans adaptateur configuré ⇒ refus (501). |
+| `SmtpEmailAdapter`, `SmtpConfig`, `build_message` | `services/smtp_svc.py` | Intégration SMTP (`smtplib`) : TLS vérifié obligatoire, délais, erreurs classées (`failed` / `unknown`), mot de passe jamais exposé, liste blanche du sandbox rappelée avant la connexion. |
+| `is_allowed`, `parse_allowlist` | `services/outreach_os/sandbox.py` | Liste blanche du sandbox, pure : adresse ou `@domaine`, liste vide = personne. |
 | `evaluate` | `services/outreach_os/limits.py` | Plafond quotidien, plafond horaire glissant, délai minimum ; pur, horloge injectée. |
 | `send_gate` (`check`, `status`) | `services/send_gate.py` | Point d'application unique avant tout fournisseur : kill switch, pause, plafonds. Compte les envois de **tous** les chemins (`outbound_messages`, `email_sends`, `whatsapp_sends`) et sérialise les envoyeurs concurrents par verrou consultatif (organisation × canal). Utilisé par `dispatch`, `routes/messages.py`, `routes/campaigns.py` et `tasks/send_tasks.py`. |
 | `is_opt_out` | `services/outreach_os/replies.py` | Détecte un STOP/désinscription dans une réponse (FR/EN, sans faux positif sur « non-stop »). |
@@ -79,7 +81,7 @@ brouillon approuvé ─► dispatch ─► kill switch ─► pause du compte �
 | `/api/outbound/*` | `routes/outbound.py` | dispatch, liste, détail, simulation, limites, statut. |
 
 Le journal `outbound_messages` / `outbound_events` est **séparé** de `email_sends` / `outreach_events` : ces derniers alimentent
-les analytics, et un envoi simulé ne doit jamais y apparaître comme un message délivré. Un adaptateur réel écrira dans les deux.
+les analytics, et un envoi simulé ne doit jamais y apparaître comme un message délivré. L'adaptateur SMTP n'écrit que dans le journal `outbound_*` ; `POST /outbound/test-send` écrit dans `email_sends` (pour compter dans les limites), sans événement d'outreach.
 `outbound_events` utilise `clock_timestamp()` pour garder l'ordre de plusieurs événements écrits dans une même transaction.
 
 Réponses et rebonds : simulés par `POST /outbound/{id}/simulate` (même code que les webhooks fournisseur). Un rebond dur suspend

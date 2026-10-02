@@ -1,12 +1,19 @@
-"""Dispatch of an approved draft through a channel adapter — dry-run only in this slice.
+"""Dispatch of an approved draft through a channel adapter: dry-run by default, SMTP when live sending is enabled.
 
 Order of checks (the first failure wins, nothing is written for a refused attempt except the caller's audit entry):
 kill switch → account pause → draft/prospect eligibility → suppression and consent → compliance of the content →
-send limits → adapter. A replay with the same idempotency key returns the original message and sends nothing.
+send limits → adapter selection → sandbox allowlist. A replay with the same idempotency key returns the original
+message and sends nothing.
+
+At most once: the message row is written as `sending` and COMMITTED before the adapter is called, so a crash or a lost
+connection can never produce a second e-mail. A row that stays `sending` has an unknown outcome and needs a human look.
+The adapter call blocks (SMTP), so it runs in a worker thread.
 """
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import uuid
 from datetime import datetime
 from typing import Optional
@@ -23,9 +30,11 @@ from repositories import (
     usage_repo,
 )
 from services import feature_flags, send_gate
-from services.outreach_os import channels, drafts
+from services.outreach_os import channels, drafts, sandbox
 from services.outreach_os.normalize import normalize_domain, normalize_email, normalize_phone
 from services.outreach_os.replies import is_opt_out
+
+logger = logging.getLogger(__name__)
 
 CHANNEL = "email"
 REPLY_EXCERPT_CHARS = 500
@@ -62,6 +71,12 @@ async def _assert_eligible(
     return lead
 
 
+async def _default_key(session: AsyncSession, account_id: uuid.UUID, draft: MessageDraft) -> str:
+    """One key per attempt: a draft whose earlier attempt `failed` may be dispatched again under a new key."""
+    failed = await outbound_repo.count_failed_for_draft(session, account_id, draft.id)
+    return f"dispatch:{draft.id}" + (f":retry{failed}" if failed else "")
+
+
 async def dispatch_draft(
     session: AsyncSession,
     account_id: uuid.UUID,
@@ -70,12 +85,17 @@ async def dispatch_draft(
     now: datetime,
     user_id: Optional[uuid.UUID],
     idempotency_key: Optional[str] = None,
+    live_adapter: Optional[channels.ChannelAdapter] = None,
 ) -> tuple[OutboundMessage, bool]:
-    """Returns (message, newly_created). Raises `DispatchBlocked` when the attempt must not go through."""
-    key = idempotency_key or f"dispatch:{draft.id}"
+    """Returns (message, newly_created). Raises `DispatchBlocked` when the attempt must not go through.
+
+    `live_adapter` is the real adapter (SMTP) built by the caller from the environment; it is only used when
+    `FEATURE_LIVE_SENDING` is on, and live sending without one is refused.
+    """
+    key = idempotency_key or await _default_key(session, account_id, draft)
     existing = await outbound_repo.get_by_key(session, account_id, key) or await outbound_repo.get_for_draft(
         session, account_id, draft.id
-    )  # one draft produces at most one message, whatever the key
+    )  # one draft produces at most one message, whatever the key (a failed attempt may be retried)
     if existing is not None:
         return existing, False
 
@@ -99,20 +119,22 @@ async def dispatch_draft(
     await send_gate.assert_within_limits(session, account_id, CHANNEL, now)
 
     try:
-        adapter = channels.select_adapter(CHANNEL, live_sending_enabled=not feature_flags.dry_run())
+        adapter = channels.select_adapter(
+            CHANNEL, live_sending_enabled=not feature_flags.dry_run(), live_adapter=live_adapter
+        )
     except channels.LiveSendingNotAvailable as exc:
         raise DispatchBlocked("live_not_available", str(exc))
-    result = adapter.send(
-        channels.ChannelMessage(
-            to=recipient,
-            subject=draft.subject,
-            body=draft.body,
-            sender_name=sender.name,
-            sender_email=sender.reply_to,
-            idempotency_key=key,
-            headers=channels.unsubscribe_headers(unsubscribe_url),
+    if (
+        not adapter.dry_run
+        and feature_flags.sandbox()
+        and not sandbox.is_allowed(recipient, feature_flags.live_allowlist())
+    ):
+        raise DispatchBlocked(
+            "sandbox_recipient",
+            "Sandbox is on (OUTREACH_SANDBOX): this recipient is not on OUTREACH_LIVE_ALLOWLIST",
         )
-    )
+
+    # The marker: written and committed before anything can leave, so a crash cannot cause a second send.
     message, created = await outbound_repo.create_idempotent(
         session,
         account_id,
@@ -125,32 +147,64 @@ async def dispatch_draft(
         body=draft.body,
         adapter=adapter.name,
         dry_run=adapter.dry_run,
-        status=result.status,
-        provider_message_id=result.provider_id,
-        error=result.error,
+        status="sending",
         dispatched_at=now,
     )
-    if created:
-        await outbound_repo.add_event(
-            session,
-            account_id,
-            message.id,
-            "sent" if result.status == "sent" else "failed",
-            {"adapter": adapter.name, "dry_run": adapter.dry_run, "list_unsubscribe": True, "error": result.error},
-        )
-        if result.status == "sent":
-            await usage_repo.record(session, account_id, "messages_dispatched", 1, {"dry_run": adapter.dry_run})
+    if not created:  # a concurrent request with the same key won the insert
+        return message, False
+    await session.commit()
+
+    channel_message = channels.ChannelMessage(
+        to=recipient,
+        subject=draft.subject,
+        body=draft.body,
+        sender_name=sender.name,
+        sender_email=sender.reply_to,
+        idempotency_key=key,
+        headers=channels.unsubscribe_headers(unsubscribe_url),
+    )
+    try:
+        result = await asyncio.to_thread(adapter.send, channel_message)
+    except Exception as exc:  # an adapter must not raise; if it does we cannot know what happened
+        logger.error("adapter %s raised %s", adapter.name, type(exc).__name__)
+        result = channels.SendResult("unknown", None, f"adapter error ({type(exc).__name__}): outcome unknown", False)
+
+    detail = {"adapter": adapter.name, "dry_run": adapter.dry_run, "list_unsubscribe": True, "error": result.error}
+    if result.status == "unknown":  # keep `sending`: no retry, a human checks the mailbox
+        message.error = result.error
         await audit_repo.log(
             session,
             account_id,
-            action="message.dispatched" if result.status == "sent" else "message.failed",
+            action="message.outcome_unknown",
             resource_type="outbound_message",
             resource_id=message.id,
             actor_type="user" if user_id else "system",
             actor_user_id=user_id,
             diff={"prospect_id": str(lead.id), "draft_id": str(draft.id), "dry_run": adapter.dry_run},
         )
-    return message, created
+        await session.commit()
+        return message, True
+
+    message.status = result.status
+    message.provider_message_id = result.provider_id
+    message.error = result.error
+    await outbound_repo.add_event(
+        session, account_id, message.id, "sent" if result.status == "sent" else "failed", detail
+    )
+    if result.status == "sent":
+        await usage_repo.record(session, account_id, "messages_dispatched", 1, {"dry_run": adapter.dry_run})
+    await audit_repo.log(
+        session,
+        account_id,
+        action="message.dispatched" if result.status == "sent" else "message.failed",
+        resource_type="outbound_message",
+        resource_id=message.id,
+        actor_type="user" if user_id else "system",
+        actor_user_id=user_id,
+        diff={"prospect_id": str(lead.id), "draft_id": str(draft.id), "dry_run": adapter.dry_run},
+    )
+    await session.flush()
+    return message, True
 
 
 async def simulate_event(
@@ -167,7 +221,7 @@ async def simulate_event(
         raise DispatchBlocked("not_simulated", "Only dry-run messages can be simulated")
     if message.status == "bounced":
         raise DispatchBlocked("already_bounced", "Message already bounced")
-    if message.status == "failed":
+    if message.status in ("failed", "sending"):
         raise DispatchBlocked("not_delivered", "Message was never sent")
 
     if event == "bounced":

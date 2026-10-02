@@ -478,7 +478,7 @@ Généré par `backend/scripts/gen_schema_doc.py` depuis les modèles ORM — ne
 **Contraintes CHECK**
 
 - `ck_outbound_messages_channel`: `channel IN ('email')`
-- `ck_outbound_messages_status`: `status IN ('sent','failed','bounced','replied')`
+- `ck_outbound_messages_status`: `status IN ('sending','sent','failed','bounced','replied')`  (`sending` = marqueur validé avant un envoi réel ; issue inconnue s'il y reste)
 
 **Index**
 

@@ -112,12 +112,22 @@ def test_flags_are_off_by_default_and_dry_run_is_on(monkeypatch):
     for name in feature_flags.KNOWN_FLAGS:
         monkeypatch.delenv(f"FEATURE_{name.upper()}", raising=False)
     monkeypatch.delenv("SEND_KILL_SWITCH", raising=False)
+    monkeypatch.delenv("OUTREACH_SANDBOX", raising=False)
     assert feature_flags.snapshot() == {
         "live_sending": False,
         "external_sources": False,
         "dry_run": True,
         "kill_switch": False,
+        "sandbox": True,
     }
+
+
+@pytest.mark.parametrize(
+    "value, expected", [("", True), ("true", True), ("garbage", True), ("false", False), ("0", False), ("OFF", False)]
+)
+def test_the_sandbox_is_on_unless_explicitly_switched_off(monkeypatch, value, expected):
+    monkeypatch.setenv("OUTREACH_SANDBOX", value)
+    assert feature_flags.sandbox() is expected
 
 
 def test_flags_enable_explicitly_and_reject_unknown(monkeypatch):

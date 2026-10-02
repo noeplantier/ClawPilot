@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends
 
 from deps import get_current_user
 from models import AIStatus, IntegrationSettings, OutreachStatus, WebhookStatus
-from services import ai_svc, feature_flags, sendgrid_svc, twilio_svc
+from services import ai_svc, feature_flags, sendgrid_svc, smtp_svc, twilio_svc
 from services.outreach_os.drafts import SenderIdentity
 
 router = APIRouter(prefix="/settings", tags=["settings"])
@@ -15,6 +15,7 @@ router = APIRouter(prefix="/settings", tags=["settings"])
 @router.get("/integrations", response_model=IntegrationSettings)
 async def integrations(user: dict = Depends(get_current_user)):
     sender = SenderIdentity.from_env()
+    smtp = smtp_svc.status()
     return IntegrationSettings(
         sendgrid_from_email=os.environ.get("SENDGRID_FROM_EMAIL") or None,
         twilio_whatsapp_from=os.environ.get("TWILIO_WHATSAPP_FROM") or None,
@@ -27,6 +28,10 @@ async def integrations(user: dict = Depends(get_current_user)):
             kill_switch=feature_flags.kill_switch(),
             sender_configured=sender is not None,
             sender_email=sender.reply_to if sender else None,
+            smtp_configured=smtp["configured"],
+            smtp_host=smtp["host"],
+            sandbox=feature_flags.sandbox(),
+            allowlist_size=len(feature_flags.live_allowlist()),
         ),
         webhooks=WebhookStatus(
             production=os.environ.get("APP_ENV", "").lower() == "production",
