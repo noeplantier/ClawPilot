@@ -103,6 +103,11 @@ jobs:
       DATABASE_URL: postgresql+asyncpg://clawpilot:ci-password@localhost:5432/clawpilot_ci
       JWT_SECRET: ci-only-secret-not-used-in-prod-32b
       CORS_ORIGINS: "http://localhost:3000"
+      PUBLIC_BASE_URL: http://localhost:8000
+      OUTREACH_SENDER_NAME: CI Sender
+      OUTREACH_SENDER_COMPANY: CI Company SAS
+      OUTREACH_SENDER_ADDRESS: 1 rue Fictive, 69000 Lyon
+      OUTREACH_SENDER_EMAIL: ci-sender@example.com
       REACT_APP_BACKEND_URL: http://localhost:8000
     steps:
       - uses: actions/checkout@v4

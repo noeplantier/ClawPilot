@@ -1,0 +1,9 @@
+{
+  "_comment": "Fictional HTTP results for the fixture site fetcher. Keys are the exact URLs found in directory.html. A URL that is absent was 'not checked'.",
+  "https://www.chez-marcel.example/": {"status": 200, "file": "chez-marcel.html"},
+  "https://chez-marcel.example/accueil": {"status": 200, "file": "chez-marcel.html"},
+  "https://latable-alice.example": {"status": 200, "file": "latable-alice.html"},
+  "https://il-forno.example": {"status": 200, "file": "il-forno.html"},
+  "https://sushi-kaze.example": {"status": 503, "file": null, "error": "service unavailable"},
+  "https://brasserie-rhone.example": {"status": 200, "file": "brasserie-rhone.html"}
+}

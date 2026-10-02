@@ -16,7 +16,7 @@ from sqlalchemy.orm import selectinload
 
 from db.models import Contact, Lead, LeadScore, LeadSource, OutreachEvent
 from repositories import consent_repo
-from services import scoring
+from services import feature_flags, scoring
 
 ACTIVE = Lead.deleted_at.is_(None)
 
@@ -38,6 +38,7 @@ _SOURCE_NAME_TO_KIND = {
     "csv_import": "csv_import",
     "scraper": "scraper",
     "api": "api",
+    "fixture_directory": "api",
     "enrichment": "enrichment",
 }
 
@@ -261,6 +262,26 @@ async def update_lead(
     return lead, await load_extra(session, lead)
 
 
+def _sendable_clause():
+    """Leads from the CRM (review_status NULL) behave as before. A prospect from OutreachOS discovery is only
+    reachable by the send paths once a human approved it AND live sending is enabled (never in dry-run)."""
+    if feature_flags.dry_run():
+        return Lead.review_status.is_(None)
+    return or_(Lead.review_status.is_(None), Lead.review_status == "approved")
+
+
+async def discovery_send_block(session: AsyncSession, account_id: uuid.UUID, lead_id: uuid.UUID) -> Optional[str]:
+    """Why a single-recipient send must be refused for a discovery prospect, or None if it may proceed."""
+    status = (
+        await session.execute(select(Lead.review_status).where(Lead.id == lead_id, Lead.account_id == account_id))
+    ).scalar_one_or_none()
+    if status is None:
+        return None
+    if status != "approved":
+        return f"prospect review status is '{status}'"
+    return "dry-run mode: live sending is disabled" if feature_flags.dry_run() else None
+
+
 async def get_leads_by_ids(session: AsyncSession, account_id: uuid.UUID, lead_ids: list[str]) -> list[dict]:
     """Plain-dict shape (id/full_name/email/phone/company/title/country/contact_id/
     *_consent) for template rendering, consent checks, and cross-domain lookups
@@ -271,7 +292,9 @@ async def get_leads_by_ids(session: AsyncSession, account_id: uuid.UUID, lead_id
         ids = [uuid.UUID(i) for i in lead_ids]
     except ValueError:
         return []
-    result = await session.execute(select(Lead).where(Lead.id.in_(ids), Lead.account_id == account_id, ACTIVE))
+    result = await session.execute(
+        select(Lead).where(Lead.id.in_(ids), Lead.account_id == account_id, ACTIVE, _sendable_clause())
+    )
     leads = result.scalars().all()
     if not leads:
         return []

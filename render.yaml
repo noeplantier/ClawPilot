@@ -33,6 +33,16 @@ services:
         generateValue: true
       - key: CORS_ORIGINS
         sync: false # frontend origin, e.g. https://app.example.com
+      - key: PUBLIC_BASE_URL
+        sync: false # public API URL (https), used in unsubscribe links
+      - key: OUTREACH_SENDER_NAME
+        sync: false
+      - key: OUTREACH_SENDER_COMPANY
+        sync: false
+      - key: OUTREACH_SENDER_ADDRESS
+        sync: false
+      - key: OUTREACH_SENDER_EMAIL
+        sync: false
       - key: SENDGRID_API_KEY
         sync: false
       - key: SENDGRID_FROM_EMAIL

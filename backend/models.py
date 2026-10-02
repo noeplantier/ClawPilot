@@ -342,3 +342,141 @@ class IntegrationSettings(BaseModel):
 class SettingsUpdate(BaseModel):
     sendgrid_from_email: Optional[str] = None
     twilio_whatsapp_from: Optional[str] = None
+
+
+# ------------------------ OutreachOS prospects ------------------------
+class ProspectSummary(BaseModel):
+    id: str
+    name: str
+    city: Optional[str] = None
+    vertical: Optional[str] = None
+    website: Optional[str] = None
+    review_status: Literal["pending", "approved", "rejected"]
+    score: Optional[int] = None  # None = never scored
+    coverage: Optional[float] = None  # share of weighted signals that could be observed
+    created_at: datetime
+
+
+class ProspectList(BaseModel):
+    items: List[ProspectSummary]
+    total: int
+
+
+class SignalOut(BaseModel):
+    key: str
+    label: str
+    state: str  # unknown | detected | not_detected (enforced by a CHECK constraint)
+    evidence: str
+    observed_at: datetime
+
+
+class SourceOut(BaseModel):
+    id: str
+    source_name: str
+    source_url: str
+    external_id: str
+    license_note: str
+    fetched_at: datetime
+    fields: dict
+
+
+class ScoreOut(BaseModel):
+    score: int
+    coverage: float
+    version: int
+    config_label: str
+    config_hash: str
+    computed_at: datetime
+    breakdown: List[dict]
+
+
+class DraftOut(BaseModel):
+    id: str
+    channel: str
+    subject: str
+    body: str
+    facts: List[str]
+    template_version: str
+    status: str  # draft | approved | rejected (enforced by a CHECK constraint)
+    dry_run: bool
+    review_note: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
+    created_at: datetime
+
+
+class ProspectDetail(ProspectSummary):
+    contact_email: Optional[str] = None
+    contact_phone: Optional[str] = None
+    sources: List[SourceOut]
+    signals: List[SignalOut]
+    score_detail: Optional[ScoreOut] = None
+    drafts: List[DraftOut]
+    reviewed_at: Optional[datetime] = None
+
+
+class ReviewIn(BaseModel):
+    decision: Literal["approve", "reject"]
+    note: Optional[str] = Field(default=None, max_length=1000)
+
+
+class DiscoveryRunIn(BaseModel):
+    source: str = "fixture_directory"
+
+
+class DiscoveryRunOut(BaseModel):
+    dry_run: bool
+    source: str
+    listings_found: int
+    entities: int
+    duplicates_merged: int
+    suppressed: int
+    prospects_created: int
+    prospects_updated: int
+    sources_recorded: int
+    sites_checked: int
+    signals_recorded: int
+    scores_recorded: int
+
+
+class ScoreConfigIO(BaseModel):
+    label: str = Field(default="custom", min_length=1, max_length=80)
+    weights: dict[str, int]
+    stale_days: int = Field(default=365, ge=30, le=3650)
+
+
+class ScoreConfigOut(ScoreConfigIO):
+    version: int
+    config_hash: str
+    rescored: int = 0
+
+
+class SuppressionIn(BaseModel):
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = None
+    domain: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _one_identity(self):
+        if not (self.email or self.phone or self.domain):
+            raise ValueError("provide at least one of email, phone, domain")
+        return self
+
+
+class SuppressionOut(BaseModel):
+    added: int
+
+
+class ProspectEventOut(BaseModel):
+    id: str
+    action: str
+    actor_type: str
+    actor_user_id: Optional[str] = None
+    detail: dict
+    created_at: datetime
+
+
+class OutreachSettingsOut(BaseModel):
+    flags: dict[str, bool]
+    sender_configured: bool
+    usage: dict[str, int]
+    active_score_version: Optional[int] = None

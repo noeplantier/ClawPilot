@@ -324,6 +324,13 @@ Généré par `backend/scripts/gen_schema_doc.py` depuis les modèles ORM — ne
 | `source_id` | UUID | oui |  |
 | `notes` | TEXT | oui |  |
 | `score` | INTEGER | non | `0` |
+| `vertical` | VARCHAR | oui |  |
+| `city` | VARCHAR | oui |  |
+| `website` | VARCHAR | oui |  |
+| `match_keys` | ARRAY | non | `'{}'` |
+| `review_status` | VARCHAR | oui |  |
+| `reviewed_at` | DATETIME | oui |  |
+| `reviewed_by_user_id` | UUID | oui |  |
 | `id` (PK) | UUID | non | `gen_random_uuid()` |
 | `created_at` | DATETIME | non | `now()` |
 | `updated_at` | DATETIME | non | `now()` |
@@ -332,19 +339,64 @@ Généré par `backend/scripts/gen_schema_doc.py` depuis les modèles ORM — ne
 **Relations**
 
 - `account_id` → `accounts.id` (ON DELETE CASCADE)
+- `reviewed_by_user_id` → `users.id` (ON DELETE SET NULL)
 - `source_id` → `lead_sources.id` (ON DELETE SET NULL)
 
 **Contraintes CHECK**
 
+- `ck_leads_review_status`: `review_status IS NULL OR review_status IN ('pending','approved','rejected')`
 - `ck_leads_stage`: `stage IN ('new','contacted','engaged','qualified','won','lost')`
 
 **Index**
 
 - `ix_leads_account_created` (leads.account_id, created_at DESC)
+- `ix_leads_account_review` (leads.account_id, leads.review_status)
 - `ix_leads_account_score` (leads.account_id, score DESC)
 - `ix_leads_account_stage` (leads.account_id, leads.stage)
+- `ix_leads_match_keys_gin` (leads.match_keys)
 - `ix_leads_tags_gin` (leads.tags)
 - `uq_leads_account_email` (leads.account_id, leads.email)
+
+## `message_drafts`
+
+| Colonne | Type | Null | Défaut |
+|---|---|---|---|
+| `account_id` | UUID | non |  |
+| `lead_id` | UUID | non |  |
+| `campaign_step_id` | UUID | oui |  |
+| `channel` | VARCHAR | non | `email` |
+| `subject` | VARCHAR | non |  |
+| `body` | TEXT | non |  |
+| `facts` | JSONB | non | `'[]'::jsonb` |
+| `template_version` | VARCHAR | non |  |
+| `status` | VARCHAR | non | `draft` |
+| `dry_run` | BOOLEAN | non | `true` |
+| `idempotency_key` | VARCHAR | non |  |
+| `created_by_user_id` | UUID | oui |  |
+| `reviewed_by_user_id` | UUID | oui |  |
+| `reviewed_at` | DATETIME | oui |  |
+| `review_note` | TEXT | oui |  |
+| `id` (PK) | UUID | non | `gen_random_uuid()` |
+| `created_at` | DATETIME | non | `now()` |
+| `updated_at` | DATETIME | non | `now()` |
+
+**Relations**
+
+- `account_id` → `accounts.id` (ON DELETE CASCADE)
+- `campaign_step_id` → `campaign_steps.id` (ON DELETE SET NULL)
+- `created_by_user_id` → `users.id` (ON DELETE SET NULL)
+- `lead_id` → `leads.id` (ON DELETE CASCADE)
+- `reviewed_by_user_id` → `users.id` (ON DELETE SET NULL)
+
+**Contraintes CHECK**
+
+- `ck_message_drafts_channel`: `channel IN ('email')`
+- `ck_message_drafts_status`: `status IN ('draft','approved','rejected')`
+
+**Index**
+
+- `ix_message_drafts_lead_created` (message_drafts.lead_id, created_at DESC)
+- `uq_message_drafts_account_idempotency` (message_drafts.account_id, message_drafts.idempotency_key)
 
 ## `notes`
 
@@ -407,6 +459,109 @@ Généré par `backend/scripts/gen_schema_doc.py` depuis les modèles ORM — ne
 - `ix_outreach_events_account_time` (outreach_events.account_id, occurred_at DESC)
 - `ix_outreach_events_campaign_type` (outreach_events.campaign_id, outreach_events.event_type)
 
+## `prospect_scores`
+
+| Colonne | Type | Null | Défaut |
+|---|---|---|---|
+| `account_id` | UUID | non |  |
+| `lead_id` | UUID | non |  |
+| `score_version_id` | UUID | non |  |
+| `score` | INTEGER | non |  |
+| `coverage` | FLOAT | non |  |
+| `breakdown` | JSONB | non |  |
+| `id` (PK) | UUID | non | `gen_random_uuid()` |
+| `created_at` | DATETIME | non | `now()` |
+
+**Relations**
+
+- `account_id` → `accounts.id` (ON DELETE CASCADE)
+- `lead_id` → `leads.id` (ON DELETE CASCADE)
+- `score_version_id` → `score_versions.id` (ON DELETE RESTRICT)
+
+**Contraintes CHECK**
+
+- `ck_prospect_scores_range`: `score BETWEEN 0 AND 100`
+
+**Index**
+
+- `ix_prospect_scores_lead_created` (prospect_scores.lead_id, created_at DESC)
+
+## `prospect_signals`
+
+| Colonne | Type | Null | Défaut |
+|---|---|---|---|
+| `account_id` | UUID | non |  |
+| `lead_id` | UUID | non |  |
+| `source_id` | UUID | oui |  |
+| `signal_key` | VARCHAR | non |  |
+| `state` | VARCHAR | non |  |
+| `evidence` | TEXT | non |  |
+| `id` (PK) | UUID | non | `gen_random_uuid()` |
+| `created_at` | DATETIME | non | `now()` |
+
+**Relations**
+
+- `account_id` → `accounts.id` (ON DELETE CASCADE)
+- `lead_id` → `leads.id` (ON DELETE CASCADE)
+- `source_id` → `prospect_sources.id` (ON DELETE SET NULL)
+
+**Contraintes CHECK**
+
+- `ck_prospect_signals_state`: `state IN ('unknown','detected','not_detected')`
+
+**Index**
+
+- `ix_prospect_signals_lead_key` (prospect_signals.lead_id, prospect_signals.signal_key, created_at DESC)
+
+## `prospect_sources`
+
+| Colonne | Type | Null | Défaut |
+|---|---|---|---|
+| `account_id` | UUID | non |  |
+| `lead_id` | UUID | non |  |
+| `source_name` | VARCHAR | non |  |
+| `source_url` | VARCHAR | non |  |
+| `external_id` | VARCHAR | non |  |
+| `license_note` | TEXT | non |  |
+| `fetched_at` | DATETIME | non | `now()` |
+| `content_hash` | VARCHAR | non |  |
+| `fields` | JSONB | non | `'{}'::jsonb` |
+| `id` (PK) | UUID | non | `gen_random_uuid()` |
+| `created_at` | DATETIME | non | `now()` |
+
+**Relations**
+
+- `account_id` → `accounts.id` (ON DELETE CASCADE)
+- `lead_id` → `leads.id` (ON DELETE CASCADE)
+
+**Index**
+
+- `ix_prospect_sources_lead` (prospect_sources.lead_id)
+- `uq_prospect_sources_listing_version` (prospect_sources.account_id, prospect_sources.source_name, prospect_sources.external_id, prospect_sources.content_hash)
+
+## `score_versions`
+
+| Colonne | Type | Null | Défaut |
+|---|---|---|---|
+| `account_id` | UUID | non |  |
+| `version` | INTEGER | non |  |
+| `label` | VARCHAR | non |  |
+| `config` | JSONB | non |  |
+| `config_hash` | VARCHAR | non |  |
+| `created_by_user_id` | UUID | oui |  |
+| `id` (PK) | UUID | non | `gen_random_uuid()` |
+| `created_at` | DATETIME | non | `now()` |
+
+**Relations**
+
+- `account_id` → `accounts.id` (ON DELETE CASCADE)
+- `created_by_user_id` → `users.id` (ON DELETE SET NULL)
+
+**Index**
+
+- `ix_score_versions_account_hash` (score_versions.account_id, score_versions.config_hash)
+- `uq_score_versions_account_version` (score_versions.account_id, score_versions.version)
+
 ## `segments`
 
 | Colonne | Type | Null | Défaut |
@@ -456,6 +611,30 @@ Généré par `backend/scripts/gen_schema_doc.py` depuis les modèles ORM — ne
 
 - `uq_send_policies_account_channel` (send_policies.account_id, send_policies.channel)
 
+## `suppression_entries`
+
+| Colonne | Type | Null | Défaut |
+|---|---|---|---|
+| `kind` | VARCHAR | non |  |
+| `identity_hash` | VARCHAR | non |  |
+| `reason` | VARCHAR | non |  |
+| `account_id` | UUID | non |  |
+| `id` (PK) | UUID | non | `gen_random_uuid()` |
+| `created_at` | DATETIME | non | `now()` |
+
+**Relations**
+
+- `account_id` → `accounts.id` (ON DELETE CASCADE)
+
+**Contraintes CHECK**
+
+- `ck_suppression_entries_kind`: `kind IN ('email','phone','domain')`
+- `ck_suppression_entries_reason`: `reason IN ('opt_out','erasure','bounce','manual')`
+
+**Index**
+
+- `uq_suppression_entries_identity` (suppression_entries.account_id, suppression_entries.kind, suppression_entries.identity_hash)
+
 ## `tags`
 
 | Colonne | Type | Null | Défaut |
@@ -504,6 +683,30 @@ Généré par `backend/scripts/gen_schema_doc.py` depuis les modèles ORM — ne
 **Index**
 
 - `ix_tasks_account_status` (tasks.account_id, tasks.status)
+
+## `usage_records`
+
+| Colonne | Type | Null | Défaut |
+|---|---|---|---|
+| `account_id` | UUID | non |  |
+| `kind` | VARCHAR | non |  |
+| `quantity` | INTEGER | non |  |
+| `meta` | JSONB | non | `'{}'::jsonb` |
+| `id` (PK) | UUID | non | `gen_random_uuid()` |
+| `created_at` | DATETIME | non | `now()` |
+
+**Relations**
+
+- `account_id` → `accounts.id` (ON DELETE CASCADE)
+
+**Contraintes CHECK**
+
+- `ck_usage_records_kind`: `kind IN ('discovery_run','signals_analyzed','drafts_generated')`
+- `ck_usage_records_quantity`: `quantity >= 0`
+
+**Index**
+
+- `ix_usage_records_account_created` (usage_records.account_id, created_at DESC)
 
 ## `users`
 

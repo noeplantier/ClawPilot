@@ -34,6 +34,10 @@ pour l'installation et `docs/cloud-sessions.md` pour la feuille de route en cour
 - Tout email sortant contient : identité de l'expéditeur, origine des données, lien de désinscription fonctionnel.
 - Tout webhook public (Twilio, SendGrid…) vérifie la signature du fournisseur avant de toucher à la base,
   et échoue fermé en production quand la clé de vérification est absente.
+- Un prospect de la découverte (`leads.review_status` non NULL) n'est contactable que s'il est `approved` **et** si
+  `FEATURE_LIVE_SENDING=true`. Tout nouveau chemin d'envoi passe par `lead_repo.get_leads_by_ids` ou
+  `discovery_send_block`. Un brouillon n'affirme que des faits portés par un signal `detected` (jamais d'invention).
+  `unknown` n'est jamais traité comme un défaut.
 - Pas de scraping contraire aux CGU des plateformes ni à `robots.txt`. Pas d'envoi de masse non consenti.
 - Jamais de clé ou secret dans le code, les tests, les logs ou un commit. `backend/.env` est ignoré par git ;
   toute nouvelle variable est ajoutée à `backend/.env.example` **et** au README.
@@ -67,10 +71,17 @@ npm ci --legacy-peer-deps      # conflit de peer deps date-fns / react-day-picke
 npm run lint && npm run build
 ```
 
+## Découverte (OutreachOS)
+
+- Logique pure dans `backend/services/outreach_os/` (sans I/O, `now` injecté) ; seul `pipeline.py` parle à la base, via les
+  repositories. Sources et analyseurs = `Protocol` ; seules des fixtures locales existent. Aucune source réseau sans
+  `FEATURE_EXTERNAL_SOURCES`, `robots.txt` et CGU vérifiés. `mypy --strict --follow-imports=silent services/outreach_os` doit
+  rester propre. Voir `docs/architecture.md`.
+
 ## Tests
 
 - Logique pure (parsers, détecteurs de signaux, scoring, rendu de templates) → tests unitaires dans
-  `backend/tests/unit/`, **sans serveur ni réseau**, avec des fixtures (HTML, JSON) versionnées.
+  `backend/tests/unit/` (`pytest tests/unit`), **sans serveur ni réseau**, avec des fixtures (HTML, JSON) versionnées.
 - Aucun appel réseau réel dans les tests, jamais. Les appels sortants sont mockés ou rejoués depuis des fixtures.
 - Chaque endpoint ajouté est couvert par un test d'intégration dans `backend/tests/`. Les tests existants restent verts.
 
