@@ -10,9 +10,12 @@ autonomously with human oversight.
 - **Legacy (transitional)**: MongoDB still backs the activity feed and agent live-log
   simulation — see [`memory/PRD.md`](memory/PRD.md) for the migration status
 - **Frontend**: React 19, React Router, Tailwind, Radix UI
-- **Jobs**: Redis (queue/broker wired up; Celery workers land in the next phase —
-  `services/scheduler.py` currently runs an in-process asyncio scheduler)
+- **Jobs**: Celery + Redis — three queues (`sends`, `automation`, `webhooks`), per-channel
+  rate limits, timezone-aware send windows, and beat-scheduled automation (rescoring,
+  stopping unqualified sequences, reactivating dormant leads)
 - **Email / WhatsApp**: SendGrid, Twilio (WhatsApp Business Platform BSP)
+- **Contributing**: see [`CLAUDE.md`](CLAUDE.md) for architecture rules, compliance
+  rules, lint/test commands and the branch/commit conventions
 
 ## Repository layout
 
@@ -25,7 +28,9 @@ backend/
     models/             SQLAlchemy ORM models (19+ tables)
     base.py, session.py Declarative base, async engine/session
   alembic/              Migrations
-  services/              SendGrid/Twilio/AI wrappers, templating, scheduler
+  services/              SendGrid/Twilio/AI wrappers, scoring, templating, scheduler
+  celery_app.py          Celery app + beat schedule
+  tasks/                 Celery tasks (sends, automation, webhooks)
   scripts/
     migrate_mongo_to_postgres.py   one-shot legacy data migration
   tests/                 Backend integration test suite (pytest)
@@ -57,6 +62,10 @@ pip install -r requirements.txt
 cp .env.example .env                      # set DATABASE_URL, MONGO_URL, JWT_SECRET, ...
 alembic upgrade head
 uvicorn server:app --reload
+
+# Background jobs (separate shells) — needed for scheduled sends and automation
+celery -A celery_app worker -Q sends,automation,webhooks -l info
+celery -A celery_app beat -l info
 
 # Frontend (separate shell)
 cd frontend
@@ -116,6 +125,10 @@ python scripts/migrate_mongo_to_postgres.py
 
 ## Status & roadmap
 
-See [`memory/PRD.md`](memory/PRD.md) for what's implemented, what's still on
-MongoDB, and the backlog (Celery/Redis workers, lead scoring, consent
-enforcement, send throttling — the next phase).
+Implemented: Postgres schema, consent tracking and enforcement, weighted lead scoring,
+Celery-based throttled sends with send windows, CRM (notes, tasks, tags, kanban),
+real analytics. See [`memory/PRD.md`](memory/PRD.md) for the detailed history.
+
+Next: automatic prospect sourcing for local businesses, digital-gap scoring, per-vertical
+email sequences with reply detection, and an inbox view — broken down into short,
+independent work sessions in [`docs/cloud-sessions.md`](docs/cloud-sessions.md).
