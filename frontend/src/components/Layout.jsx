@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   SquaresFour, Target, Users, Robot, ChatsCircle, ChartLine, Gear, SignOut, Lightning, MagnifyingGlass, Sparkle,
+  ListChecks, PaperPlaneTilt,
 } from "@phosphor-icons/react";
 import { useState } from "react";
 import AIComposerModal from "@/components/AIComposerModal";
@@ -11,6 +12,9 @@ const NAV = [
   { to: "/app/dashboard", icon: SquaresFour, label: "Dashboard" },
   { to: "/app/campaigns", icon: Target, label: "Campaigns" },
   { to: "/app/leads", icon: Users, label: "Leads CRM" },
+  { to: "/app/prospects", icon: MagnifyingGlass, label: "Prospects" },
+  { to: "/app/prospects/review", icon: ListChecks, label: "Review queue" },
+  { to: "/app/sending", icon: PaperPlaneTilt, label: "Sending" },
   { to: "/app/agents", icon: Robot, label: "Agents" },
   { to: "/app/messages", icon: ChatsCircle, label: "Messages" },
   { to: "/app/analytics", icon: ChartLine, label: "Analytics" },
