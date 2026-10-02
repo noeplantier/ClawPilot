@@ -9,6 +9,28 @@ API_KEY = os.environ.get("SENDGRID_API_KEY")
 FROM_EMAIL = os.environ.get("SENDGRID_FROM_EMAIL") or "noreply@clawpilot.io"
 
 
+# Verification key from SendGrid: Settings → Mail Settings → Event Webhook → "Signature Verification".
+WEBHOOK_PUBLIC_KEY = os.environ.get("SENDGRID_WEBHOOK_PUBLIC_KEY")
+
+
+def verify_event_signature(
+    raw_body: bytes, signature: str | None, timestamp: str | None, public_key: str | None = None
+) -> bool:
+    """Check SendGrid's ECDSA signature over `timestamp + raw body` (event webhook).
+
+    Returns False — never raises — for a missing key/header or any malformed input.
+    """
+    public_key = WEBHOOK_PUBLIC_KEY if public_key is None else public_key
+    if not public_key or not signature or not timestamp:
+        return False
+    try:
+        from sendgrid.helpers.eventwebhook import EventWebhook
+
+        return bool(EventWebhook(public_key).verify_signature(raw_body.decode("utf-8"), signature, timestamp))
+    except Exception:
+        return False
+
+
 def is_configured() -> bool:
     return bool(API_KEY and FROM_EMAIL and "@" in FROM_EMAIL)
 
