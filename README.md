@@ -59,7 +59,7 @@ Backend: http://localhost:8000/api/health · Mailpit (test emails): http://local
 # Backend
 cd backend
 python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements-dev.txt           # runtime + lint + tests (CI uses the same file)
 cp .env.example .env                      # set DATABASE_URL, JWT_SECRET, ...
 alembic upgrade head
 python -m scripts.seed_demo                # optional demo account
@@ -75,6 +75,27 @@ cp .env.example .env
 npm install --legacy-peer-deps            # pre-existing date-fns/react-day-picker peer conflict
 npm start
 ```
+
+## Dependencies
+
+| File | Role |
+|---|---|
+| `backend/requirements.in` | The ~20 **direct** runtime dependencies, one comment each saying why. The only file to edit by hand. |
+| `backend/requirements.txt` | Production lock (61 packages): what the Docker image installs. Generated and tested, never edited by hand. |
+| `backend/requirements-dev.in` / `requirements-dev.txt` | Adds pytest, requests, httpx, black, isort, flake8, mypy. Used by CI and local development, never in the image. |
+
+Rule: a package is added only if code imports it or a runtime needs it, with the reason in the `.in` comment. To change one,
+edit the `.in` file, then regenerate the locks in clean virtualenvs and run the whole suite on them:
+
+```bash
+python3 -m venv /tmp/rt  && /tmp/rt/bin/pip  install -r requirements.in     && /tmp/rt/bin/pip  freeze --exclude pip --exclude setuptools --exclude wheel
+python3 -m venv /tmp/dev && /tmp/dev/bin/pip install -r requirements-dev.in && /tmp/dev/bin/pip freeze --exclude pip --exclude setuptools --exclude wheel
+# keep the 2-line header of each lock file, replace the rest, then: alembic upgrade head && alembic check && pytest tests/
+```
+
+The previous `pip freeze` of ~130 packages (LLM SDKs, `boto3`, `stripe`, `pandas`, `numpy`, `huggingface_hub`, `litellm`, `openai`,
+`google-*`, `jq`, `s5cmd`, …) was not imported by any code and was removed. `emergentintegrations` (AI composer) is optional and
+installed from a private index; without it the composer returns a template (see Settings).
 
 ## Environment variables
 

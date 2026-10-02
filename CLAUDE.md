@@ -50,9 +50,12 @@ pour l'installation et `docs/cloud-sessions.md` pour la feuille de route en cour
 
 ## Commandes
 
+Installation : `pip install -r requirements-dev.txt` (runtime + outils). L'image Docker n'installe que `requirements.txt`.
+
 Toutes depuis `backend/` sauf mention contraire.
 
 ```bash
+# Dépendances : éditer requirements.in / requirements-dev.in puis régénérer les locks (voir README « Dependencies »)
 # Lint (flags identiques à la CI — ne JAMAIS lancer black/isort depuis la racine : ils reformatent .venv)
 black --check --line-length 120 --extend-exclude "alembic/versions" .
 isort --check-only .
