@@ -191,6 +191,14 @@ Twilio — behind a proxy the URL the app sees differs from the one Twilio signe
 `SENDGRID_WEBHOOK_PUBLIC_KEY` (Mail Settings → Event Webhook → Signature Verification). Until you do, it rejects
 every call in production — no SendGrid account is needed to run the app, only to receive its events.
 
+## Settings page
+
+Settings shows the live configuration of the server (`GET /api/settings/integrations`): the AI composer is "live" only if
+`EMERGENT_LLM_KEY` is set **and** the optional `emergentintegrations` package is installed (otherwise it returns a fixed
+template, and the page says why); SendGrid, Twilio, prospect outreach (dry-run / live / kill switch / sender identity) and
+webhook signatures are each computed, and a banner lists the environment variables still missing. No status is hard-coded,
+and no secret is ever returned.
+
 ## Demo account
 
 New accounts start **empty**. For local development, `python -m scripts.seed_demo`

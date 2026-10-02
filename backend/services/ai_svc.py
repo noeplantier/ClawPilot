@@ -1,5 +1,6 @@
 """AI message generation via Emergent Universal LLM key (Gemini 3 Flash)."""
 
+import importlib.util
 import json
 import logging
 import os
@@ -8,6 +9,27 @@ import re
 logger = logging.getLogger(__name__)
 
 EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")
+
+
+def status() -> dict:
+    """What the AI composer will really do right now. It only calls the model when a key is set AND the optional
+    `emergentintegrations` package (private index, not in requirements.txt) is installed; otherwise it returns a
+    fixed template. Settings shows this instead of a hard-coded 'ACTIVE'."""
+    key_present = bool(EMERGENT_KEY)
+    library_available = importlib.util.find_spec("emergentintegrations") is not None
+    if key_present and library_available:
+        mode, reason = "live", None
+    elif not key_present:
+        mode, reason = "template", "EMERGENT_LLM_KEY is not set"
+    else:
+        mode, reason = "template", "the emergentintegrations package is not installed"
+    return {
+        "key_configured": key_present,
+        "library_available": library_available,
+        "active": mode == "live",
+        "mode": mode,
+        "reason": reason,
+    }
 
 
 def _fallback(recipient_name: str, product: str, language: str, tone: str, channel: str, company: str | None) -> dict:

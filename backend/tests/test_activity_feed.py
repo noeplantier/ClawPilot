@@ -85,3 +85,22 @@ def test_inbound_whatsapp_webhook_lands_in_activity_feed():
 
     kinds = [a["kind"] for a in requests.get(f"{BASE_URL}/api/analytics/activity", headers=headers).json()]
     assert "whatsapp.inbound" in kinds
+
+
+def test_integration_status_is_computed_not_hard_coded():
+    headers = _register()
+    data = requests.get(f"{BASE_URL}/api/settings/integrations", headers=headers).json()
+    ai = data["ai"]
+    assert ai["active"] == (ai["key_configured"] and ai["library_available"])
+    assert ai["mode"] == ("live" if ai["active"] else "template")
+    assert (ai["reason"] is None) == ai["active"]  # a reason is given exactly when it is not live
+    out = data["outreach"]
+    assert out["dry_run"] is True and out["kill_switch"] is False  # defaults of the test server
+    assert out["sender_configured"] is True and out["sender_email"]
+    assert set(data["webhooks"]) == {
+        "production",
+        "twilio_signature_ready",
+        "twilio_webhook_url_set",
+        "sendgrid_signature_ready",
+    }
+    assert requests.get(f"{BASE_URL}/api/settings/integrations").status_code in (401, 403)
