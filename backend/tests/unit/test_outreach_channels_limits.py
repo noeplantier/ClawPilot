@@ -1,5 +1,6 @@
 """Channel adapter, send limits, reply classification, kill switch — offline and deterministic."""
 
+import secrets
 import socket
 from datetime import datetime, timedelta, timezone
 
@@ -174,9 +175,9 @@ def test_kill_switch_defaults_off_and_reads_the_environment(monkeypatch):
 
 def test_kill_switch_stops_legacy_providers_before_any_client_is_built(monkeypatch):
     monkeypatch.setenv("SEND_KILL_SWITCH", "true")
-    monkeypatch.setattr(sendgrid_svc, "API_KEY", "SG.fake-key-for-test")
-    monkeypatch.setattr(twilio_svc, "SID", "ACfake")
-    monkeypatch.setattr(twilio_svc, "TOKEN", "fake")
+    monkeypatch.setattr(sendgrid_svc, "API_KEY", secrets.token_hex(12))  # random: no credential-shaped literal
+    monkeypatch.setattr(twilio_svc, "SID", "AC" + secrets.token_hex(8))
+    monkeypatch.setattr(twilio_svc, "TOKEN", secrets.token_hex(8))
 
     def boom(*a, **k):
         raise AssertionError("a provider client was built while the kill switch is on")
