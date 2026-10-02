@@ -8,6 +8,7 @@ import uuid
 
 import pytest
 import requests
+from helpers import open_send_limits
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
 
@@ -32,7 +33,10 @@ def auth_token():
 
 @pytest.fixture(scope="module")
 def auth_headers(auth_token):
-    return {"Authorization": f"Bearer {auth_token}"}
+    """Get auth headers for authenticated tests (send limits lifted: these suites send many messages in a row)"""
+    headers = {"Authorization": f"Bearer {auth_token}"}
+    open_send_limits(headers)
+    return headers
 
 
 def _create_lead(auth_headers, unique_id):

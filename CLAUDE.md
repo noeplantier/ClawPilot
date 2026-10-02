@@ -40,7 +40,9 @@ pour l'installation et `docs/cloud-sessions.md` pour la feuille de route en cour
   `unknown` n'est jamais traité comme un défaut.
 - Tout envoi sortant passe par un `ChannelAdapter` (`services/outreach_os/channels.py`) via
   `services/outreach_os/dispatch.py` : kill switch (`SEND_KILL_SWITCH`), pause du compte, limites (jour, heure, délai),
-  conformité du contenu, idempotence. Activer `FEATURE_LIVE_SENDING` sans adapter réel doit échouer (fail closed). Un refus
+  conformité du contenu, idempotence. Les anciens chemins (envoi unitaire, lot, campagne, tâches Celery) appellent le même
+  point d'application, `services/send_gate.py` (`send_gate.check` **avant** `send_email`/`send_whatsapp` ; un test AST
+  l'impose). Tout nouveau chemin d'envoi passe par là. Activer `FEATURE_LIVE_SENDING` sans adapter réel doit échouer (fail closed). Un refus
   est journalisé **avant** de lever l'`HTTPException` (`get_db_session` annule la transaction sur erreur).
 - Journal d'événements : horodater avec `clock_timestamp()`, pas `now()`, quand plusieurs lignes d'une même transaction
   doivent garder leur ordre.

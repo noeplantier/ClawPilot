@@ -28,21 +28,12 @@ from models import (
     SimulateIn,
 )
 from repositories import audit_repo, draft_repo, outbound_repo, send_policy_repo
+from routes._refusal import refusal
+from services import send_gate
 from services.outreach_os import dispatch as dispatch_svc
 
 router = APIRouter(prefix="/outbound", tags=["outbound"])
 decider = require_roles("owner", "admin")
-
-_STATUS_FOR_CODE = {
-    "kill_switch": 423,
-    "paused": 423,
-    "limit_daily": 429,
-    "limit_hourly": 429,
-    "limit_delay": 429,
-    "live_not_available": 501,
-    "not_compliant": 422,
-    "sender_not_configured": 409,
-}
 
 
 def _account(user: dict) -> uuid.UUID:
@@ -67,39 +58,17 @@ def _out(m: OutboundMessage, created: bool = True) -> OutboundMessageOut:
     )
 
 
-async def _refuse(
-    session: AsyncSession, user: dict, blocked: dispatch_svc.DispatchBlocked, resource_id: Optional[uuid.UUID]
-) -> HTTPException:
-    """Record the refusal durably (get_db_session rolls back on HTTPException), then build the error."""
-    await audit_repo.log(
-        session,
-        _account(user),
-        action="dispatch.blocked",
-        resource_type="outbound_message",
-        resource_id=resource_id,
-        actor_user_id=uuid.UUID(user["id"]),
-        diff={"code": blocked.code, "retry_at": blocked.retry_at.isoformat() if blocked.retry_at else None},
-    )
-    await session.commit()
-    headers = {}
-    if blocked.retry_at:
-        wait = max(1, int((blocked.retry_at - datetime.now(timezone.utc)).total_seconds()))
-        headers["Retry-After"] = str(wait)
-    return HTTPException(
-        status_code=_STATUS_FOR_CODE.get(blocked.code, 409),
-        detail={
-            "code": blocked.code,
-            "message": blocked.message,
-            "retry_at": blocked.retry_at.isoformat() if blocked.retry_at else None,
-        },
-        headers=headers or None,
-    )
-
-
 # ---------------------------------------------------------------- status and limits
+CHANNEL_QUERY = Query(default="email", pattern="^(email|whatsapp)$")
+
+
 @router.get("/status", response_model=SendStatusOut)
-async def status(user: dict = Depends(get_current_user), session: AsyncSession = Depends(get_db_session)):
-    s = await dispatch_svc.send_status(session, _account(user), datetime.now(timezone.utc))
+async def status(
+    channel: str = CHANNEL_QUERY,
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+):
+    s = await send_gate.status(session, _account(user), channel, datetime.now(timezone.utc))
     return SendStatusOut(
         dry_run=s.dry_run,
         kill_switch=s.halted_by_env,
@@ -128,28 +97,35 @@ def _limits_out(policy: send_policy_repo.EffectivePolicy) -> LimitsOut:
 
 
 @router.get("/limits", response_model=LimitsOut)
-async def get_limits(user: dict = Depends(get_current_user), session: AsyncSession = Depends(get_db_session)):
-    return _limits_out(await send_policy_repo.get_policy(session, _account(user), "email"))
+async def get_limits(
+    channel: str = CHANNEL_QUERY,
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+):
+    return _limits_out(await send_policy_repo.get_policy(session, _account(user), channel))
 
 
 @router.put("/limits", response_model=LimitsOut)
 async def put_limits(
-    payload: LimitsPatch, user: dict = Depends(decider), session: AsyncSession = Depends(get_db_session)
+    payload: LimitsPatch,
+    channel: str = CHANNEL_QUERY,
+    user: dict = Depends(decider),
+    session: AsyncSession = Depends(get_db_session),
 ):
     """Change the limits and/or pause sending for this organisation (`sending_paused` is the account kill switch)."""
     changes = payload.model_dump(exclude_none=True)
     if not changes:
         raise HTTPException(status_code=422, detail="Provide at least one field to change")
-    await send_policy_repo.update_limits(session, _account(user), "email", **changes)
+    await send_policy_repo.update_limits(session, _account(user), channel, **changes)
     await audit_repo.log(
         session,
         _account(user),
         action="send_limits.changed",
         resource_type="send_policy",
         actor_user_id=uuid.UUID(user["id"]),
-        diff=changes,
+        diff={**changes, "channel": channel},
     )
-    return _limits_out(await send_policy_repo.get_policy(session, _account(user), "email"))
+    return _limits_out(await send_policy_repo.get_policy(session, _account(user), channel))
 
 
 # ---------------------------------------------------------------- dispatch
@@ -174,7 +150,7 @@ async def dispatch(
             idempotency_key=idempotency_key,
         )
     except dispatch_svc.DispatchBlocked as blocked:
-        raise await _refuse(session, user, blocked, draft.id)
+        raise await refusal(session, user, blocked, resource_id=draft.id)
     return _out(message, created)
 
 
@@ -231,5 +207,5 @@ async def simulate(
             user_id=uuid.UUID(user["id"]),
         )
     except dispatch_svc.DispatchBlocked as blocked:
-        raise await _refuse(session, user, blocked, message.id)
+        raise await refusal(session, user, blocked, resource_id=message.id)
     return _out(message)

@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.models import OutboundEvent, OutboundMessage
+from db.models import EmailSend, OutboundEvent, OutboundMessage, WhatsappSend
 
 
 async def get_by_key(session: AsyncSession, account_id: uuid.UUID, key: str) -> Optional[OutboundMessage]:
@@ -107,8 +107,13 @@ async def events_of(session: AsyncSession, message_id: uuid.UUID) -> list[Outbou
 async def dispatch_times_since(
     session: AsyncSession, account_id: uuid.UUID, channel: str, since: datetime
 ) -> list[datetime]:
-    """Dispatch times of messages that went through an adapter since `since` (what the limits count)."""
-    rows = await session.execute(
+    """Times of every outbound send since `since`, from ALL paths — what the send limits count.
+
+    The prospect ledger (`outbound_messages`) plus the legacy per-channel tables (`email_sends`, `whatsapp_sends`), so a
+    campaign or a manual send counts against the same cap as a dispatch. Failed attempts do not count.
+    """
+    times: list[datetime] = []
+    ledger = await session.execute(
         select(OutboundMessage.dispatched_at).where(
             OutboundMessage.account_id == account_id,
             OutboundMessage.channel == channel,
@@ -116,4 +121,21 @@ async def dispatch_times_since(
             OutboundMessage.status != "failed",
         )
     )
-    return [t for (t,) in rows.all()]
+    times += [t for (t,) in ledger.all()]
+    if channel == "email":
+        legacy = await session.execute(
+            select(EmailSend.created_at).where(
+                EmailSend.account_id == account_id, EmailSend.created_at >= since, EmailSend.status != "failed"
+            )
+        )
+    else:
+        legacy = await session.execute(
+            select(WhatsappSend.created_at).where(
+                WhatsappSend.account_id == account_id,
+                WhatsappSend.direction == "outbound",
+                WhatsappSend.created_at >= since,
+                WhatsappSend.status != "failed",
+            )
+        )
+    times += [t for (t,) in legacy.all()]
+    return times

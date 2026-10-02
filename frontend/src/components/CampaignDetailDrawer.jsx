@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
+import { describeLaunch, sendErrorText } from "@/lib/campaignLaunch";
 import {
   X, Rocket, Users, Plus, Check, CircleNotch, Envelope, WhatsappLogo, Play, ChartBar, ArrowsClockwise,
 } from "@phosphor-icons/react";
@@ -43,11 +44,12 @@ export default function CampaignDetailDrawer({ open, campaignId, onClose, onUpda
     try {
       const { data } = await api.post(`/campaigns/${campaignId}/run-step/${idx}`);
       setStepResult({ idx, ...data });
-      toast.success(`Step ${idx + 1} dispatched · ${data.dispatched}/${data.total}`);
+      const { level, text } = describeLaunch(data);
+      toast[level](`Step ${idx + 1}: ${text}`);
       load();
       onUpdate?.();
     } catch (e) {
-      toast.error(e?.response?.data?.detail || "Run failed");
+      toast.error(sendErrorText(e, "Run failed"));
     } finally {
       setRunningStep(null);
     }

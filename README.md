@@ -190,6 +190,13 @@ curl -s -X POST localhost:8000/api/outbound/<message_id>/simulate -H "$H" -H 'co
   Over a limit ⇒ `429` with `retry_at` and `Retry-After`.
 - **Pause** (`sending_paused`) ⇒ `423`. **`SEND_KILL_SWITCH=true`** (environment, applies to everyone, no database needed)
   refuses dry-run dispatch **and** the existing SendGrid and Twilio senders.
+- **One gate for every path.** The same pause and limits apply to the single send (`POST /api/messages/email|whatsapp`),
+  the batch sends, a campaign step (`run-step`), `launch` and the Celery send tasks (`services/send_gate.py`). All paths
+  count toward the same daily/hourly caps, so changing path never resets them, and a per-organisation lock stops parallel
+  requests from overshooting. A single send over a limit answers `423`/`429` like the dispatch; a batch or campaign step
+  stops at the first refusal and reports `dispatched`, `not_attempted` and `blocked` (nothing is queued behind your back);
+  a Celery task is rescheduled for when the limit frees up. `launch` really sends the first step (it used to display
+  invented sent/opened/replied/converted figures): the counters only ever reflect real attempts.
 - **Bounce** (simulated) suppresses the address. **Reply**: a STOP-style reply opts the prospect out immediately; any
   other reply is only recorded. Real providers will drive the same code from their webhooks.
 - Every message carries `List-Unsubscribe` / `List-Unsubscribe-Post` (RFC 8058) next to the link in the body.

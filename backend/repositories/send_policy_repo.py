@@ -55,7 +55,19 @@ LIMIT_FIELDS = ("max_per_day", "max_per_hour", "min_delay_seconds", "sending_pau
 
 
 async def update_limits(session: AsyncSession, account_id: uuid.UUID, channel: str, **changes: object) -> SendPolicy:
-    """Create the account's policy row on first change, then apply only the given limit fields."""
+    """Create the account's policy row on first change, then apply only the given limit fields.
+
+    `sending_paused` is the organisation's kill switch, so it is written to every channel's row; the numeric limits
+    only to the requested channel.
+    """
+    if "sending_paused" in changes:
+        for other in ("email", "whatsapp"):
+            if other != channel:
+                await _set_fields(session, account_id, other, {"sending_paused": changes["sending_paused"]})
+    return await _set_fields(session, account_id, channel, changes)
+
+
+async def _set_fields(session: AsyncSession, account_id: uuid.UUID, channel: str, changes: dict) -> SendPolicy:
     row = (
         await session.execute(
             select(SendPolicy).where(SendPolicy.account_id == account_id, SendPolicy.channel == channel)
