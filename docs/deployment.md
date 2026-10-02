@@ -13,7 +13,9 @@ Le détail général (Render, Netlify, CI) est dans le README. Cette page ajoute
 | `OUTREACH_SENDER_NAME`, `_COMPANY`, `_ADDRESS`, `_EMAIL` | Identité de l'expéditeur (mentions légales des brouillons) | Pour créer un brouillon |
 | `PUBLIC_BASE_URL` | URL publique de l'API (`https://…`), utilisée dans le lien de désinscription | Oui en production |
 | `SEND_KILL_SWITCH` | `true` arrête immédiatement tout envoi (dry-run, SendGrid, Twilio) | Non ; à connaître avant d'en avoir besoin |
-| `FEATURE_LIVE_SENDING` | `true` autorise l'envoi réel (aucun adapter n'existe encore) | Non, laisser vide |
+| `FEATURE_LIVE_SENDING` | `true` autorise l'envoi réel par SMTP (refusé tant que `SMTP_*` est incomplet) | Non, laisser vide |
+| `OUTREACH_SANDBOX`, `OUTREACH_LIVE_ALLOWLIST` | Tant que le sandbox est actif (défaut), seule la liste blanche reçoit des e-mails réels | Non |
+| `SMTP_HOST`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_SECURITY`, `SMTP_PORT` | Connexion à votre boîte (TLS vérifié obligatoire) | **Oui** : le mot de passe ne va que dans le tableau de bord |
 | `FEATURE_EXTERNAL_SOURCES` | Sources réseau (non implémenté) | Non, laisser vide |
 | `TWILIO_AUTH_TOKEN`, `TWILIO_WEBHOOK_URL`, `SENDGRID_WEBHOOK_PUBLIC_KEY` | Vérification des signatures de webhooks | Oui si les webhooks sont utilisés |
 
@@ -22,8 +24,9 @@ Le détail général (Render, Netlify, CI) est dans le README. Cette page ajoute
 
 ## Avant tout envoi réel (check-list)
 
-Aucun adaptateur réel n'existe ; activer `FEATURE_LIVE_SENDING` aujourd'hui est refusé (501). Avant d'en écrire un, tout ceci doit
-être vrai, et chaque point confirmé par une personne :
+L'adaptateur SMTP existe (`services/smtp_svc.py`) ; la procédure pas à pas est dans [`go-live-email.md`](go-live-email.md).
+Activer `FEATURE_LIVE_SENDING` sans `SMTP_*` complet est refusé (501). Avant de lever le sandbox, tout ceci doit être vrai, et chaque
+point confirmé par une personne :
 
 1. **Configuration explicite** : identité d'expéditeur (`OUTREACH_SENDER_*`), `PUBLIC_BASE_URL` en https, clés du fournisseur
    en variables d'environnement, jamais dans le code.
@@ -34,7 +37,8 @@ Aucun adaptateur réel n'existe ; activer `FEATURE_LIVE_SENDING` aujourd'hui est
 6. **Webhooks signés** branchés : rebonds, plaintes, réponses et désinscriptions du fournisseur alimentent `outbound_*` et la
    suppression ; signatures Twilio/SendGrid vérifiées (déjà en place).
 7. **Base légale validée** par un juriste (intérêt légitime B2B, entrepreneurs individuels) et registre de traitement tenu.
-8. **Tests** : adaptateur testé avec le fournisseur simulé (aucun appel réseau dans la CI), cas d'échec et reprise couverts.
+8. **Tests** : adaptateur testé avec `smtplib` simulé (aucun appel réseau dans la CI), cas d'échec, issue inconnue et reprise couverts ;
+   **premier essai réel** = `POST /api/outbound/test-send` vers votre propre adresse, en-têtes SPF/DKIM/DMARC vérifiés.
 9. **Confirmation humaine** : une personne nommée active `FEATURE_LIVE_SENDING`, une organisation à la fois.
 
 ## Vérifier un déploiement

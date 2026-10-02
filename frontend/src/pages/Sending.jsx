@@ -5,7 +5,8 @@ import { ArrowsClockwise, Pause, Play, Warning } from "@phosphor-icons/react";
 import { useAuth } from "@/contexts/AuthContext";
 import { canDecide, outboundApi, prospectsApi, useAsync } from "@/lib/outreach";
 import {
-  LIMIT_RANGES, MESSAGE_STATUS_CHIP, describeApiError, formatDateTime, formatRetry, limitsPatch, validateLimits,
+  LIMIT_RANGES, MESSAGE_STATUS_CHIP, describeApiError, describeTestSend, formatDateTime, formatRetry, limitsPatch,
+  validateLimits,
 } from "@/lib/outreachFormat";
 import HistoryTimeline from "@/components/outreach/HistoryTimeline";
 import { EmptyBlock, ErrorBlock, LoadingBlock } from "@/components/outreach/States";
@@ -196,6 +197,48 @@ function MessageRow({ message, canEdit, onChanged }) {
   );
 }
 
+const TONE_TEXT = { ok: "text-[#166534]", warn: "text-[#92400E]", danger: "text-[#991B1B]" };
+
+function SmtpTestPanel({ onDone }) {
+  const [to, setTo] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState(null);
+
+  const send = async () => {
+    setBusy(true);
+    setResult(null);
+    setError(null);
+    try {
+      setResult(describeTestSend(await outboundApi.testSend(to.trim())));
+      onDone();
+    } catch (e) {
+      setError(describeApiError(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="surface p-5 space-y-3" data-testid="smtp-test">
+      <h2 className="font-display text-xl font-bold">Test the real e-mail connection</h2>
+      <p className="text-sm text-[#6B6B66]">
+        Sends one technical message (not prospecting) to the sender&apos;s own address or to the sandbox allowlist, through the
+        same limits and kill switch. Needs live sending and the SMTP settings; otherwise it is refused and nothing is sent.
+      </p>
+      <div className="flex gap-2 flex-wrap items-center">
+        <input className="neo-input !w-72" type="email" placeholder="founder@plantiers.com" value={to}
+          onChange={(e) => setTo(e.target.value)} data-testid="smtp-test-to" />
+        <button className="btn-ghost" disabled={busy || !to.trim()} onClick={send} data-testid="smtp-test-send">
+          {busy ? "SENDING…" : "SEND TEST E-MAIL"}
+        </button>
+      </div>
+      {result && <div role="status" className={`text-sm ${TONE_TEXT[result.tone]}`} data-testid="smtp-test-result">{result.text}</div>}
+      {error && <div role="alert" className="text-sm text-[#991B1B]" data-testid="smtp-test-error">{error}</div>}
+    </section>
+  );
+}
+
 export default function Sending() {
   const { user } = useAuth();
   const edit = canDecide(user);
@@ -212,7 +255,7 @@ export default function Sending() {
         <div>
           <div className="mono-accent">// controlled.sending</div>
           <h1 className="text-4xl font-black tracking-tighter">Sending</h1>
-          <p className="text-[#6B6B66] mt-1 max-w-2xl">Limits, emergency stop and the history of dispatched messages. Today only a dry-run adapter exists.</p>
+          <p className="text-[#6B6B66] mt-1 max-w-2xl">Limits, emergency stop and the history of dispatched messages. Dry-run by default; real e-mail leaves over SMTP only when live sending is enabled. A message stuck in “sending” has an unknown outcome: check the mailbox before sending again.</p>
         </div>
         <button className="btn-ghost" onClick={page.reload} data-testid="refresh"><ArrowsClockwise size={14} /> REFRESH</button>
       </div>
@@ -224,6 +267,7 @@ export default function Sending() {
         <>
           <StatusPanel status={page.data.status} settings={page.data.settings} />
           <LimitsForm key={JSON.stringify(page.data.limits)} limits={page.data.limits} canEdit={edit} onSaved={page.reload} />
+          {edit && <SmtpTestPanel onDone={page.reload} />}
           <section className="space-y-3" data-testid="messages-panel">
             <h2 className="font-display text-xl font-bold">Dispatched messages</h2>
             {page.data.messages.length === 0 ? (

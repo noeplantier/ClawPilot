@@ -45,6 +45,20 @@ services:
         sync: false
       - key: OUTREACH_SENDER_EMAIL
         sync: false
+      - key: FEATURE_LIVE_SENDING
+        sync: false # leave empty (dry-run). true = real e-mail over SMTP, see docs/go-live-email.md
+      - key: OUTREACH_SANDBOX
+        value: "true" # real sending only reaches OUTREACH_LIVE_ALLOWLIST; set to false deliberately, never by default
+      - key: OUTREACH_LIVE_ALLOWLIST
+        sync: false # e.g. founder@plantiers.com
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_USERNAME
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false # secret: dashboard only
+      - key: SMTP_SECURITY
+        value: starttls
       - key: SENDGRID_API_KEY
         sync: false
       - key: SENDGRID_FROM_EMAIL

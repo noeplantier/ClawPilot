@@ -1,12 +1,13 @@
-"""Outbound dispatch (dry-run): send an approved draft through a channel adapter, under limits and a kill switch.
+"""Outbound dispatch: send an approved draft through a channel adapter, under limits and a kill switch.
 
-Nothing here reaches a real provider: the only adapter is the dry-run one, and enabling live sending without a
-real adapter is refused. Reading is open to any member; dispatching, simulating events and changing limits
+Dry-run unless `FEATURE_LIVE_SENDING` is on; then the SMTP adapter is used (refused when it is not fully configured).
+Reading is open to any member; dispatching, simulating events, testing the SMTP connection and changing limits
 need owner/admin. Refused attempts are written to the audit log (committed before the 4xx is returned).
 """
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -26,11 +27,15 @@ from models import (
     OutboundMessageOut,
     SendStatusOut,
     SimulateIn,
+    SmtpCheckIn,
+    SmtpCheckOut,
 )
-from repositories import audit_repo, draft_repo, outbound_repo, send_policy_repo
+from repositories import audit_repo, draft_repo, outbound_repo, outreach_repo, send_policy_repo
 from routes._refusal import refusal
-from services import send_gate
+from services import feature_flags, send_gate, smtp_svc
+from services.outreach_os import channels
 from services.outreach_os import dispatch as dispatch_svc
+from services.outreach_os import drafts, sandbox
 
 router = APIRouter(prefix="/outbound", tags=["outbound"])
 decider = require_roles("owner", "admin")
@@ -136,7 +141,8 @@ async def dispatch(
     user: dict = Depends(decider),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Dry-run dispatch of an approved draft. A draft yields at most one message; same key ⇒ same message."""
+    """Dispatch of an approved draft (dry-run, or SMTP when live). A draft yields at most one message; same key ⇒ same
+    message. A `failed` attempt may be dispatched again; a message left in `sending` (outcome unknown) never is."""
     draft = await draft_repo.get(session, _account(user), payload.draft_id)
     if draft is None:
         raise HTTPException(status_code=404, detail="Draft not found")
@@ -148,16 +154,111 @@ async def dispatch(
             now=datetime.now(timezone.utc),
             user_id=uuid.UUID(user["id"]),
             idempotency_key=idempotency_key,
+            live_adapter=smtp_svc.adapter_from_env(),
         )
     except dispatch_svc.DispatchBlocked as blocked:
         raise await refusal(session, user, blocked, resource_id=draft.id)
     return _out(message, created)
 
 
+# ---------------------------------------------------------------- SMTP connection test
+TEST_SUBJECT = "[ClawPilot] SMTP connection test"
+
+
+def _test_body(sender: drafts.SenderIdentity) -> str:
+    return (
+        "Ceci est un message de test technique envoyé depuis ClawPilot. Il vérifie la connexion SMTP et "
+        "l'authentification de l'expéditeur ; ce n'est pas un message de prospection.\n\n"
+        f"Expéditeur : {sender.name}, {sender.company}, {sender.postal_address}\n"
+        "Origine des données : aucune donnée de prospect ; l'adresse destinataire a été saisie par un administrateur.\n"
+        f"Pour ne plus recevoir de test : écrivez à {sender.reply_to}.\n"
+    )
+
+
+@router.post("/test-send", response_model=SmtpCheckOut)
+async def smtp_test_send(
+    payload: SmtpCheckIn, user: dict = Depends(decider), session: AsyncSession = Depends(get_db_session)
+):
+    """Send ONE technical message to verify the real SMTP connection and the sender address, before any prospect.
+
+    Only to the sender's own address or to `OUTREACH_LIVE_ALLOWLIST` (never a prospect), only when live sending is on,
+    through the same kill switch, pause and limits as everything else. Records an `email_sends` row (so it counts toward
+    the limits) but no outreach event, so the analytics are not polluted.
+    """
+    account_id = _account(user)
+
+    async def refuse(code: str, message: str):
+        return await refusal(
+            session,
+            user,
+            send_gate.SendBlocked(code, message),
+            resource_type="smtp_test",
+            action="smtp_test.blocked",
+            channel="email",
+        )
+
+    sender = drafts.SenderIdentity.from_env()
+    if sender is None:
+        raise await refuse("sender_not_configured", "Sender identity is not configured (OUTREACH_SENDER_*)")
+    if feature_flags.dry_run():
+        raise await refuse("live_not_available", "FEATURE_LIVE_SENDING is off: there is no real connection to test")
+    own = sender.reply_to.strip().lower()
+    to = str(payload.to).strip().lower()
+    if not sandbox.is_allowed(to, (own, *feature_flags.live_allowlist())):
+        raise await refuse(
+            "sandbox_recipient", "A test only goes to the sender's own address or to OUTREACH_LIVE_ALLOWLIST"
+        )
+    adapter = smtp_svc.adapter_from_env(extra_allowed=(own,))
+    if adapter is None:
+        raise await refuse(
+            "live_not_available", "SMTP settings are incomplete (SMTP_HOST, SMTP_USERNAME, SMTP_PASSWORD)"
+        )
+    try:
+        await send_gate.check(session, account_id, "email")
+    except send_gate.SendBlocked as blocked:
+        raise await refusal(
+            session, user, blocked, resource_type="smtp_test", action="smtp_test.blocked", channel="email"
+        )
+
+    body = _test_body(sender)
+    message = channels.ChannelMessage(
+        to=to,
+        subject=TEST_SUBJECT,
+        body=body,
+        sender_name=sender.name,
+        sender_email=own,
+        idempotency_key=f"smtp-test:{uuid.uuid4()}",
+        headers={"List-Unsubscribe": f"<mailto:{own}?subject=unsubscribe>"},
+    )
+    result = await asyncio.to_thread(adapter.send, message)
+    await outreach_repo.create_email_send(
+        session,
+        account_id,
+        to_email=to,
+        subject=TEST_SUBJECT,
+        body=body,
+        status="sent" if result.status == "sent" else "failed",
+        provider_message_id=result.provider_id,
+        error=result.error,
+    )
+    await audit_repo.log(
+        session,
+        account_id,
+        action=f"smtp_test.{result.status}",
+        resource_type="smtp_test",
+        actor_type="user",
+        actor_user_id=uuid.UUID(user["id"]),
+        diff={"recipient_domain": to.rsplit("@", 1)[1], "adapter": adapter.name},
+    )
+    return SmtpCheckOut(
+        status=result.status, to=to, adapter=adapter.name, provider_message_id=result.provider_id, error=result.error
+    )
+
+
 # ---------------------------------------------------------------- history
 @router.get("", response_model=list[OutboundMessageOut])
 async def list_messages(
-    status: Optional[str] = Query(default=None, pattern="^(sent|failed|bounced|replied)$"),
+    status: Optional[str] = Query(default=None, pattern="^(sending|sent|failed|bounced|replied)$"),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     user: dict = Depends(get_current_user),

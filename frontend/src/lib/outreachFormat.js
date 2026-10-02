@@ -13,7 +13,7 @@ export const REVIEW_META = {
   rejected: { label: "Rejected", chip: "chip-danger" },
 };
 
-export const MESSAGE_STATUS_CHIP = { sent: "chip-ink", failed: "chip-danger", bounced: "chip-danger", replied: "chip-success" };
+export const MESSAGE_STATUS_CHIP = { sending: "chip-warn", sent: "chip-ink", failed: "chip-danger", bounced: "chip-danger", replied: "chip-success" };
 
 export function scoreBand(score) {
   if (score === null || score === undefined) return "none";
@@ -77,11 +77,26 @@ const BLOCK_TEXT = {
   no_email: "This prospect has no e-mail address.",
   sender_not_configured: "The sender identity is not configured on the server (OUTREACH_SENDER_*).",
   not_compliant: "The draft is missing a mandatory element (sender, data origin or unsubscribe link).",
-  live_not_available: "Live sending is switched on but no real adapter exists. Nothing was sent.",
+  live_not_available: "Real sending is not available: live sending is off, or the SMTP settings are incomplete. Nothing was sent.",
+  sandbox_recipient: "Sandbox is on: this recipient is not on OUTREACH_LIVE_ALLOWLIST. Nothing was sent.",
   not_simulated: "Only dry-run messages can be simulated.",
   already_bounced: "This message already bounced.",
   not_delivered: "This message was never sent.",
 };
+
+// What a test e-mail result means. "sent" only says the SMTP server accepted it, not that it reached an inbox.
+export function describeTestSend(result) {
+  if (result.status === "sent") {
+    return {
+      tone: "ok",
+      text: `Accepted by the SMTP server for ${result.to}. Check the inbox and the spam folder, then open the original message: SPF, DKIM and DMARC should read "pass".`,
+    };
+  }
+  if (result.status === "unknown") {
+    return { tone: "warn", text: `Outcome unknown (${result.error}). Check the mailbox's Sent folder before trying again.` };
+  }
+  return { tone: "danger", text: `Not sent: ${result.error || "the SMTP server refused the message"}` };
+}
 
 export function blockText(code) {
   return BLOCK_TEXT[code] || null;

@@ -8,7 +8,8 @@ from services import feature_flags
 logger = logging.getLogger(__name__)
 
 API_KEY = os.environ.get("SENDGRID_API_KEY")
-FROM_EMAIL = os.environ.get("SENDGRID_FROM_EMAIL") or "noreply@clawpilot.io"
+# No default sender: a message never leaves from an address nobody configured. Without SENDGRID_FROM_EMAIL, mock.
+FROM_EMAIL = os.environ.get("SENDGRID_FROM_EMAIL") or None
 
 
 # Verification key from SendGrid: Settings → Mail Settings → Event Webhook → "Signature Verification".
@@ -40,7 +41,7 @@ def is_configured() -> bool:
 def send_email(to_email: str, subject: str, body: str, from_email: str | None = None) -> dict:
     """Send email. Returns {status, provider_id, error}.
 
-    If SendGrid isn't fully configured (missing verified sender), returns mocked dispatch.
+    If SendGrid isn't fully configured (no API key or no `SENDGRID_FROM_EMAIL`), returns mocked dispatch.
     """
     if feature_flags.kill_switch():
         return {"status": "failed", "provider_id": None, "error": "sending halted by the kill switch"}

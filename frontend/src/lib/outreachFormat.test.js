@@ -1,6 +1,6 @@
 import {
   auditLabel, blockText, coverageLabel, describeApiError, detailSummary, domainOf, explainTotal, formatRetry,
-  limitsPatch, mergeTimeline, scoreBand, validateLimits,
+  limitsPatch, mergeTimeline, scoreBand, validateLimits, describeTestSend,
 } from "./outreachFormat";
 
 const NOW = new Date("2026-06-01T14:00:00Z");
@@ -117,5 +117,24 @@ describe("limits form", () => {
     const original = { max_per_day: 20, max_per_hour: 100, min_delay_seconds: 60, sending_paused: false };
     expect(limitsPatch(original, ok)).toEqual({});
     expect(limitsPatch(original, { ...ok, max_per_day: "5", min_delay_seconds: "0" })).toEqual({ max_per_day: 5, min_delay_seconds: 0 });
+  });
+});
+
+describe("describeTestSend", () => {
+  it("never claims delivery for an accepted message", () => {
+    const out = describeTestSend({ status: "sent", to: "founder@plantiers.com" });
+    expect(out.tone).toBe("ok");
+    expect(out.text).toMatch(/Accepted by the SMTP server/);
+    expect(out.text).toMatch(/spam/);
+    expect(out.text).not.toMatch(/delivered/i);
+  });
+  it("tells a failure from an unknown outcome", () => {
+    expect(describeTestSend({ status: "failed", error: "authentication failed (535)" })).toEqual({
+      tone: "danger",
+      text: "Not sent: authentication failed (535)",
+    });
+    const unknown = describeTestSend({ status: "unknown", error: "connection lost while sending" });
+    expect(unknown.tone).toBe("warn");
+    expect(unknown.text).toMatch(/Sent folder/);
   });
 });

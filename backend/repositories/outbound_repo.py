@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -37,6 +37,23 @@ async def get_for_draft(session: AsyncSession, account_id: uuid.UUID, draft_id: 
             .limit(1)
         )
     ).scalar_one_or_none()
+
+
+async def count_failed_for_draft(session: AsyncSession, account_id: uuid.UUID, draft_id: uuid.UUID) -> int:
+    """How many attempts on this draft ended `failed`: the next default idempotency key depends on it."""
+    return int(
+        (
+            await session.execute(
+                select(func.count())
+                .select_from(OutboundMessage)
+                .where(
+                    OutboundMessage.account_id == account_id,
+                    OutboundMessage.draft_id == draft_id,
+                    OutboundMessage.status == "failed",
+                )
+            )
+        ).scalar_one()
+    )
 
 
 async def create_idempotent(

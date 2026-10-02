@@ -26,6 +26,7 @@ export const outboundApi = {
   list: (params) => api.get("/outbound", { params }).then((r) => r.data),
   get: (id) => api.get(`/outbound/${id}`).then((r) => r.data),
   dispatch: (draftId) => api.post("/outbound/dispatch", { draft_id: draftId }).then((r) => r.data),
+  testSend: (to) => api.post("/outbound/test-send", { to }).then((r) => r.data),
   simulate: (id, event, text) => api.post(`/outbound/${id}/simulate`, { event, text: text || null }).then((r) => r.data),
 };
 

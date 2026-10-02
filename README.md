@@ -117,15 +117,18 @@ SendGrid/Twilio/AI all fall back to graceful mocks when unconfigured.
 | `SENDGRID_WEBHOOK_PUBLIC_KEY` | Verification key for `X-Twilio-Email-Event-Webhook-Signature` on `POST /api/webhooks/sendgrid` |
 | `OUTREACH_SENDER_NAME`, `_COMPANY`, `_ADDRESS`, `_EMAIL` | Sender identity printed in drafts; all four required, no default |
 | `PUBLIC_BASE_URL` | Public API URL (https in production), used in unsubscribe links |
-| `FEATURE_LIVE_SENDING`, `FEATURE_EXTERNAL_SOURCES` | Dangerous capabilities, off unless `true` (no real adapter or source exists yet) |
-| `SEND_KILL_SWITCH` | `true` halts every send immediately (dry-run dispatch, SendGrid, Twilio) |
+| `FEATURE_LIVE_SENDING`, `FEATURE_EXTERNAL_SOURCES` | Dangerous capabilities, off unless `true`. Live sending = real e-mail over SMTP (below); no network source exists yet |
+| `SMTP_HOST`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_SECURITY`, `SMTP_PORT` | The real e-mail channel. The first three are required; `SMTP_SECURITY` is `starttls` (587, default) or `ssl` (465); TLS is verified and mandatory |
+| `OUTREACH_SANDBOX`, `OUTREACH_LIVE_ALLOWLIST` | While live sending is on, only the allowlisted addresses/`@domains` receive mail. The sandbox is on unless set to `false`; an empty allowlist allows nobody |
+| `SEND_KILL_SWITCH` | `true` halts every send immediately (dispatch, SMTP test, SendGrid, Twilio) |
 | `EMERGENT_LLM_KEY` | AI composer (mock when unset) |
 | `REACT_APP_BACKEND_URL` (frontend) | API base URL |
 
 ## OutreachOS: local prospect journey (dry-run, no network)
 
 Fixture directory → normalisation → deduplication → signals → explainable score → human review → e-mail draft.
-Nothing is sent: `FEATURE_LIVE_SENDING` is off and the only channel adapter is a dry-run one that never opens a socket. Design: [`docs/architecture.md`](docs/architecture.md);
+Nothing is sent by default: `FEATURE_LIVE_SENDING` is off and the channel adapter is a dry-run one that never opens a socket
+(real SMTP sending is opt-in, see below). Design: [`docs/architecture.md`](docs/architecture.md);
 rules: [`docs/compliance.md`](docs/compliance.md), [`docs/threat-model.md`](docs/threat-model.md),
 [`docs/cost-control.md`](docs/cost-control.md), [`docs/deployment.md`](docs/deployment.md).
 
@@ -171,8 +174,8 @@ npm run lint && npm test -- --watchAll=false && npm run build
 
 ### Controlled e-mail dispatch (dry-run)
 
-An approved draft can be *dispatched* through a `ChannelAdapter`; only the dry-run adapter exists, so the "send" is recorded
-and nothing leaves the process. Order of checks: kill switch → account pause → draft and prospect approved → not suppressed,
+An approved draft can be *dispatched* through a `ChannelAdapter`: the dry-run adapter by default (the "send" is recorded and
+nothing leaves the process), the SMTP adapter when `FEATURE_LIVE_SENDING=true`. Order of checks: kill switch → account pause → draft and prospect approved → not suppressed,
 not opted out → draft carries sender identity, data origin and unsubscribe link → send limits → adapter. A draft produces at
 most one message (idempotent). Every refusal is audited, even though the call returns 4xx.
 
@@ -200,9 +203,22 @@ curl -s -X POST localhost:8000/api/outbound/<message_id>/simulate -H "$H" -H 'co
 - **Bounce** (simulated) suppresses the address. **Reply**: a STOP-style reply opts the prospect out immediately; any
   other reply is only recorded. Real providers will drive the same code from their webhooks.
 - Every message carries `List-Unsubscribe` / `List-Unsubscribe-Post` (RFC 8058) next to the link in the body.
-- `FEATURE_LIVE_SENDING=true` **without a real adapter is refused** (`501`) rather than silently falling back.
+- `FEATURE_LIVE_SENDING=true` **without complete SMTP settings is refused** (`501`) rather than silently falling back.
 
-Endpoints (`/api/outbound`): `dispatch`, list, detail (with events), `simulate`, `limits` (GET/PUT), `status`.
+Endpoints (`/api/outbound`): `dispatch`, list, detail (with events), `simulate` (dry-run only), `limits` (GET/PUT), `status`,
+`test-send`.
+
+### Real e-mail over SMTP (opt-in)
+
+Set `SMTP_HOST`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `OUTREACH_SENDER_EMAIL` (e.g. `founder@plantiers.com`) and
+`FEATURE_LIVE_SENDING=true`. Real sending then stays in a **sandbox**: only `OUTREACH_LIVE_ALLOWLIST` can receive anything
+until `OUTREACH_SANDBOX=false` is set on purpose. Check the connection first with
+`POST /api/outbound/test-send {"to": "founder@plantiers.com"}` (sender's own address or allowlist only; owner/admin).
+The message row is written as `sending` and committed **before** the SMTP call (at most once: a message left in `sending` has an
+unknown outcome and is never resent by the system); a clean failure is `failed` and the draft can be dispatched again.
+Full procedure (SPF/DKIM/DMARC, kill-switch drill, known limits): [`docs/go-live-email.md`](docs/go-live-email.md).
+Not covered yet: a real prospect source (only the fictional directory exists), bounce/reply tracking over SMTP, and the
+legacy Messages/campaign paths (SendGrid or mock, no unsubscribe footer).
 Go-live requirements are in [`docs/deployment.md`](docs/deployment.md).
 
 Tests: `pytest tests/unit` runs offline with no server or database; `pytest tests/test_outreach_prospects.py` is the end-to-end
