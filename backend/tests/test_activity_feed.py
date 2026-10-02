@@ -14,7 +14,7 @@ def _register():
         f"{BASE_URL}/api/auth/register",
         json={
             "email": f"feed_{uid}@test.com",
-            "password": "Passw0rd!123",
+            "password": uuid.uuid4().hex,  # random per run: no credential literal in the repo
             "full_name": "Feed Tester",
             "organization_name": f"Feed Org {uid}",
         },
