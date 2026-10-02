@@ -1,22 +1,29 @@
-import { useEffect, useState } from "react";
+import { CheckCircle, Envelope, Key, PaperPlaneTilt, Prohibit, Shield, ShieldCheck, Sparkle, Warning, WhatsappLogo, XCircle } from "@phosphor-icons/react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
-import { CheckCircle, XCircle, Envelope, WhatsappLogo, Sparkle, Shield, Key } from "@phosphor-icons/react";
+import { useAsync } from "@/lib/outreach";
+import { ErrorBlock, LoadingBlock } from "@/components/outreach/States";
+
+// Every status on this page is computed by the server from its real configuration (GET /settings/integrations).
+// Nothing here is a hard-coded "ACTIVE": a missing key or package shows up as such, with the reason.
+
+const TONES = {
+  ok: { chip: "chip-success", Icon: CheckCircle },
+  info: { chip: "chip-ink", Icon: ShieldCheck },
+  warn: { chip: "chip-warn", Icon: XCircle },
+  danger: { chip: "chip-danger", Icon: Prohibit },
+};
 
 export default function Settings() {
   const { user, org } = useAuth();
-  const [integrations, setIntegrations] = useState(null);
-
-  useEffect(() => {
-    api.get("/settings/integrations").then((r) => setIntegrations(r.data));
-  }, []);
+  const { data: s, error, loading, reload } = useAsync(() => api.get("/settings/integrations").then((r) => r.data), []);
 
   return (
-    <div className="p-6 md:p-10 max-w-4xl space-y-8">
+    <div className="p-6 md:p-10 max-w-4xl space-y-8" data-testid="settings-page">
       <div>
         <div className="mono-accent">// control.panel</div>
         <h1 className="text-4xl font-black tracking-tighter">Settings</h1>
-        <p className="text-[#6B6B66] mt-1">Organization profile and integration status.</p>
+        <p className="text-[#6B6B66] mt-1">Organization profile and the live status of this server&apos;s integrations.</p>
       </div>
 
       <section className="surface p-6 space-y-4">
@@ -34,47 +41,113 @@ export default function Settings() {
         </div>
       </section>
 
-      <section className="surface p-6 space-y-4">
+      <section className="surface p-6 space-y-4" data-testid="integrations">
         <div className="flex items-center gap-2">
           <Key size={18} className="text-[#0F172A]" />
           <h2 className="font-display text-xl font-bold">Integrations</h2>
         </div>
-
-        <IntegrationRow
-          icon={Sparkle}
-          name="Gemini 3 Flash (AI)"
-          description="Multi-language AI outreach message generation via Emergent universal LLM key."
-          status={true}
-          statusLabel="ACTIVE"
-        />
-        <IntegrationRow
-          icon={Envelope}
-          name="SendGrid Email"
-          description="Transactional email sending with open & click tracking."
-          status={integrations?.sendgrid_configured}
-          statusLabel={integrations?.sendgrid_configured ? "ACTIVE" : "NEEDS VERIFIED SENDER"}
-          details={[
-            ["api.key", integrations ? "••••" + "configured" : "—"],
-            ["from.email", integrations?.sendgrid_from_email || "not set"],
-          ]}
-        />
-        <IntegrationRow
-          icon={WhatsappLogo}
-          name="Twilio WhatsApp"
-          description="Outbound WhatsApp via Twilio. Falls back to MOCK dispatch if not fully configured."
-          status={integrations?.twilio_account_sid_configured}
-          statusLabel={integrations?.twilio_account_sid_configured ? "ACTIVE" : "NEEDS ACCOUNT SID"}
-          details={[
-            ["from.number", integrations?.twilio_whatsapp_from || "—"],
-            ["note", "Your SK key is an API Key SID. For direct REST you need an Account SID (starts with AC)."],
-          ]}
-        />
+        {loading && !s && <LoadingBlock label="Reading the server configuration…" />}
+        {error && <ErrorBlock message={error} onRetry={reload} />}
+        {s && <Integrations s={s} />}
       </section>
-
-      <p className="mono-accent text-[#999995]">
-        // To go live with real email/whatsapp sending, provide a verified SendGrid sender and Twilio Account SID (AC...) in backend/.env.
-      </p>
     </div>
+  );
+}
+
+function Integrations({ s }) {
+  const ai = s.ai;
+  const out = s.outreach;
+  const hooks = s.webhooks;
+  const missing = [];
+  if (!s.sendgrid_configured) missing.push("SENDGRID_API_KEY and SENDGRID_FROM_EMAIL");
+  if (!s.twilio_account_sid_configured) missing.push("TWILIO_ACCOUNT_SID (starts with AC) and TWILIO_AUTH_TOKEN");
+  if (!out.sender_configured) missing.push("OUTREACH_SENDER_NAME, _COMPANY, _ADDRESS and _EMAIL");
+  if (!hooks.twilio_signature_ready) missing.push("TWILIO_AUTH_TOKEN (webhook signature)");
+  if (!hooks.sendgrid_signature_ready) missing.push("SENDGRID_WEBHOOK_PUBLIC_KEY");
+
+  let outreachTone = "info";
+  let outreachLabel = "DRY-RUN: NOTHING LEAVES THE SYSTEM";
+  if (out.kill_switch) {
+    outreachTone = "danger";
+    outreachLabel = "HALTED BY THE KILL SWITCH";
+  } else if (!out.dry_run) {
+    outreachTone = "warn";
+    outreachLabel = "LIVE SENDING ENABLED";
+  }
+
+  return (
+    <>
+      <IntegrationRow
+        icon={Sparkle}
+        name="AI composer"
+        description={
+          ai.active
+            ? "Messages are generated by the model."
+            : `No model is called: the composer returns a fixed template. Reason: ${ai.reason}.`
+        }
+        tone={ai.active ? "ok" : "warn"}
+        statusLabel={ai.active ? "LIVE · MODEL CALLED" : "TEMPLATE ONLY"}
+        details={[
+          ["api.key", ai.key_configured ? "configured" : "not set"],
+          ["emergentintegrations", ai.library_available ? "installed" : "not installed"],
+        ]}
+        testId="row-ai"
+      />
+      <IntegrationRow
+        icon={Envelope}
+        name="SendGrid e-mail"
+        description="E-mail sent by campaigns and the message composer, with open and click tracking."
+        tone={s.sendgrid_configured ? "ok" : "warn"}
+        statusLabel={s.sendgrid_configured ? "CONFIGURED" : "NOT CONFIGURED (MOCK DISPATCH)"}
+        details={[["from.email", s.sendgrid_from_email || "not set"]]}
+        testId="row-sendgrid"
+      />
+      <IntegrationRow
+        icon={WhatsappLogo}
+        name="Twilio WhatsApp"
+        description="Outbound WhatsApp, only to contacts who opted in. Falls back to mock dispatch when not configured."
+        tone={s.twilio_account_sid_configured ? "ok" : "warn"}
+        statusLabel={s.twilio_account_sid_configured ? "CONFIGURED" : "NOT CONFIGURED (MOCK DISPATCH)"}
+        details={[["from.number", s.twilio_whatsapp_from || "not set"]]}
+        testId="row-twilio"
+      />
+      <IntegrationRow
+        icon={PaperPlaneTilt}
+        name="Prospect outreach"
+        description="Drafts and dispatch for approved prospects. Limits and the pause apply to every send path."
+        tone={outreachTone}
+        statusLabel={outreachLabel}
+        details={[
+          ["sender.identity", out.sender_configured ? "configured" : "not configured"],
+          ["sender.email", out.sender_email || "not set"],
+          ["FEATURE_LIVE_SENDING", out.live_sending_flag ? "on" : "off"],
+        ]}
+        testId="row-outreach"
+      />
+      <IntegrationRow
+        icon={ShieldCheck}
+        name="Webhook signatures"
+        description={`Inbound provider events must be signed. ${
+          hooks.production ? "In production an unsigned or unverifiable call is rejected." : "Outside production, unsigned calls are accepted (local mock mode)."
+        }`}
+        tone={hooks.twilio_signature_ready && hooks.sendgrid_signature_ready ? "ok" : "warn"}
+        statusLabel={hooks.twilio_signature_ready && hooks.sendgrid_signature_ready ? "BOTH VERIFIED" : "INCOMPLETE"}
+        details={[
+          ["twilio.signature", hooks.twilio_signature_ready ? "ready" : "no auth token"],
+          ["twilio.webhook_url", hooks.twilio_webhook_url_set ? "set" : "not set"],
+          ["sendgrid.signature", hooks.sendgrid_signature_ready ? "ready" : "no public key"],
+        ]}
+        testId="row-webhooks"
+      />
+      {missing.length > 0 ? (
+        <p className="text-sm text-[#92400E] bg-[#FFFBEB] border border-[#F59E0B]/40 rounded-md p-3 flex gap-2" data-testid="missing-config">
+          <Warning size={16} className="shrink-0 mt-0.5" />
+          <span>Not configured on this server: {missing.join("; ")}. Set them in the server environment (see backend/.env.example).</span>
+        </p>
+      ) : (
+        <p className="mono-accent text-[#999995]">// every integration above is configured on this server.</p>
+      )}
+    </>
   );
 }
 
@@ -89,18 +162,18 @@ function Row({ label, value, mono, truncate }) {
   );
 }
 
-function IntegrationRow({ icon: Icon, name, description, status, statusLabel, details = [] }) {
+function IntegrationRow({ icon: Icon, name, description, tone, statusLabel, details = [], testId }) {
+  const { chip, Icon: StatusIcon } = TONES[tone] || TONES.warn;
   return (
-    <div className="surface p-5 bg-[#FAFAF7]">
+    <div className="surface p-5 bg-[#FAFAF7]" data-testid={testId}>
       <div className="flex items-start gap-4">
         <Icon size={24} weight="duotone" className="text-[#DC2626] mt-1" />
         <div className="flex-1">
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="font-display font-semibold">{name}</h3>
-            {status
-              ? <span className="chip chip-success"><CheckCircle size={10} weight="fill" /> {statusLabel}</span>
-              : <span className="chip chip-warn"><XCircle size={10} weight="fill" /> {statusLabel}</span>
-            }
+            <span className={`chip ${chip}`} data-testid={`${testId}-status`}>
+              <StatusIcon size={10} weight="fill" /> {statusLabel}
+            </span>
           </div>
           <p className="text-sm text-[#6B6B66] mt-1">{description}</p>
           {details.length > 0 && (

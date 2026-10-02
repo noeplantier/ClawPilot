@@ -332,11 +332,37 @@ class TagCreate(BaseModel):
 
 
 # ------------------------ Settings ------------------------
+class AIStatus(BaseModel):
+    key_configured: bool = False
+    library_available: bool = False
+    active: bool = False  # True only when the model is really called
+    mode: str = "template"  # "live" | "template" (fixed text, no model call)
+    reason: Optional[str] = None  # why it is in template mode
+
+
+class OutreachStatus(BaseModel):
+    dry_run: bool = True
+    live_sending_flag: bool = False
+    kill_switch: bool = False
+    sender_configured: bool = False
+    sender_email: Optional[str] = None
+
+
+class WebhookStatus(BaseModel):
+    production: bool = False
+    twilio_signature_ready: bool = False  # TWILIO_AUTH_TOKEN is set
+    twilio_webhook_url_set: bool = False
+    sendgrid_signature_ready: bool = False  # SENDGRID_WEBHOOK_PUBLIC_KEY is set
+
+
 class IntegrationSettings(BaseModel):
     sendgrid_from_email: Optional[str] = None
     twilio_whatsapp_from: Optional[str] = None
     twilio_account_sid_configured: bool = False
     sendgrid_configured: bool = False
+    ai: AIStatus = Field(default_factory=AIStatus)
+    outreach: OutreachStatus = Field(default_factory=OutreachStatus)
+    webhooks: WebhookStatus = Field(default_factory=WebhookStatus)
 
 
 class SettingsUpdate(BaseModel):
