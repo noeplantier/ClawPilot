@@ -97,6 +97,36 @@ SendGrid/Twilio/AI all fall back to graceful mocks when unconfigured.
 | `EMERGENT_LLM_KEY` | AI composer (mock when unset) |
 | `REACT_APP_BACKEND_URL` (frontend) | API base URL |
 
+## OutreachOS: local prospect journey (dry-run, no network)
+
+Fixture directory → normalisation → deduplication → signals → explainable score → human review → e-mail draft.
+Nothing is sent: `FEATURE_LIVE_SENDING` is off and no sending adapter exists yet. Design: [`docs/architecture.md`](docs/architecture.md);
+rules: [`docs/compliance.md`](docs/compliance.md), [`docs/threat-model.md`](docs/threat-model.md),
+[`docs/cost-control.md`](docs/cost-control.md), [`docs/deployment.md`](docs/deployment.md).
+
+```bash
+cd backend
+export OUTREACH_SENDER_NAME="Your Name" OUTREACH_SENDER_COMPANY="Your Company" \
+       OUTREACH_SENDER_ADDRESS="1 rue Fictive, 69000 Lyon" OUTREACH_SENDER_EMAIL=you@example.com   # drafts need these
+alembic upgrade head && python -m scripts.seed_demo && uvicorn server:app --port 8000 &
+TOKEN=$(curl -s localhost:8000/api/auth/login -H 'content-type: application/json' \
+  -d '{"email":"demo@clawpilot.io","password":"Demo12345!"}' | python -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
+H="Authorization: Bearer $TOKEN"
+curl -s -X POST localhost:8000/api/prospects/discovery/run -H "$H" -H 'content-type: application/json' -d '{}'   # 9 listings → 7 prospects
+curl -s localhost:8000/api/prospects -H "$H"                                    # ranked by score
+curl -s localhost:8000/api/prospects/<id> -H "$H"                               # sources, signals + evidence, score breakdown
+curl -s -X POST localhost:8000/api/prospects/<id>/review -H "$H" -H 'content-type: application/json' -d '{"decision":"approve"}'
+curl -s -X POST localhost:8000/api/prospects/<id>/drafts -H "$H"                # dry-run draft (idempotent)
+```
+
+Endpoints (`/api/prospects`): `discovery/run`, list, detail, `review`, `rescore`, `drafts`, `drafts/{id}/review`, `events`
+(audit history), `erase`, `suppressions`, `score-config`, `settings`; public `GET|POST /api/unsubscribe/{token}`.
+The score is 0–100; a signal is `detected`, `not_detected` or `unknown`, and only `detected` adds points — a missing
+observation never counts against a prospect. There is no UI for this yet (next slice).
+
+Tests: `pytest tests/unit` runs offline with no server or database; `pytest tests/test_outreach_prospects.py` is the end-to-end
+journey against a running server (needs the `OUTREACH_SENDER_*` variables above on the server).
+
 ## Webhook security
 
 `POST /api/webhooks/twilio` verifies `X-Twilio-Signature` with `TWILIO_AUTH_TOKEN` and returns

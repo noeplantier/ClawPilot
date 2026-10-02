@@ -43,6 +43,18 @@ async def _enforce_consent_for_lead(
     repositories/lead_repo.py::_gather_signals)."""
     if not lead_id:
         return None
+    blocked = await lead_repo.discovery_send_block(session, account_id, uuid.UUID(lead_id))
+    if blocked:
+        await audit_repo.log(
+            session,
+            account_id,
+            action="send.blocked_review",
+            resource_type="lead",
+            resource_id=uuid.UUID(lead_id),
+            diff={"channel": channel, "reason": blocked},
+        )
+        await session.commit()  # get_db_session rolls back on HTTPException: persist the evidence first
+        raise HTTPException(status_code=403, detail=f"Recipient cannot be contacted: {blocked}")
     contact_id = await consent_repo.get_primary_contact_id(session, uuid.UUID(lead_id))
     if not contact_id:
         return None
@@ -56,6 +68,7 @@ async def _enforce_consent_for_lead(
             resource_id=uuid.UUID(lead_id),
             diff={"channel": channel, "consent_status": status},
         )
+        await session.commit()  # get_db_session rolls back on HTTPException: persist the evidence first
         raise HTTPException(status_code=403, detail=f"Recipient has not consented to {channel} outreach")
     return contact_id
 
