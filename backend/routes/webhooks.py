@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.session import get_db_session
 from repositories import activity_repo, campaign_repo, consent_repo, lead_repo, outreach_repo
-from services import twilio_svc
+from services import sendgrid_svc, twilio_svc
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
@@ -44,7 +44,33 @@ def _is_opt_out_message(body: str) -> bool:
     return body.strip().strip(".!?").lower() in WHATSAPP_OPT_OUT_KEYWORDS
 
 
-@router.post("/sendgrid")
+def _reject_or_warn_unverifiable(provider: str, setting: str) -> None:
+    """No verification secret configured: refuse in production, tolerate in local mock mode."""
+    if os.environ.get("APP_ENV", "").lower() == "production":
+        logger.error("%s webhook rejected: %s is not set in production", provider, setting)
+        raise HTTPException(status_code=403, detail="Webhook signature cannot be verified")
+    logger.warning("%s webhook accepted UNSIGNED: %s unset (non-production mock mode)", provider, setting)
+
+
+async def require_sendgrid_signature(request: Request) -> None:
+    """Reject SendGrid event webhooks without a valid ECDSA signature (fails closed, like Twilio's).
+
+    Forged events could mark mail as bounced/unsubscribed or fake opens. Needs
+    SENDGRID_WEBHOOK_PUBLIC_KEY; the signature covers the raw body, so it is read unparsed.
+    """
+    if not sendgrid_svc.WEBHOOK_PUBLIC_KEY:
+        return _reject_or_warn_unverifiable("sendgrid", "SENDGRID_WEBHOOK_PUBLIC_KEY")
+    ok = sendgrid_svc.verify_event_signature(
+        await request.body(),
+        request.headers.get("X-Twilio-Email-Event-Webhook-Signature"),
+        request.headers.get("X-Twilio-Email-Event-Webhook-Timestamp"),
+    )
+    if not ok:
+        logger.warning("sendgrid webhook rejected: invalid or missing signature")
+        raise HTTPException(status_code=403, detail="Invalid signature")
+
+
+@router.post("/sendgrid", dependencies=[Depends(require_sendgrid_signature)])
 async def sendgrid_webhook(request: Request, session: AsyncSession = Depends(get_db_session)):
     """Handle SendGrid event webhook. Body is a JSON array of events.
 
@@ -133,11 +159,7 @@ async def require_twilio_signature(request: Request) -> None:
     TWILIO_WEBHOOK_URL to the exact public URL configured in the Twilio console.
     """
     if not twilio_svc.TOKEN:
-        if os.environ.get("APP_ENV", "").lower() == "production":
-            logger.error("twilio webhook rejected: TWILIO_AUTH_TOKEN is not set in production")
-            raise HTTPException(status_code=403, detail="Webhook signature cannot be verified")
-        logger.warning("twilio webhook accepted UNSIGNED: TWILIO_AUTH_TOKEN unset (non-production mock mode)")
-        return
+        return _reject_or_warn_unverifiable("twilio", "TWILIO_AUTH_TOKEN")
 
     form = await request.form()
     params = {k: v for k, v in form.items() if isinstance(v, str)}
