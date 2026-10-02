@@ -7,14 +7,16 @@ entry, replacing the legacy polymorphic `messages` Mongo collection.
 """
 
 import logging
+import os
 import uuid
 from typing import List
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.session import get_db_session
 from repositories import activity_repo, campaign_repo, consent_repo, lead_repo, outreach_repo
+from services import twilio_svc
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
@@ -118,7 +120,34 @@ async def sendgrid_webhook(request: Request, session: AsyncSession = Depends(get
     return {"ok": True, "processed": processed, "total": len(events)}
 
 
-@router.post("/twilio")
+async def require_twilio_signature(request: Request) -> None:
+    """Reject Twilio webhooks that do not carry a valid `X-Twilio-Signature`.
+
+    Inbound messages and STOP replies change consent state, so an unauthenticated caller
+    must never reach the handler. Fails closed:
+    - auth token set        → signature must verify (403 otherwise);
+    - token unset, production → 403 (nothing to verify against);
+    - token unset, non-production → allowed, for local mock mode only.
+
+    Behind a proxy the URL the app sees can differ from the one Twilio signed, so set
+    TWILIO_WEBHOOK_URL to the exact public URL configured in the Twilio console.
+    """
+    if not twilio_svc.TOKEN:
+        if os.environ.get("APP_ENV", "").lower() == "production":
+            logger.error("twilio webhook rejected: TWILIO_AUTH_TOKEN is not set in production")
+            raise HTTPException(status_code=403, detail="Webhook signature cannot be verified")
+        logger.warning("twilio webhook accepted UNSIGNED: TWILIO_AUTH_TOKEN unset (non-production mock mode)")
+        return
+
+    form = await request.form()
+    params = {k: v for k, v in form.items() if isinstance(v, str)}
+    url = os.environ.get("TWILIO_WEBHOOK_URL") or str(request.url)
+    if not twilio_svc.verify_signature(url, params, request.headers.get("X-Twilio-Signature")):
+        logger.warning("twilio webhook rejected: invalid or missing signature (url=%s)", url)
+        raise HTTPException(status_code=403, detail="Invalid signature")
+
+
+@router.post("/twilio", dependencies=[Depends(require_twilio_signature)])
 async def twilio_webhook(request: Request, session: AsyncSession = Depends(get_db_session)):
     """Handle Twilio message status callbacks AND inbound WhatsApp messages.
 

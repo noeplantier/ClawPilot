@@ -32,6 +32,8 @@ pour l'installation et `docs/cloud-sessions.md` pour la feuille de route en cour
 - Consentement : WhatsApp = opt-in explicite requis. Email = bloqué uniquement si `opted_out`. Passer par
   `consent_repo.can_send(...)` avant tout envoi.
 - Tout email sortant contient : identité de l'expéditeur, origine des données, lien de désinscription fonctionnel.
+- Tout webhook public (Twilio, SendGrid…) vérifie la signature du fournisseur avant de toucher à la base,
+  et échoue fermé en production quand la clé de vérification est absente.
 - Pas de scraping contraire aux CGU des plateformes ni à `robots.txt`. Pas d'envoi de masse non consenti.
 - Jamais de clé ou secret dans le code, les tests, les logs ou un commit. `backend/.env` est ignoré par git ;
   toute nouvelle variable est ajoutée à `backend/.env.example` **et** au README.
