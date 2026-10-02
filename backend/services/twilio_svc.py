@@ -10,6 +10,20 @@ TOKEN = os.environ.get("TWILIO_AUTH_TOKEN")
 FROM = os.environ.get("TWILIO_WHATSAPP_FROM") or "whatsapp:+14155238886"
 
 
+def verify_signature(url: str, params: dict[str, str], signature: str | None, token: str | None = None) -> bool:
+    """Check Twilio's `X-Twilio-Signature` (HMAC-SHA1 of the full URL + sorted POST params).
+
+    `token` defaults to the configured auth token. Returns False for a missing token or
+    signature — callers decide whether an unconfigured deployment may skip verification.
+    """
+    token = TOKEN if token is None else token
+    if not token or not signature:
+        return False
+    from twilio.request_validator import RequestValidator
+
+    return RequestValidator(token).validate(url, params, signature)
+
+
 def is_configured() -> bool:
     # Only Account SIDs that start with AC can send via Twilio REST API directly.
     return bool(SID and TOKEN and SID.startswith("AC"))

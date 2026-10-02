@@ -92,8 +92,18 @@ SendGrid/Twilio/AI all fall back to graceful mocks when unconfigured.
 | `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND`, `REDIS_URL` | Redis for Celery |
 | `SENDGRID_API_KEY`, `SENDGRID_FROM_EMAIL` | Email (mock when unset) |
 | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM` | WhatsApp (mock when unset) |
+| `TWILIO_WEBHOOK_URL` | Exact public URL Twilio calls (e.g. `https://api.example.com/api/webhooks/twilio`); used to verify `X-Twilio-Signature` |
 | `EMERGENT_LLM_KEY` | AI composer (mock when unset) |
 | `REACT_APP_BACKEND_URL` (frontend) | API base URL |
+
+## Webhook security
+
+`POST /api/webhooks/twilio` verifies `X-Twilio-Signature` with `TWILIO_AUTH_TOKEN` and returns
+403 otherwise, so nobody can forge replies or STOP opt-outs. It fails closed: with `APP_ENV=production`
+and no token, every call is rejected. Without a token outside production (local mock mode) calls are
+accepted unsigned, with a warning in the log. Set `TWILIO_WEBHOOK_URL` to the exact URL configured in
+Twilio — behind a proxy the URL the app sees differs from the one Twilio signed.
+`POST /api/webhooks/sendgrid` is **not** signed yet.
 
 ## Demo account
 

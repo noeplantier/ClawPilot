@@ -43,6 +43,8 @@ services:
         sync: false
       - key: TWILIO_WHATSAPP_FROM
         sync: false
+      - key: TWILIO_WEBHOOK_URL
+        sync: false # public URL of /api/webhooks/twilio, as set in the Twilio console
 
   - type: worker
     name: clawpilot-worker
