@@ -9,9 +9,9 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.session import get_db_session
-from deps import db, get_current_user
-from models import Activity, Campaign, CampaignCreate, CampaignStep, CampaignUpdate
-from repositories import campaign_repo, consent_repo, lead_repo, outreach_repo
+from deps import get_current_user
+from models import Campaign, CampaignCreate, CampaignStep, CampaignUpdate
+from repositories import activity_repo, campaign_repo, consent_repo, lead_repo, outreach_repo
 from services import scheduler
 from services.sendgrid_svc import send_email
 from services.templating import render as _render
@@ -62,13 +62,6 @@ class RunStepOut(BaseModel):
     total: int
 
 
-async def _log(org_id: str, kind: str, title: str):
-    act = Activity(org_id=org_id, kind=kind, title=title)
-    d = act.model_dump()
-    d["created_at"] = d["created_at"].isoformat()
-    await db.activity.insert_one(d)
-
-
 @router.get("", response_model=List[Campaign])
 async def list_campaigns(user: dict = Depends(get_current_user), session: AsyncSession = Depends(get_db_session)):
     rows = await campaign_repo.list_campaigns(session, uuid.UUID(user["org_id"]))
@@ -82,7 +75,7 @@ async def create_campaign(
     session: AsyncSession = Depends(get_db_session),
 ):
     c = await campaign_repo.create_campaign(session, uuid.UUID(user["org_id"]), payload.model_dump())
-    await _log(user["org_id"], "campaign.created", f"Campaign '{c.name}' created")
+    await activity_repo.record(session, user["org_id"], "campaign.created", f"Campaign '{c.name}' created")
     return _to_schema(c)
 
 
@@ -114,7 +107,7 @@ async def update_campaign(
     if not c:
         raise HTTPException(status_code=404, detail="Not found")
     if "status" in upd:
-        await _log(user["org_id"], f"campaign.{upd['status']}", f"{c.name} → {upd['status']}")
+        await activity_repo.record(session, user["org_id"], f"campaign.{upd['status']}", f"{c.name} → {upd['status']}")
     return _to_schema(c)
 
 
@@ -150,7 +143,8 @@ async def assign_leads(
     c = await campaign_repo.assign_leads(session, account_id, campaign_id, payload.lead_ids)
     if not c:
         raise HTTPException(status_code=404, detail="Not found")
-    await _log(
+    await activity_repo.record(
+        session,
         user["org_id"],
         "campaign.assigned",
         f"{c.name} +{len(payload.lead_ids)} leads assigned ({len(c.leads)} total)",
@@ -246,8 +240,11 @@ async def run_step(
 
     dispatched = sent + mocked
     await campaign_repo.increment_counters(session, account_id, campaign_id, sent=dispatched, set_status="running")
-    await _log(
-        user["org_id"], "campaign.step", f"{c.name} · step {step_index+1}/{len(steps)} · {dispatched} dispatched"
+    await activity_repo.record(
+        session,
+        user["org_id"],
+        "campaign.step",
+        f"{c.name} · step {step_index+1}/{len(steps)} · {dispatched} dispatched",
     )
 
     return RunStepOut(dispatched=dispatched, sent=sent, mocked=mocked, failed=failed, skipped=skipped, total=len(leads))
@@ -281,7 +278,7 @@ async def launch_campaign(
         converted=converted,
         set_status="running",
     )
-    await _log(user["org_id"], "campaign.launched", f"{c.name} dispatched {burst} messages")
+    await activity_repo.record(session, user["org_id"], "campaign.launched", f"{c.name} dispatched {burst} messages")
     return {"ok": True, "dispatched": burst, "opened": opened, "replied": replied, "converted": converted}
 
 
@@ -296,7 +293,8 @@ async def schedule_campaign(
     if res.get("error"):
         raise HTTPException(status_code=400, detail=res["error"])
     await campaign_repo.increment_counters(session, uuid.UUID(user["org_id"]), campaign_id, set_status="running")
-    await _log(
+    await activity_repo.record(
+        session,
         user["org_id"],
         "campaign.scheduled",
         f"Scheduled {res['scheduled']} jobs ({res['steps']} steps × {res['leads']} leads)",
@@ -321,5 +319,7 @@ async def cancel_schedule(
     session: AsyncSession = Depends(get_db_session),
 ):
     cancelled = await scheduler.cancel_campaign(session, campaign_id, user["org_id"])
-    await _log(user["org_id"], "campaign.schedule_cancel", f"Cancelled {cancelled} pending jobs")
+    await activity_repo.record(
+        session, user["org_id"], "campaign.schedule_cancel", f"Cancelled {cancelled} pending jobs"
+    )
     return {"cancelled": cancelled}

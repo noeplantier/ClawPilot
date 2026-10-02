@@ -10,9 +10,9 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.session import get_db_session
-from deps import db, get_current_user
-from models import Activity, ConsentStatus, ConsentUpdateIn, Lead, LeadCreate, LeadUpdate
-from repositories import consent_repo, lead_repo, tags_repo
+from deps import get_current_user
+from models import ConsentStatus, ConsentUpdateIn, Lead, LeadCreate, LeadUpdate
+from repositories import activity_repo, consent_repo, lead_repo, tags_repo
 from repositories.lead_repo import LeadExtra
 
 router = APIRouter(prefix="/leads", tags=["leads"])
@@ -38,13 +38,6 @@ def _to_schema(lead, extra: LeadExtra) -> Lead:
         whatsapp_consent=cast(ConsentStatus, extra.whatsapp_consent),
         created_at=lead.created_at,
     )
-
-
-async def _log(org_id: str, kind: str, title: str, meta: dict | None = None):
-    act = Activity(org_id=org_id, kind=kind, title=title, meta=meta or {})
-    d = act.model_dump()
-    d["created_at"] = d["created_at"].isoformat()
-    await db.activity.insert_one(d)
 
 
 class BulkLeadsIn(BaseModel):
@@ -92,7 +85,7 @@ async def create_lead(
     session: AsyncSession = Depends(get_db_session),
 ):
     lead, extra = await lead_repo.create_lead(session, uuid.UUID(user["org_id"]), payload.model_dump())
-    await _log(user["org_id"], "lead.created", f"New lead added — {lead.full_name}")
+    await activity_repo.record(session, user["org_id"], "lead.created", f"New lead added — {lead.full_name}")
     return _to_schema(lead, extra)
 
 
@@ -106,8 +99,11 @@ async def bulk_create_leads(
     result = await lead_repo.bulk_create_leads(
         session, uuid.UUID(user["org_id"]), [row.model_dump() for row in payload.leads]
     )
-    await _log(
-        user["org_id"], "lead.bulk", f"Bulk import · +{result.created} leads ({result.skipped} duplicates skipped)"
+    await activity_repo.record(
+        session,
+        user["org_id"],
+        "lead.bulk",
+        f"Bulk import · +{result.created} leads ({result.skipped} duplicates skipped)",
     )
     return BulkLeadsOut(created=result.created, skipped=result.skipped, errors=result.errors, lead_ids=result.lead_ids)
 
@@ -119,7 +115,9 @@ async def bulk_update_stage(
     session: AsyncSession = Depends(get_db_session),
 ):
     updated = await lead_repo.bulk_update_stage(session, uuid.UUID(user["org_id"]), payload.lead_ids, payload.stage)
-    await _log(user["org_id"], "lead.bulk_stage", f"Bulk stage update → {payload.stage} · {updated} leads")
+    await activity_repo.record(
+        session, user["org_id"], "lead.bulk_stage", f"Bulk stage update → {payload.stage} · {updated} leads"
+    )
     return {"updated": updated}
 
 
@@ -130,7 +128,7 @@ async def bulk_delete_leads(
     session: AsyncSession = Depends(get_db_session),
 ):
     deleted = await lead_repo.bulk_delete_leads(session, uuid.UUID(user["org_id"]), payload.lead_ids)
-    await _log(user["org_id"], "lead.bulk_delete", f"Bulk delete · {deleted} leads removed")
+    await activity_repo.record(session, user["org_id"], "lead.bulk_delete", f"Bulk delete · {deleted} leads removed")
     return {"deleted": deleted}
 
 
@@ -143,7 +141,9 @@ async def bulk_tag_leads(
     updated = await lead_repo.bulk_tag_leads(
         session, uuid.UUID(user["org_id"]), payload.lead_ids, payload.tags, payload.mode
     )
-    await _log(user["org_id"], "lead.bulk_tag", f"Bulk {payload.mode} tags {payload.tags} · {updated} leads")
+    await activity_repo.record(
+        session, user["org_id"], "lead.bulk_tag", f"Bulk {payload.mode} tags {payload.tags} · {updated} leads"
+    )
     return {"updated": updated}
 
 
@@ -240,7 +240,7 @@ async def update_lead(
         raise HTTPException(status_code=404, detail="Lead not found")
     lead, extra = res
     if "stage" in upd:
-        await _log(user["org_id"], "lead.stage", f"{lead.full_name} → {upd['stage']}")
+        await activity_repo.record(session, user["org_id"], "lead.stage", f"{lead.full_name} → {upd['stage']}")
     return _to_schema(lead, extra)
 
 
@@ -265,7 +265,7 @@ async def enrich_leads(
     country, tags, source intent, engagement history — see services/scoring.py).
     Each recomputation is recorded in `lead_scores` for a full audit trail."""
     count = await lead_repo.enrich_leads(session, uuid.UUID(user["org_id"]))
-    await _log(user["org_id"], "lead.rescored", f"Rescored {count} leads")
+    await activity_repo.record(session, user["org_id"], "lead.rescored", f"Rescored {count} leads")
     return {"enriched": count}
 
 
@@ -298,7 +298,8 @@ async def update_consent(
         status=payload.status,
         source=payload.source,
     )
-    await _log(
+    await activity_repo.record(
+        session,
         user["org_id"],
         "lead.consent",
         f"{lead.full_name} · {payload.channel} → {payload.status} ({payload.source})",

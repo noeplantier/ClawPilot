@@ -7,8 +7,6 @@ autonomously with human oversight.
 ## Stack
 
 - **Backend**: Python 3.12, FastAPI, SQLAlchemy 2.0 (async) + Alembic, PostgreSQL
-- **Legacy (transitional)**: MongoDB still backs the activity feed and agent live-log
-  simulation — see [`memory/PRD.md`](memory/PRD.md) for the migration status
 - **Frontend**: React 19, React Router, Tailwind, Radix UI
 - **Jobs**: Celery + Redis — three queues (`sends`, `automation`, `webhooks`), per-channel
   rate limits, timezone-aware send windows, and beat-scheduled automation (rescoring,
@@ -32,11 +30,13 @@ backend/
   celery_app.py          Celery app + beat schedule
   tasks/                 Celery tasks (sends, automation, webhooks)
   scripts/
-    migrate_mongo_to_postgres.py   one-shot legacy data migration
+    seed_demo.py           local demo account + sample data (idempotent, dev only)
+    gen_schema_doc.py      regenerates docs/schema.md from the ORM models
   tests/                 Backend integration test suite (pytest)
 frontend/
   src/                   React app (pages, components, contexts, lib)
-docker-compose.yml       Postgres, Redis, Mailpit, Mongo (transitional), backend
+render.yaml             Render Blueprint (API, worker, beat, Postgres, Redis)
+docker-compose.yml       Postgres, Redis, Mailpit, backend, worker, beat
 .github/workflows/ci.yml Lint, migration check, tests, build, deploy
 ```
 
@@ -48,19 +48,21 @@ docker-compose.yml       Postgres, Redis, Mailpit, Mongo (transitional), backend
 cp backend/.env.example backend/.env      # fill in secrets as needed
 docker compose up --build
 cd backend && alembic upgrade head        # first run only
+docker compose exec backend python -m scripts.seed_demo   # optional demo account
 ```
 
 Backend: http://localhost:8000/api/health · Mailpit (test emails): http://localhost:8025
 
-### Option B — native (Postgres/Redis/Mongo installed locally)
+### Option B — native (Postgres/Redis installed locally)
 
 ```bash
 # Backend
 cd backend
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env                      # set DATABASE_URL, MONGO_URL, JWT_SECRET, ...
+cp .env.example .env                      # set DATABASE_URL, JWT_SECRET, ...
 alembic upgrade head
+python -m scripts.seed_demo                # optional demo account
 uvicorn server:app --reload
 
 # Background jobs (separate shells) — needed for scheduled sends and automation
@@ -78,9 +80,32 @@ npm start
 
 See [`backend/.env.example`](backend/.env.example) and
 [`frontend/.env.example`](frontend/.env.example) for the full list. Nothing is
-required to boot in a degraded/mock mode except `DATABASE_URL`, `MONGO_URL`,
-`DB_NAME`, and `JWT_SECRET` — SendGrid/Twilio/AI all fall back to graceful mocks
-when unconfigured.
+required to boot in a degraded/mock mode except `DATABASE_URL` and `JWT_SECRET` —
+SendGrid/Twilio/AI all fall back to graceful mocks when unconfigured.
+
+| Variable | Purpose |
+|---|---|
+| `DATABASE_URL` | PostgreSQL (`postgres://` / `postgresql://` are auto-converted to the asyncpg driver) |
+| `JWT_SECRET` | Signs access tokens — generate with `openssl rand -hex 32` |
+| `APP_ENV` | `production` makes `scripts/seed_demo.py` refuse to run |
+| `CORS_ORIGINS` | Comma-separated allowed origins (default `http://localhost:3000`; never `*`) |
+| `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND`, `REDIS_URL` | Redis for Celery |
+| `SENDGRID_API_KEY`, `SENDGRID_FROM_EMAIL` | Email (mock when unset) |
+| `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM` | WhatsApp (mock when unset) |
+| `EMERGENT_LLM_KEY` | AI composer (mock when unset) |
+| `REACT_APP_BACKEND_URL` (frontend) | API base URL |
+
+## Demo account
+
+New accounts start **empty**. For local development, `python -m scripts.seed_demo`
+(from `backend/`) creates `demo@clawpilot.io` / `Demo12345!` with sample leads and campaigns.
+It is idempotent and refuses to run with `APP_ENV=production`. The demo login goes through the
+real `/api/auth/login` — there is no client-side bypass.
+
+## Database schema
+
+[`docs/schema.md`](docs/schema.md) is generated from the ORM models:
+`cd backend && python -m scripts.gen_schema_doc` (`--check` fails if it is stale).
 
 ## Tests
 
@@ -103,25 +128,15 @@ alembic upgrade head
 alembic check                                       # verify no model/migration drift
 ```
 
-## Migrating existing MongoDB data
-
-One-shot, idempotent — safe to re-run:
-
-```bash
-cd backend
-python scripts/migrate_mongo_to_postgres.py --dry-run   # preview counts first
-python scripts/migrate_mongo_to_postgres.py
-```
-
 ## Deployment
 
 - **Frontend**: Netlify (already configured, see `frontend/public/netlify.toml`).
 - **Backend**: Docker image via `backend/Dockerfile`, deployed to Render. CI
   triggers a deploy on every push to `main` via `RENDER_DEPLOY_HOOK_URL` (repo
   secret) once tests and the frontend build pass.
-- Provision managed PostgreSQL + Redis on Render (or your host of choice) and
-  point `DATABASE_URL` / `REDIS_URL` at them; run `alembic upgrade head` as a
-  release step.
+- [`render.yaml`](render.yaml) is a Render Blueprint: API, Celery worker, Celery beat,
+  PostgreSQL and Redis. `alembic upgrade head` runs as the API's pre-deploy command.
+  Secrets (`SENDGRID_*`, `TWILIO_*`, `CORS_ORIGINS`) are `sync: false` — set them in the dashboard.
 
 ## Status & roadmap
 

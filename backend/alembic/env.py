@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 import db.models  # noqa: F401 — populates Base.metadata for autogenerate
 from alembic import context
 from db.base import Base
+from db.url import async_database_url
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -17,7 +18,7 @@ config = context.config
 # DATABASE_URL env var always wins over alembic.ini (keeps one source of truth
 # across local/Docker/CI/Render — see backend/db/session.py).
 if os.environ.get("DATABASE_URL"):
-    config.set_main_option("sqlalchemy.url", os.environ["DATABASE_URL"])
+    config.set_main_option("sqlalchemy.url", async_database_url())
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.

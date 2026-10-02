@@ -14,8 +14,7 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.session import get_db_session
-from deps import db
-from repositories import campaign_repo, consent_repo, lead_repo, outreach_repo
+from repositories import activity_repo, campaign_repo, consent_repo, lead_repo, outreach_repo
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
@@ -165,15 +164,12 @@ async def twilio_webhook(request: Request, session: AsyncSession = Depends(get_d
                 lead_id=lead.get("id") if lead else None,
                 meta={"from": from_, "body": incoming_body[:200]},
             )
-            await db.activity.insert_one(
-                {
-                    "id": f"wh-in-{message_sid or from_}"[:120],
-                    "org_id": org_id,
-                    "kind": "whatsapp.inbound",
-                    "title": f"📩 Reply from {from_}: {incoming_body[:80]}",
-                    "meta": {"lead_id": lead.get("id") if lead else None},
-                    "created_at": "",
-                }
+            await activity_repo.record(
+                session,
+                account_id,
+                "whatsapp.inbound",
+                f"📩 Reply from {from_}: {incoming_body[:80]}",
+                {"lead_id": lead.get("id") if lead else None},
             )
             # Bump the most recent campaign's replied counter if we have lead linkage
             if lead:
