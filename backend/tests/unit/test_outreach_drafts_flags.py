@@ -111,7 +111,13 @@ def test_token_garbage_is_rejected_without_raising(garbage):
 def test_flags_are_off_by_default_and_dry_run_is_on(monkeypatch):
     for name in feature_flags.KNOWN_FLAGS:
         monkeypatch.delenv(f"FEATURE_{name.upper()}", raising=False)
-    assert feature_flags.snapshot() == {"live_sending": False, "external_sources": False, "dry_run": True}
+    monkeypatch.delenv("SEND_KILL_SWITCH", raising=False)
+    assert feature_flags.snapshot() == {
+        "live_sending": False,
+        "external_sources": False,
+        "dry_run": True,
+        "kill_switch": False,
+    }
 
 
 def test_flags_enable_explicitly_and_reject_unknown(monkeypatch):

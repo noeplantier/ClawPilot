@@ -35,6 +35,8 @@ services:
         sync: false # frontend origin, e.g. https://app.example.com
       - key: PUBLIC_BASE_URL
         sync: false # public API URL (https), used in unsubscribe links
+      - key: SEND_KILL_SWITCH
+        sync: false # leave empty; set to true to halt every send immediately
       - key: OUTREACH_SENDER_NAME
         sync: false
       - key: OUTREACH_SENDER_COMPANY

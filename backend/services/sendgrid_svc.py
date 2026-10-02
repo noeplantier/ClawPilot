@@ -3,6 +3,8 @@
 import logging
 import os
 
+from services import feature_flags
+
 logger = logging.getLogger(__name__)
 
 API_KEY = os.environ.get("SENDGRID_API_KEY")
@@ -40,6 +42,8 @@ def send_email(to_email: str, subject: str, body: str, from_email: str | None = 
 
     If SendGrid isn't fully configured (missing verified sender), returns mocked dispatch.
     """
+    if feature_flags.kill_switch():
+        return {"status": "failed", "provider_id": None, "error": "sending halted by the kill switch"}
     sender = from_email or FROM_EMAIL
     if not API_KEY or not sender:
         return {"status": "mock", "provider_id": None, "error": "sendgrid not configured"}

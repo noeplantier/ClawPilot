@@ -423,6 +423,69 @@ Généré par `backend/scripts/gen_schema_doc.py` depuis les modèles ORM — ne
 
 - `ck_notes_target`: `lead_id IS NOT NULL OR campaign_id IS NOT NULL`
 
+## `outbound_events`
+
+| Colonne | Type | Null | Défaut |
+|---|---|---|---|
+| `account_id` | UUID | non |  |
+| `message_id` | UUID | non |  |
+| `event_type` | VARCHAR | non |  |
+| `created_at` | DATETIME | non | `clock_timestamp()` |
+| `detail` | JSONB | non | `'{}'::jsonb` |
+| `id` (PK) | UUID | non | `gen_random_uuid()` |
+
+**Relations**
+
+- `account_id` → `accounts.id` (ON DELETE CASCADE)
+- `message_id` → `outbound_messages.id` (ON DELETE CASCADE)
+
+**Contraintes CHECK**
+
+- `ck_outbound_events_event_type`: `event_type IN ('sent','failed','bounced','replied','opted_out')`
+
+**Index**
+
+- `ix_outbound_events_message_created` (outbound_events.message_id, outbound_events.created_at)
+
+## `outbound_messages`
+
+| Colonne | Type | Null | Défaut |
+|---|---|---|---|
+| `account_id` | UUID | non |  |
+| `lead_id` | UUID | non |  |
+| `draft_id` | UUID | oui |  |
+| `channel` | VARCHAR | non | `email` |
+| `to_email` | CITEXT | oui |  |
+| `subject` | VARCHAR | non |  |
+| `body` | TEXT | non |  |
+| `adapter` | VARCHAR | non |  |
+| `dry_run` | BOOLEAN | non | `true` |
+| `status` | VARCHAR | non |  |
+| `provider_message_id` | VARCHAR | oui |  |
+| `error` | TEXT | oui |  |
+| `idempotency_key` | VARCHAR | non |  |
+| `dispatched_at` | DATETIME | non | `now()` |
+| `id` (PK) | UUID | non | `gen_random_uuid()` |
+| `created_at` | DATETIME | non | `now()` |
+| `updated_at` | DATETIME | non | `now()` |
+
+**Relations**
+
+- `account_id` → `accounts.id` (ON DELETE CASCADE)
+- `draft_id` → `message_drafts.id` (ON DELETE SET NULL)
+- `lead_id` → `leads.id` (ON DELETE CASCADE)
+
+**Contraintes CHECK**
+
+- `ck_outbound_messages_channel`: `channel IN ('email')`
+- `ck_outbound_messages_status`: `status IN ('sent','failed','bounced','replied')`
+
+**Index**
+
+- `ix_outbound_messages_account_dispatched` (outbound_messages.account_id, dispatched_at DESC)
+- `ix_outbound_messages_lead` (outbound_messages.lead_id)
+- `uq_outbound_messages_account_idempotency` (outbound_messages.account_id, outbound_messages.idempotency_key)
+
 ## `outreach_events`
 
 | Colonne | Type | Null | Défaut |
@@ -594,6 +657,9 @@ Généré par `backend/scripts/gen_schema_doc.py` depuis les modèles ORM — ne
 | `window_end_hour` | INTEGER | non | `18` |
 | `timezone_source` | VARCHAR | non | `lead_country` |
 | `account_default_timezone` | VARCHAR | non | `UTC` |
+| `max_per_day` | INTEGER | non | `20` |
+| `min_delay_seconds` | INTEGER | non | `60` |
+| `sending_paused` | BOOLEAN | non | `false` |
 | `id` (PK) | UUID | non | `gen_random_uuid()` |
 | `created_at` | DATETIME | non | `now()` |
 | `updated_at` | DATETIME | non | `now()` |
@@ -605,6 +671,8 @@ Généré par `backend/scripts/gen_schema_doc.py` depuis les modèles ORM — ne
 **Contraintes CHECK**
 
 - `ck_send_policies_channel`: `channel IN ('email','whatsapp')`
+- `ck_send_policies_max_per_day`: `max_per_day BETWEEN 0 AND 100000`
+- `ck_send_policies_min_delay_seconds`: `min_delay_seconds BETWEEN 0 AND 86400`
 - `ck_send_policies_tz_source`: `timezone_source IN ('lead_country','account_default')`
 
 **Index**
@@ -701,7 +769,7 @@ Généré par `backend/scripts/gen_schema_doc.py` depuis les modèles ORM — ne
 
 **Contraintes CHECK**
 
-- `ck_usage_records_kind`: `kind IN ('discovery_run','signals_analyzed','drafts_generated')`
+- `ck_usage_records_kind`: `kind IN ('discovery_run','signals_analyzed','drafts_generated','messages_dispatched')`
 - `ck_usage_records_quantity`: `quantity >= 0`
 
 **Index**

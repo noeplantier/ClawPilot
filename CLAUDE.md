@@ -38,6 +38,12 @@ pour l'installation et `docs/cloud-sessions.md` pour la feuille de route en cour
   `FEATURE_LIVE_SENDING=true`. Tout nouveau chemin d'envoi passe par `lead_repo.get_leads_by_ids` ou
   `discovery_send_block`. Un brouillon n'affirme que des faits portés par un signal `detected` (jamais d'invention).
   `unknown` n'est jamais traité comme un défaut.
+- Tout envoi sortant passe par un `ChannelAdapter` (`services/outreach_os/channels.py`) via
+  `services/outreach_os/dispatch.py` : kill switch (`SEND_KILL_SWITCH`), pause du compte, limites (jour, heure, délai),
+  conformité du contenu, idempotence. Activer `FEATURE_LIVE_SENDING` sans adapter réel doit échouer (fail closed). Un refus
+  est journalisé **avant** de lever l'`HTTPException` (`get_db_session` annule la transaction sur erreur).
+- Journal d'événements : horodater avec `clock_timestamp()`, pas `now()`, quand plusieurs lignes d'une même transaction
+  doivent garder leur ordre.
 - Pas de scraping contraire aux CGU des plateformes ni à `robots.txt`. Pas d'envoi de masse non consenti.
 - Jamais de clé ou secret dans le code, les tests, les logs ou un commit. `backend/.env` est ignoré par git ;
   toute nouvelle variable est ajoutée à `backend/.env.example` **et** au README.

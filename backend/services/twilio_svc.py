@@ -3,6 +3,8 @@
 import logging
 import os
 
+from services import feature_flags
+
 logger = logging.getLogger(__name__)
 
 SID = os.environ.get("TWILIO_ACCOUNT_SID")
@@ -30,6 +32,8 @@ def is_configured() -> bool:
 
 
 def send_whatsapp(to_number: str, body: str) -> dict:
+    if feature_flags.kill_switch():
+        return {"status": "failed", "provider_id": None, "error": "sending halted by the kill switch"}
     if not to_number.startswith("+"):
         to_number = "+" + to_number.lstrip("+")
     to_wa = f"whatsapp:{to_number}"
