@@ -1,0 +1,33 @@
+# Direct runtime dependencies of the backend: the ONLY file to edit by hand for the production image.
+# requirements.txt is the full, tested lock generated from this list (see README "Dependencies").
+# Rule: add a package only if code imports it (or a runtime needs it) and say why in the comment.
+
+# --- web API ---
+fastapi==0.110.1          # HTTP framework (routes/, server.py)
+starlette==0.37.2         # pinned with fastapi 0.110 (CORS middleware, TestClient base)
+uvicorn==0.25.0           # ASGI server (Dockerfile CMD, docker-compose, render.yaml)
+pydantic==2.12.5          # HTTP contract (models.py) and score configuration
+email-validator==2.3.0    # pydantic EmailStr
+python-multipart==0.0.24  # form bodies: Twilio webhook (request.form) and CSV upload
+python-dotenv==1.2.2      # backend/.env loading (deps.py, server.py)
+
+# --- auth ---
+PyJWT==2.12.1             # access tokens (deps.py)
+passlib==1.7.4            # password hashing API (deps.py)
+bcrypt==4.1.3             # passlib's bcrypt backend. Stay on 4.x: passlib 1.7.4 is unmaintained (harmless
+                          # '__about__' warning at login) and bcrypt 5 rejects passwords over 72 bytes
+
+# --- database ---
+SQLAlchemy==2.0.51        # ORM, repositories/ only
+asyncpg==0.31.0          # async PostgreSQL driver (DATABASE_URL postgresql+asyncpg://)
+greenlet==3.5.3           # required by SQLAlchemy's async engine
+alembic==1.18.5           # migrations
+
+# --- background jobs ---
+celery==5.6.3             # task queue (celery_app.py, tasks/)
+redis==8.0.1              # Celery broker and result backend client
+
+# --- external services (each has a "mock" mode without a key) ---
+sendgrid==6.12.5          # e-mail sending and event-webhook signature helper
+twilio==9.10.5            # WhatsApp sending and X-Twilio-Signature validation
+cryptography==46.0.7      # imported by the SendGrid signature check; not declared by sendgrid itself
