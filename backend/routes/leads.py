@@ -84,7 +84,10 @@ async def create_lead(
     user: dict = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
-    lead, extra = await lead_repo.create_lead(session, uuid.UUID(user["org_id"]), payload.model_dump())
+    try:
+        lead, extra = await lead_repo.create_lead(session, uuid.UUID(user["org_id"]), payload.model_dump())
+    except lead_repo.DuplicateEmail:
+        raise HTTPException(status_code=409, detail="A lead with this email already exists")
     await activity_repo.record(session, user["org_id"], "lead.created", f"New lead added — {lead.full_name}")
     return _to_schema(lead, extra)
 
@@ -235,7 +238,10 @@ async def update_lead(
     upd = {k: v for k, v in payload.model_dump().items() if v is not None}
     if not upd:
         raise HTTPException(status_code=400, detail="No fields to update")
-    res = await lead_repo.update_lead(session, uuid.UUID(user["org_id"]), lead_id, upd)
+    try:
+        res = await lead_repo.update_lead(session, uuid.UUID(user["org_id"]), lead_id, upd)
+    except lead_repo.DuplicateEmail:
+        raise HTTPException(status_code=409, detail="A lead with this email already exists")
     if not res:
         raise HTTPException(status_code=404, detail="Lead not found")
     lead, extra = res

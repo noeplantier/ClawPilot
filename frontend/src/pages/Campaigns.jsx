@@ -6,6 +6,7 @@ import {
   Plus, Play, Pause, Trash, Target, PaperPlaneTilt, Eye, ChatCircleDots, Rocket, X, ArrowRight, Sparkle, ArrowSquareOut, Users,
 } from "@phosphor-icons/react";
 import CampaignDetailDrawer from "@/components/CampaignDetailDrawer";
+import { describeLaunch, launchErrorText } from "@/lib/campaignLaunch";
 
 const STATUS_CHIP = {
   draft: "chip-warn",
@@ -32,8 +33,13 @@ export default function Campaigns() {
   };
 
   const launch = async (id) => {
-    const { data } = await api.post(`/campaigns/${id}/launch`);
-    toast.success(`Dispatched ${data.dispatched} messages`);
+    try {
+      const { data } = await api.post(`/campaigns/${id}/launch`);
+      const { level, text } = describeLaunch(data);
+      toast[level](text);
+    } catch (err) {
+      toast.error(launchErrorText(err));
+    }
     load();
   };
 

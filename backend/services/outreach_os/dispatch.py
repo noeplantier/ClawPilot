@@ -8,9 +8,7 @@ send limits → adapter. A replay with the same idempotency key returns the orig
 from __future__ import annotations
 
 import uuid
-import zoneinfo
-from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,12 +19,11 @@ from repositories import (
     consent_repo,
     outbound_repo,
     prospect_repo,
-    send_policy_repo,
     suppression_repo,
     usage_repo,
 )
-from services import feature_flags
-from services.outreach_os import channels, drafts, limits
+from services import feature_flags, send_gate
+from services.outreach_os import channels, drafts
 from services.outreach_os.normalize import normalize_domain, normalize_email, normalize_phone
 from services.outreach_os.replies import is_opt_out
 
@@ -34,58 +31,8 @@ CHANNEL = "email"
 REPLY_EXCERPT_CHARS = 500
 
 
-class DispatchBlocked(Exception):
-    """A dispatch was refused. `code` is stable and machine-readable; `retry_at` is set when waiting helps."""
-
-    def __init__(self, code: str, message: str, retry_at: Optional[datetime] = None) -> None:
-        super().__init__(message)
-        self.code = code
-        self.message = message
-        self.retry_at = retry_at
-
-
-@dataclass
-class SendStatus:
-    halted_by_env: bool
-    paused: bool
-    dry_run: bool
-    limits: limits.SendLimits
-    sent_today: int
-    sent_last_hour: int
-    last_dispatched_at: Optional[datetime]
-    next_allowed_at: Optional[datetime]
-    blocked_by: Optional[str]
-
-
-def _day_bounds(now: datetime, tz_name: str) -> tuple[datetime, datetime]:
-    try:
-        tz = zoneinfo.ZoneInfo(tz_name)
-    except Exception:
-        tz = zoneinfo.ZoneInfo("UTC")
-    local = now.astimezone(tz)
-    start = local.replace(hour=0, minute=0, second=0, microsecond=0)
-    return start.astimezone(timezone.utc), (start + timedelta(days=1)).astimezone(timezone.utc)
-
-
-async def send_status(session: AsyncSession, account_id: uuid.UUID, now: datetime) -> SendStatus:
-    policy = await send_policy_repo.get_policy(session, account_id, CHANNEL)
-    day_start, day_end = _day_bounds(now, policy.account_default_timezone)
-    times = await outbound_repo.dispatch_times_since(session, account_id, CHANNEL, day_start)
-    cfg = limits.SendLimits(policy.max_per_day, policy.max_per_hour, policy.min_delay_seconds)
-    decision = limits.evaluate(cfg, times, now, day_end)
-    halted, paused = feature_flags.kill_switch(), policy.sending_paused
-    blocked_by = "kill_switch" if halted else "paused" if paused else decision.code
-    return SendStatus(
-        halted_by_env=halted,
-        paused=paused,
-        dry_run=feature_flags.dry_run(),
-        limits=cfg,
-        sent_today=len(times),
-        sent_last_hour=len([t for t in times if t > now - timedelta(hours=1)]),
-        last_dispatched_at=max(times) if times else None,
-        next_allowed_at=decision.retry_at,
-        blocked_by=blocked_by,
-    )
+# The refusal type and the shared checks live in services/send_gate.py (used by every send path).
+DispatchBlocked = send_gate.SendBlocked
 
 
 async def _assert_eligible(
@@ -132,11 +79,7 @@ async def dispatch_draft(
     if existing is not None:
         return existing, False
 
-    if feature_flags.kill_switch():
-        raise DispatchBlocked("kill_switch", "Sending is halted by the kill switch (SEND_KILL_SWITCH)")
-    policy = await send_policy_repo.get_policy(session, account_id, CHANNEL)
-    if policy.sending_paused:
-        raise DispatchBlocked("paused", "Sending is paused for this organisation")
+    await send_gate.lock_and_assert_not_halted(session, account_id, CHANNEL)
 
     lead = await prospect_repo.get(session, account_id, str(draft.lead_id))
     lead = await _assert_eligible(session, account_id, draft, lead)
@@ -153,13 +96,7 @@ async def dispatch_draft(
             "not_compliant", f"Draft is not compliant: {', '.join(problems) or 'no unsubscribe link'}"
         )
 
-    day_start, day_end = _day_bounds(now, policy.account_default_timezone)
-    times = await outbound_repo.dispatch_times_since(session, account_id, CHANNEL, day_start)
-    decision = limits.evaluate(
-        limits.SendLimits(policy.max_per_day, policy.max_per_hour, policy.min_delay_seconds), times, now, day_end
-    )
-    if not decision.allowed:
-        raise DispatchBlocked(f"limit_{decision.code}", decision.reason or "send limit reached", decision.retry_at)
+    await send_gate.assert_within_limits(session, account_id, CHANNEL, now)
 
     try:
         adapter = channels.select_adapter(CHANNEL, live_sending_enabled=not feature_flags.dry_run())

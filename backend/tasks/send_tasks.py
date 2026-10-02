@@ -13,14 +13,24 @@ timezone window skipped over a weekend).
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from celery_app import celery_app
 from repositories import campaign_repo, consent_repo, lead_repo, outreach_repo, send_policy_repo
+from services import send_gate
 from services.sendgrid_svc import send_email
 from services.templating import render as _render
 from services.timezones import resolve_timezone
 from tasks._bridge import run_async
+
+HALT_RETRY_SECONDS = 900  # kill switch / pause: look again in 15 minutes
+
+
+def _retry_args(blocked: send_gate.SendBlocked) -> dict:
+    """How a refused send is rescheduled: at the time the limit frees up, or later for a halt. Never a failure."""
+    if blocked.retry_at is not None:
+        return {"eta": blocked.retry_at.astimezone(timezone.utc).replace(tzinfo=None), "max_retries": None}
+    return {"countdown": HALT_RETRY_SECONDS, "max_retries": None}
 
 
 def _next_window_start(now_local: datetime, window_start_hour: int) -> datetime:
@@ -76,6 +86,11 @@ async def _send_email_impl(
     retry_at = await _check_window_or_get_eta(session, account_id, "email", lead.get("country"))
     if retry_at:
         raise task.retry(eta=retry_at, max_retries=None)
+
+    try:
+        await send_gate.check(session, account_id, "email")
+    except send_gate.SendBlocked as blocked:
+        raise task.retry(**_retry_args(blocked))
 
     subject = _render(step.subject or "", lead)
     body = _render(step.body or "", lead)
@@ -134,6 +149,11 @@ async def _send_whatsapp_impl(
     retry_at = await _check_window_or_get_eta(session, account_id, "whatsapp", lead.get("country"))
     if retry_at:
         raise task.retry(eta=retry_at, max_retries=None)
+
+    try:
+        await send_gate.check(session, account_id, "whatsapp")
+    except send_gate.SendBlocked as blocked:
+        raise task.retry(**_retry_args(blocked))
 
     body = _render(step.body or "", lead)
     result = send_whatsapp(lead["phone"], body)

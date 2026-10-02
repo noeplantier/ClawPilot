@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
+import { sendErrorText } from "@/lib/campaignLaunch";
 import { Envelope, WhatsappLogo, PaperPlaneTilt, Sparkle, Users } from "@phosphor-icons/react";
 import BatchComposerModal from "@/components/BatchComposerModal";
 
@@ -126,7 +127,7 @@ function Composer({ channel, onClose, onSent }) {
       else if (status === "mock") toast.info("Logged as MOCK — configure integration in Settings");
       else toast.error(`Status: ${status}`);
       onSent();
-    } catch (e) { toast.error(e?.response?.data?.detail || "Send failed"); }
+    } catch (e) { toast.error(sendErrorText(e)); }
     finally { setSending(false); }
   };
 

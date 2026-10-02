@@ -1,8 +1,7 @@
 """Campaign routes — Postgres-backed (campaigns + campaign_steps + campaign_leads)."""
 
-import random
 import uuid
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -11,8 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from db.session import get_db_session
 from deps import get_current_user
 from models import Campaign, CampaignCreate, CampaignStep, CampaignUpdate
-from repositories import activity_repo, campaign_repo, consent_repo, lead_repo, outreach_repo
-from services import scheduler
+from repositories import activity_repo, audit_repo, campaign_repo, consent_repo, lead_repo, outreach_repo
+from routes._refusal import block_detail
+from services import scheduler, send_gate
 from services.sendgrid_svc import send_email
 from services.templating import render as _render
 from services.twilio_svc import send_whatsapp
@@ -59,6 +59,8 @@ class RunStepOut(BaseModel):
     mocked: int
     failed: int
     skipped: int
+    not_attempted: int = 0  # leads not reached because a limit, the pause or the kill switch stopped the step
+    blocked: Optional[dict] = None  # {code, message, retry_at} when the step was stopped
     total: int
 
 
@@ -152,33 +154,16 @@ async def assign_leads(
     return _to_schema(c)
 
 
-@router.post("/{campaign_id}/run-step/{step_index}", response_model=RunStepOut)
-async def run_step(
-    campaign_id: str,
-    step_index: int,
-    user: dict = Depends(get_current_user),
-    session: AsyncSession = Depends(get_db_session),
-):
-    """Execute one campaign step against all assigned leads."""
-    account_id = uuid.UUID(user["org_id"])
-    c = await campaign_repo.get_campaign(session, account_id, campaign_id)
-    if not c:
-        raise HTTPException(status_code=404, detail="Not found")
+async def _execute_step(session: AsyncSession, account_id: uuid.UUID, c, step, leads: list[dict]) -> dict:
+    """Send one campaign step to the given leads, one by one, through the send gate (kill switch, pause, limits).
 
-    steps = sorted(c.steps, key=lambda s: s.step_index)
-    if step_index < 0 or step_index >= len(steps):
-        raise HTTPException(status_code=400, detail=f"Step index {step_index} out of range (0..{len(steps)-1})")
+    Stops at the first refusal: the leads not reached are reported as `not_attempted` with the reason, nothing is queued
+    silently and nothing is faked. Consent is checked per lead exactly as before.
+    """
+    sent = mocked = failed = skipped = not_attempted = 0
+    blocked: Optional[send_gate.SendBlocked] = None
 
-    step = steps[step_index]
-    lead_ids = [str(cl.lead_id) for cl in c.leads]
-    if not lead_ids:
-        raise HTTPException(status_code=400, detail="No leads assigned to this campaign — assign leads first")
-
-    leads = await lead_repo.get_leads_by_ids(session, account_id, lead_ids)
-
-    sent = mocked = failed = skipped = 0
-
-    for lead in leads:
+    for index, lead in enumerate(leads):
         channel = step.channel
         body = _render(step.body or "", lead)
         contact_id = uuid.UUID(lead["contact_id"]) if lead.get("contact_id") else None
@@ -187,6 +172,26 @@ async def run_step(
             if not lead.get("email") or not consent_repo.can_send("email", lead["email_consent"]):
                 skipped += 1
                 continue
+        elif not lead.get("phone") or not consent_repo.can_send("whatsapp", lead["whatsapp_consent"]):
+            skipped += 1
+            continue
+
+        try:
+            await send_gate.check(session, account_id, channel)
+        except send_gate.SendBlocked as exc:
+            blocked = exc
+            not_attempted = len(leads) - index
+            await audit_repo.log(
+                session,
+                account_id,
+                action="send.blocked_limits",
+                resource_type="campaign",
+                resource_id=c.id,
+                diff={"code": exc.code, "channel": channel, "step": step.step_index, "not_attempted": not_attempted},
+            )
+            break
+
+        if channel == "email":
             subj = _render(step.subject or "", lead)
             result = send_email(lead["email"], subj, body)
             await outreach_repo.create_email_send(
@@ -203,9 +208,6 @@ async def run_step(
                 error=result.get("error"),
             )
         else:
-            if not lead.get("phone") or not consent_repo.can_send("whatsapp", lead["whatsapp_consent"]):
-                skipped += 1
-                continue
             result = send_whatsapp(lead["phone"], body)
             await outreach_repo.create_whatsapp_send(
                 session,
@@ -226,7 +228,7 @@ async def run_step(
             account_id,
             channel=channel,
             event_type="failed" if result["status"] == "failed" else "sent",
-            campaign_id=campaign_id,
+            campaign_id=str(c.id),
             campaign_step_id=str(step.id),
             lead_id=lead["id"],
         )
@@ -238,16 +240,54 @@ async def run_step(
         else:
             failed += 1
 
-    dispatched = sent + mocked
+    return {
+        "sent": sent,
+        "mocked": mocked,
+        "failed": failed,
+        "skipped": skipped,
+        "not_attempted": not_attempted,
+        "blocked": block_detail(blocked) if blocked else None,
+    }
+
+
+async def _campaign_leads(session: AsyncSession, account_id: uuid.UUID, c) -> list[dict]:
+    lead_ids = [str(cl.lead_id) for cl in c.leads]
+    if not lead_ids:
+        raise HTTPException(status_code=400, detail="No leads assigned to this campaign — assign leads first")
+    return await lead_repo.get_leads_by_ids(session, account_id, lead_ids)
+
+
+@router.post("/{campaign_id}/run-step/{step_index}", response_model=RunStepOut)
+async def run_step(
+    campaign_id: str,
+    step_index: int,
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Execute one campaign step against all assigned leads, under the send limits and the pause."""
+    account_id = uuid.UUID(user["org_id"])
+    c = await campaign_repo.get_campaign(session, account_id, campaign_id)
+    if not c:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    steps = sorted(c.steps, key=lambda s: s.step_index)
+    if step_index < 0 or step_index >= len(steps):
+        raise HTTPException(status_code=400, detail=f"Step index {step_index} out of range (0..{len(steps)-1})")
+
+    step = steps[step_index]
+    leads = await _campaign_leads(session, account_id, c)
+    outcome = await _execute_step(session, account_id, c, step, leads)
+
+    dispatched = outcome["sent"] + outcome["mocked"]
     await campaign_repo.increment_counters(session, account_id, campaign_id, sent=dispatched, set_status="running")
     await activity_repo.record(
         session,
         user["org_id"],
         "campaign.step",
-        f"{c.name} · step {step_index+1}/{len(steps)} · {dispatched} dispatched",
+        f"{c.name} · step {step_index+1}/{len(steps)} · {dispatched} dispatched"
+        + (f" · stopped: {outcome['blocked']['code']}" if outcome["blocked"] else ""),
     )
-
-    return RunStepOut(dispatched=dispatched, sent=sent, mocked=mocked, failed=failed, skipped=skipped, total=len(leads))
+    return RunStepOut(dispatched=dispatched, total=len(leads), **outcome)
 
 
 @router.post("/{campaign_id}/launch")
@@ -256,30 +296,32 @@ async def launch_campaign(
     user: dict = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Simulate dispatch: increment sent counters, write activity + message logs."""
+    """Start the campaign: really execute its first step now, under the send limits and the pause.
+
+    This used to invent sent/opened/replied/converted numbers with `random`. It now sends (or records a mock send when
+    the provider is not configured) and the counters only ever reflect real attempts; opens, replies and conversions
+    come from webhooks, never from here.
+    """
     account_id = uuid.UUID(user["org_id"])
     c = await campaign_repo.get_campaign(session, account_id, campaign_id)
     if not c:
         raise HTTPException(status_code=404, detail="Not found")
+    steps = sorted(c.steps, key=lambda s: s.step_index)
+    if not steps:
+        raise HTTPException(status_code=400, detail="This campaign has no steps")
 
-    leads_count = len(c.leads) or 50
-    burst = min(leads_count, random.randint(20, 80))
-    opened = int(burst * random.uniform(0.3, 0.6))
-    replied = int(opened * random.uniform(0.05, 0.15))
-    converted = max(0, int(replied * random.uniform(0.1, 0.35)))
-
-    await campaign_repo.increment_counters(
+    leads = await _campaign_leads(session, account_id, c)
+    outcome = await _execute_step(session, account_id, c, steps[0], leads)
+    dispatched = outcome["sent"] + outcome["mocked"]
+    await campaign_repo.increment_counters(session, account_id, campaign_id, sent=dispatched, set_status="running")
+    await activity_repo.record(
         session,
-        account_id,
-        campaign_id,
-        sent=burst,
-        opened=opened,
-        replied=replied,
-        converted=converted,
-        set_status="running",
+        user["org_id"],
+        "campaign.launched",
+        f"{c.name} launched · {dispatched} dispatched"
+        + (f" · stopped: {outcome['blocked']['code']}" if outcome["blocked"] else ""),
     )
-    await activity_repo.record(session, user["org_id"], "campaign.launched", f"{c.name} dispatched {burst} messages")
-    return {"ok": True, "dispatched": burst, "opened": opened, "replied": replied, "converted": converted}
+    return {"ok": True, "dispatched": dispatched, "total": len(leads), **outcome}
 
 
 @router.post("/{campaign_id}/schedule")

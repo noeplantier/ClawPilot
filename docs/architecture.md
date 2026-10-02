@@ -73,6 +73,7 @@ brouillon approuvé ─► dispatch ─► kill switch ─► pause du compte �
 |---|---|---|
 | `ChannelAdapter` (Protocol), `DryRunEmailAdapter`, `select_adapter` | `services/outreach_os/channels.py` | Seul endroit d'où un message pourrait sortir. L'adaptateur dry-run n'ouvre aucun socket. `FEATURE_LIVE_SENDING` sans adaptateur réel ⇒ refus (501). |
 | `evaluate` | `services/outreach_os/limits.py` | Plafond quotidien, plafond horaire glissant, délai minimum ; pur, horloge injectée. |
+| `send_gate` (`check`, `status`) | `services/send_gate.py` | Point d'application unique avant tout fournisseur : kill switch, pause, plafonds. Compte les envois de **tous** les chemins (`outbound_messages`, `email_sends`, `whatsapp_sends`) et sérialise les envoyeurs concurrents par verrou consultatif (organisation × canal). Utilisé par `dispatch`, `routes/messages.py`, `routes/campaigns.py` et `tasks/send_tasks.py`. |
 | `is_opt_out` | `services/outreach_os/replies.py` | Détecte un STOP/désinscription dans une réponse (FR/EN, sans faux positif sur « non-stop »). |
 | `dispatch_draft`, `simulate_event` | `services/outreach_os/dispatch.py` | Orchestration ; seule couche à écrire en base, via les repositories. |
 | `/api/outbound/*` | `routes/outbound.py` | dispatch, liste, détail, simulation, limites, statut. |

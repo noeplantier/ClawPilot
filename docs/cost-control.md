@@ -19,7 +19,8 @@ source, ni signal, ni score, ni brouillon : relancer un run est quasi gratuit.
 ## Leviers de maîtrise prévus (non implémentés)
 
 - ~~Quota quotidien et délai minimal~~ : **en place** pour le dispatch (`/api/outbound/limits`, défauts 20/jour, 100/heure,
-  60 s). Les anciens chemins d'envoi (campagnes) ne les appliquent pas encore.
+  60 s), **et** pour les anciens chemins (envoi unitaire, lot, campagnes, Celery) via `services/send_gate.py`, avec des
+  compteurs partagés.
 - Plafond d'enregistrements d'usage par jour et par organisation pour limiter les imports.
 - Si un fetcher réseau est ajouté : délai entre requêtes, timeouts, taille maximale de page, cache par `content_hash`.
 - Si un LLM est ajouté pour la rédaction : budget mensuel en `usage_records`, modèle le plus petit suffisant, mise en cache.

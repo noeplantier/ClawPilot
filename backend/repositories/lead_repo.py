@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from sqlalchemy import func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -148,6 +149,21 @@ async def list_leads(
     return [(lead, await load_extra(session, lead)) for lead in leads]
 
 
+class DuplicateEmail(Exception):
+    """A lead with this e-mail already exists in the organisation (unique index `uq_leads_account_email`)."""
+
+
+async def _flush_unique_email(session: AsyncSession) -> None:
+    """Flush inside a savepoint so a duplicate e-mail surfaces as `DuplicateEmail`, not as a failed transaction."""
+    try:
+        async with session.begin_nested():
+            await session.flush()
+    except IntegrityError as exc:
+        if "uq_leads_account_email" in str(exc.orig):
+            raise DuplicateEmail(str(exc.orig)) from exc
+        raise
+
+
 async def create_lead(session: AsyncSession, account_id: uuid.UUID, data: dict) -> tuple[Lead, LeadExtra]:
     source_name = data.pop("source", None)
     email_opt_in = data.pop("email_opt_in", False)
@@ -156,7 +172,7 @@ async def create_lead(session: AsyncSession, account_id: uuid.UUID, data: dict) 
     source_id = await _resolve_source_id(session, account_id, source_name)
     lead = Lead(account_id=account_id, source_id=source_id, **data)
     session.add(lead)
-    await session.flush()
+    await _flush_unique_email(session)
     await _create_primary_contact(
         session,
         account_id,
@@ -258,7 +274,7 @@ async def update_lead(
         updates["source_id"] = await _resolve_source_id(session, account_id, updates.pop("source"))
     for key, value in updates.items():
         setattr(lead, key, value)
-    await session.flush()
+    await _flush_unique_email(session)
     return lead, await load_extra(session, lead)
 
 
