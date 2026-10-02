@@ -40,11 +40,7 @@ async def register(payload: RegisterIn, session: AsyncSession = Depends(get_db_s
         full_name=payload.full_name,
     )
 
-    # seed starter data (leads/campaigns in Postgres, agents/messages/activity still Mongo
-    # — see plan doc "Séquence de migration")
-    from services.seed import seed_demo_data  # local import to avoid cycle
-
-    await seed_demo_data(session, str(account.id))
+    # No demo data here: a real account starts empty. Demo data lives in scripts/seed_demo.py.
 
     token = create_access_token(str(user.id), str(account.id), user.email, user.role)
     return TokenOut(access_token=token, user=_to_user(user), organization=_to_org(account))

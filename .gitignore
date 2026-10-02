@@ -112,3 +112,7 @@ credentials.json
 *.key
 .credentials
 frontend/node_modules/.cache/default-development/6.pack
+
+# keep the committed templates
+!.env.example
+!**/.env.example

@@ -3,15 +3,6 @@ import { api } from "@/lib/api";
 
 const AuthContext = createContext(null);
 
-const DEMO_EMAIL = "demo@clawpilot.io";
-const DEMO_PASSWORD = "Demo12345!";
-const DEMO_TOKEN = "bypass-token-12345";
-
-const DEMO_USER_DATA = {
-  user: { id: "demo-1", email: DEMO_EMAIL, name: "Operator" },
-  organization: { id: "org-1", name: "ClawPilot Demo" }
-};
-
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [org, setOrg] = useState(null);
@@ -22,14 +13,6 @@ export function AuthProvider({ children }) {
     if (!token) { 
       setLoading(false); 
       return; 
-    }
-
-    // Interception pour le mode Démo
-    if (token === DEMO_TOKEN) {
-      setUser(DEMO_USER_DATA.user);
-      setOrg(DEMO_USER_DATA.organization);
-      setLoading(false);
-      return;
     }
 
     try {
@@ -48,14 +31,6 @@ export function AuthProvider({ children }) {
   useEffect(() => { loadMe(); }, [loadMe]);
 
   const login = async (email, password) => {
-    // Interception pour le mode Démo
-    if (email === DEMO_EMAIL && password === DEMO_PASSWORD) {
-      localStorage.setItem("clawpilot_token", DEMO_TOKEN);
-      setUser(DEMO_USER_DATA.user);
-      setOrg(DEMO_USER_DATA.organization);
-      return { access_token: DEMO_TOKEN, ...DEMO_USER_DATA };
-    }
-
     const { data } = await api.post("/auth/login", { email, password });
     localStorage.setItem("clawpilot_token", data.access_token);
     setUser(data.user);

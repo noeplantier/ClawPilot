@@ -99,18 +99,10 @@ jobs:
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 5s --health-timeout 3s --health-retries 5
-      mongo:
-        image: mongo:7
-        ports: ["27017:27017"]
-        options: >-
-          --health-cmd "mongosh --eval 'db.adminCommand(\"ping\")'"
-          --health-interval 5s --health-timeout 3s --health-retries 5
     env:
       DATABASE_URL: postgresql+asyncpg://clawpilot:ci-password@localhost:5432/clawpilot_ci
-      MONGO_URL: mongodb://localhost:27017
-      DB_NAME: clawpilot_ci
       JWT_SECRET: ci-only-secret-not-used-in-prod-32b
-      CORS_ORIGINS: "*"
+      CORS_ORIGINS: "http://localhost:3000"
       REACT_APP_BACKEND_URL: http://localhost:8000
     steps:
       - uses: actions/checkout@v4

@@ -2,13 +2,10 @@
 
 import random
 import uuid
-from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import Agent as AgentORM
-from deps import db
-from models import Activity, Message
 from repositories import campaign_repo, lead_repo
 
 
@@ -138,34 +135,3 @@ async def seed_demo_data(session: AsyncSession, org_id: str) -> None:
                 "converted": converted,
             },
         )
-
-    # ---- Activity feed (still Mongo) ----
-    now = datetime.now(timezone.utc)
-    for i, (kind, title) in enumerate(
-        [
-            ("campaign.sent", "APAC SaaS Founders Q1 — 482 messages dispatched"),
-            ("lead.replied", "Priya Shah replied to step 1"),
-            ("agent.spawn", "Agent Atlas spawned 3 sub-tasks"),
-            ("lead.converted", "Marcus Kent booked a meeting"),
-            ("campaign.paused", "Agency Partnership Drive paused by operator"),
-            ("agent.error", "Vega encountered a transient API error"),
-        ]
-    ):
-        a = Activity(org_id=org_id, kind=kind, title=title)
-        d = a.model_dump()
-        d["created_at"] = (now - timedelta(minutes=i * 11)).isoformat()
-        await db.activity.insert_one(d)
-
-    # ---- Sample messages (still Mongo) ----
-    for i in range(8):
-        m = Message(
-            org_id=org_id,
-            channel=random.choice(["email", "whatsapp"]),
-            to=random.choice([x[1] for x in names]),
-            subject="Intro — ClawPilot automation",
-            body="Hi there, thought you'd love to explore ClawPilot agent-powered outreach.",
-            status=random.choice(["sent", "opened", "replied", "sent", "delivered"]),
-        )
-        d = m.model_dump()
-        d["created_at"] = (now - timedelta(hours=i * 3)).isoformat()
-        await db.messages.insert_one(d)

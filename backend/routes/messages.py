@@ -12,9 +12,10 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.session import get_db_session
-from deps import db, get_current_user
-from models import Activity, SendEmailIn, SendWhatsAppIn
+from deps import get_current_user
+from models import SendEmailIn, SendWhatsAppIn
 from repositories import (
+    activity_repo,
     audit_repo,
     campaign_repo,
     consent_repo,
@@ -66,13 +67,6 @@ class BatchSendIn(BaseModel):
     campaign_id: Optional[str] = None
 
 
-async def _log(org_id: str, kind: str, title: str):
-    act = Activity(org_id=org_id, kind=kind, title=title)
-    d = act.model_dump()
-    d["created_at"] = d["created_at"].isoformat()
-    await db.activity.insert_one(d)
-
-
 @router.get("", response_model=List[dict])
 async def list_messages(
     user: dict = Depends(get_current_user),
@@ -116,7 +110,7 @@ async def send_email_route(
         campaign_id=payload.campaign_id,
         lead_id=payload.lead_id,
     )
-    await _log(user["org_id"], "message.email", f"Email {result['status']} → {payload.to}")
+    await activity_repo.record(session, user["org_id"], "message.email", f"Email {result['status']} → {payload.to}")
 
     if payload.campaign_id:
         await campaign_repo.increment_counters(session, account_id, payload.campaign_id, sent=1)
@@ -158,7 +152,8 @@ async def send_whatsapp_route(
         campaign_id=payload.campaign_id,
         lead_id=payload.lead_id,
     )
-    await _log(
+    await activity_repo.record(
+        session,
         user["org_id"],
         "message.whatsapp",
         f"WhatsApp {result['status']} → {payload.to}",
@@ -235,7 +230,8 @@ async def batch_send_email(
     if payload.campaign_id:
         await campaign_repo.increment_counters(session, account_id, payload.campaign_id, sent=sent + mocked)
 
-    await _log(
+    await activity_repo.record(
+        session,
         user["org_id"],
         "message.email.batch",
         f"Batch email · {sent} sent, {mocked} mocked, {failed} failed, {skipped} skipped",
@@ -309,7 +305,8 @@ async def batch_send_whatsapp(
     if payload.campaign_id:
         await campaign_repo.increment_counters(session, account_id, payload.campaign_id, sent=sent + mocked)
 
-    await _log(
+    await activity_repo.record(
+        session,
         user["org_id"],
         "message.whatsapp.batch",
         f"Batch WhatsApp · {sent} sent, {mocked} mocked, {failed} failed, {skipped} skipped",

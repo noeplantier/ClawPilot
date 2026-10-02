@@ -10,20 +10,12 @@ const HERO_BG = "https://images.unsplash.com/photo-1754738381772-897447d10eb6?cr
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
-  const [email, setEmail] = useState("demo@clawpilot.io");
-  const [password, setPassword] = useState("Demo12345!");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
   const submit = async (e) => {
     e.preventDefault();
-    
-    // 1. Coupe l'herbe sous le pied de l'API : on vérifie l'email sans les espaces
-    if (email.trim() === "demo@clawpilot.io") {
-      localStorage.setItem("clawpilot_token", "bypass-token-12345"); // Le token magique
-      window.location.href = "/app/dashboard"; // Redirection forcée
-      return; // On arrête la fonction ici, AUCUNE requête API ne sera envoyée
-    }
-
     setLoading(true);
     try {
       await login(email, password);

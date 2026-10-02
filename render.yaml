@@ -1,0 +1,61 @@
+# Render Blueprint — web API, Celery worker + beat, Postgres, Redis.
+# Secrets (SENDGRID_*, TWILIO_*, ...) are declared with `sync: false`: set them in the dashboard.
+databases:
+  - name: clawpilot-db
+    plan: basic-256mb
+    databaseName: clawpilot
+    user: clawpilot
+
+services:
+  - type: keyvalue
+    name: clawpilot-redis
+    plan: starter
+    ipAllowList: [] # internal access only
+    maxmemoryPolicy: noeviction # a queue must never silently evict jobs
+
+  - type: web
+    name: clawpilot-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    healthCheckPath: /api/health
+    preDeployCommand: alembic upgrade head # release step: runs before the new version takes traffic
+    envVars: &common-env
+      - key: APP_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase: { name: clawpilot-db, property: connectionString }
+      - key: CELERY_BROKER_URL
+        fromService: { type: keyvalue, name: clawpilot-redis, property: connectionString }
+      - key: CELERY_RESULT_BACKEND
+        fromService: { type: keyvalue, name: clawpilot-redis, property: connectionString }
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CORS_ORIGINS
+        sync: false # frontend origin, e.g. https://app.example.com
+      - key: SENDGRID_API_KEY
+        sync: false
+      - key: SENDGRID_FROM_EMAIL
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_WHATSAPP_FROM
+        sync: false
+
+  - type: worker
+    name: clawpilot-worker
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    dockerCommand: celery -A celery_app worker -Q sends,automation,webhooks -l info
+    envVars: *common-env
+
+  - type: worker
+    name: clawpilot-beat
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    dockerCommand: celery -A celery_app beat -l info
+    envVars: *common-env
