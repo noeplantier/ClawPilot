@@ -12,6 +12,10 @@ import Agents from "@/pages/Agents";
 import Messages from "@/pages/Messages";
 import Analytics from "@/pages/Analytics";
 import Settings from "@/pages/Settings";
+import Prospects from "@/pages/Prospects";
+import ProspectDetail from "@/pages/ProspectDetail";
+import ReviewQueue from "@/pages/ReviewQueue";
+import Sending from "@/pages/Sending";
 
 function Protected({ children }) {
   const { user, loading } = useAuth();
@@ -42,6 +46,10 @@ function App() {
               <Route path="dashboard" element={<Dashboard />} />
               <Route path="campaigns" element={<Campaigns />} />
               <Route path="leads" element={<Leads />} />
+              <Route path="prospects" element={<Prospects />} />
+              <Route path="prospects/review" element={<ReviewQueue />} />
+              <Route path="prospects/:id" element={<ProspectDetail />} />
+              <Route path="sending" element={<Sending />} />
               <Route path="agents" element={<Agents />} />
               <Route path="messages" element={<Messages />} />
               <Route path="analytics" element={<Analytics />} />

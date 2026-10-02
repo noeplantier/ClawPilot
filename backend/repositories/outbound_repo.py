@@ -88,6 +88,13 @@ async def list_messages(
     return list(rows.scalars())
 
 
+async def ids_for_lead(session: AsyncSession, account_id: uuid.UUID, lead_id: uuid.UUID) -> list[uuid.UUID]:
+    rows = await session.execute(
+        select(OutboundMessage.id).where(OutboundMessage.account_id == account_id, OutboundMessage.lead_id == lead_id)
+    )
+    return [mid for (mid,) in rows.all()]
+
+
 async def events_of(session: AsyncSession, message_id: uuid.UUID) -> list[OutboundEvent]:
     rows = await session.execute(
         select(OutboundEvent)

@@ -96,6 +96,11 @@ def test_dispatch_is_a_dry_run_and_idempotent(org):
     detail = _events(org, msg["id"])
     assert "api/unsubscribe/" in detail["body"]
     assert [e["event_type"] for e in detail["events"]] == ["sent"]
+    history = requests.get(f"{API}/prospects/{pid}/events", headers=org).json()
+    dispatched = [e for e in history if e["action"] == "message.dispatched"]
+    assert (
+        len(dispatched) == 1 and dispatched[0]["actor_user_id"] and dispatched[0]["detail"]["dry_run"] is True
+    )  # who did it
     assert (
         detail["events"][0]["detail"]["dry_run"] is True and detail["events"][0]["detail"]["list_unsubscribe"] is True
     )

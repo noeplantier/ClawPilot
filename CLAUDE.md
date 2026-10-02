@@ -74,7 +74,7 @@ celery -A celery_app beat -l info
 ```bash
 # frontend/
 npm ci --legacy-peer-deps      # conflit de peer deps date-fns / react-day-picker, connu
-npm run lint && npm run build
+npm run lint && npm test -- --watchAll=false && npm run build
 ```
 
 ## Découverte (OutreachOS)
@@ -83,6 +83,15 @@ npm run lint && npm run build
   repositories. Sources et analyseurs = `Protocol` ; seules des fixtures locales existent. Aucune source réseau sans
   `FEATURE_EXTERNAL_SOURCES`, `robots.txt` et CGU vérifiés. `mypy --strict --follow-imports=silent services/outreach_os` doit
   rester propre. Voir `docs/architecture.md`.
+
+## Interface OutreachOS (frontend)
+
+- Écrans dans `frontend/src/pages/{Prospects,ProspectDetail,ReviewQueue,Sending}.jsx`, composants dans
+  `components/outreach/`, appels API dans `lib/outreach.js`, formatage pur dans `lib/outreachFormat.js` (testé).
+- Aucune donnée inventée : un chiffre vient de l'API, sinon un état vide explicite (« not scored » ≠ 0). Un état
+  `unknown` s'affiche comme tel et ne vaut jamais un défaut. Ne pas coder en dur un statut d'intégration.
+- Tests Jest sans dépendance ajoutée (`react-dom/client` + `act`, API mockée) ; l'alias `@/` et react-router v7 sont
+  mappés dans `craco.config.js` (le Jest 27 de CRA ignore le champ `exports`).
 
 ## Tests
 

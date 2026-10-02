@@ -45,6 +45,11 @@ jobs:
         working-directory: frontend
       - run: npm run lint
         working-directory: frontend
+      - name: unit and render tests (no browser, no network)
+        run: npm test -- --watchAll=false --ci
+        working-directory: frontend
+        env:
+          CI: "true"
 
   alembic-check:
     runs-on: ubuntu-latest

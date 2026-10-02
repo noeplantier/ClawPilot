@@ -84,7 +84,21 @@ les analytics, et un envoi simulé ne doit jamais y apparaître comme un message
 Réponses et rebonds : simulés par `POST /outbound/{id}/simulate` (même code que les webhooks fournisseur). Un rebond dur suspend
 l'adresse ; une réponse STOP désinscrit le prospect immédiatement, via le même chemin que le lien de désinscription.
 
+## Interface (React, JavaScript)
+
+| Écran | Fichier | Données (API) |
+|---|---|---|
+| Liste, filtres, découverte | `pages/Prospects.jsx` | `GET /prospects`, `POST /prospects/discovery/run` |
+| Détail, justification du score, signaux, provenance, historique, brouillons, effacement | `pages/ProspectDetail.jsx` + `components/outreach/*` | `GET /prospects/{id}`, `/events`, `/outbound`, `/outbound/{id}`, `/outbound/status` |
+| File de revue | `pages/ReviewQueue.jsx` | `GET /prospects?review_status=pending`, `POST /prospects/{id}/review` |
+| Limites, statut, historique d'envoi | `pages/Sending.jsx` | `/outbound/status`, `/outbound/limits`, `/outbound`, `/prospects/settings` |
+
+Règles : aucune valeur fictive (un chiffre vient de l'API, sinon un état vide explicite) ; `unknown` n'est jamais présenté
+comme un défaut ; l'état n'est jamais porté par la seule couleur (glyphe + mot) ; les actions de décision sont désactivées pour
+un rôle `member` (l'API refuse de toute façon). Logique de présentation pure dans `lib/outreachFormat.js`, testée sans navigateur.
+
 ## Non implémenté (volontairement)
 
 Adaptateur d'envoi réel (SMTP/SendGrid) et ses prérequis (voir `deployment.md`), webhooks de réponse/rebond branchés sur
-`outbound_*`, relances automatiques (séquences), WhatsApp, source réseau, interface React.
+`outbound_*`, relances automatiques (séquences), WhatsApp, source réseau, éditeur des poids du score dans l'interface (l'API existe),
+pagination de l'historique, rôle `member` testé de bout en bout.

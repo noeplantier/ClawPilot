@@ -126,7 +126,27 @@ curl -s -X POST localhost:8000/api/prospects/<id>/drafts -H "$H"                
 Endpoints (`/api/prospects`): `discovery/run`, list, detail, `review`, `rescore`, `drafts`, `drafts/{id}/review`, `events`
 (audit history), `erase`, `suppressions`, `score-config`, `settings`; public `GET|POST /api/unsubscribe/{token}`.
 The score is 0–100; a signal is `detected`, `not_detected` or `unknown`, and only `detected` adds points — a missing
-observation never counts against a prospect. There is no UI for this yet.
+observation never counts against a prospect. See the screens below.
+
+### Screens
+
+Sign in, then open **Prospects**, **Review queue** or **Sending** in the sidebar (`frontend/`, React in JavaScript).
+
+| Screen | Route | What it shows |
+|---|---|---|
+| Prospects | `/app/prospects` | Real list ranked by score, filters (review status, minimum score), per-status counts, "Run discovery (dry-run)" |
+| Prospect detail | `/app/prospects/:id` | Review decision, **score justification** (per-signal state, weight, points, evidence, config version), signals, drafts (prepare, approve, dispatch), **provenance** of every source, **history** (decisions, drafts, message events), erasure |
+| Review queue | `/app/prospects/review` | One pending prospect at a time, best score first, with its evidence: approve, reject or skip |
+| Sending | `/app/sending` | Mode and kill-switch state, counts and next allowed time, limits form, pause/resume, dispatched messages with simulate-reply/bounce |
+
+Nothing on these screens is a placeholder: every number comes from the API, and an empty list says so and what to do
+("not scored" is shown instead of 0 when a prospect was never scored). `unknown` signals are shown as unknown and never count
+against a prospect. Deciding, dispatching and changing limits are disabled for non-owner/admin roles (the API enforces it too).
+
+```bash
+cd frontend && cp .env.example .env && npm start          # REACT_APP_BACKEND_URL=http://localhost:8000
+npm run lint && npm test -- --watchAll=false && npm run build
+```
 
 ### Controlled e-mail dispatch (dry-run)
 

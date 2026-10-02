@@ -37,7 +37,15 @@ from models import (
     SuppressionIn,
     SuppressionOut,
 )
-from repositories import audit_repo, consent_repo, draft_repo, prospect_repo, suppression_repo, usage_repo
+from repositories import (
+    audit_repo,
+    consent_repo,
+    draft_repo,
+    outbound_repo,
+    prospect_repo,
+    suppression_repo,
+    usage_repo,
+)
 from services import feature_flags
 from services.outreach_os import drafts as drafts_svc
 from services.outreach_os import pipeline
@@ -477,12 +485,13 @@ async def prospect_events(
     user: dict = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Audit history of this prospect and of its drafts, newest first."""
+    """Audit history of this prospect, its drafts and its dispatched messages, newest first."""
     lead = await _require_prospect(session, user, lead_id)
     draft_ids = [d.id for d in await draft_repo.list_for_lead(session, _account(user), lead.id)]
+    message_ids = await outbound_repo.ids_for_lead(session, _account(user), lead.id)
     rows = await session.execute(
         select(AuditLog)
-        .where(AuditLog.account_id == _account(user), AuditLog.resource_id.in_([lead.id, *draft_ids]))
+        .where(AuditLog.account_id == _account(user), AuditLog.resource_id.in_([lead.id, *draft_ids, *message_ids]))
         .order_by(AuditLog.created_at.desc())
         .limit(limit)
     )
