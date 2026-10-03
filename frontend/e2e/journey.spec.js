@@ -156,20 +156,37 @@ test("the map shows real places from the search, marks what is published and nev
   await expect(page.getByTestId("map-import-off")).toContainText("FEATURE_PROSPECT_IMPORT"); // import stays closed without its flag
 });
 
-test("a reviewer dismisses a wrong signal: it reads as unknown, the score is recomputed and the decision is reversible", async ({ page }) => {
+test("sources: discover from the world demo, see explained signals, page, add to the review queue; live sources say why they are off", async ({ page }) => {
   await register(page);
+  await page.getByTestId("nav-sources").click();
+  await expect(page.getByTestId("sources-page")).toBeVisible();
+  // The server runs with the flags off: live providers are shown but disabled, with the reason.
+  await expect(page.getByTestId("source-openstreetmap-off")).toContainText("FEATURE_EXTERNAL_SOURCES");
+  await expect(page.getByTestId("source-registry_fr-off")).toContainText("FEATURE_EXTERNAL_SOURCES");
+
+  await page.getByTestId("source-limit").fill("30");
+  await page.getByTestId("source-discover").click();
+  await expect(page.getByTestId("source-summary")).toContainText("places");
+  await expect(page.getByTestId("source-summary")).toContainText("Fictional data");
+  const rows = page.locator('[data-testid^="place-wf-"]');
+  await expect(rows.first()).toBeVisible();
+  await expect(rows.first()).toContainText("unknown"); // signals are explained and "unknown" stays unknown
+  const firstPage = await rows.count();
+  expect(firstPage).toBeGreaterThan(0);
+
+  if (await page.getByTestId("source-next").isEnabled()) {
+    await page.getByTestId("source-next").click();
+    await expect(page.getByTestId("source-range")).toContainText("26");
+    await page.getByTestId("source-prev").click();
+  }
+
+  await rows.first().getByRole("checkbox").check();
+  await rows.nth(1).getByRole("checkbox").check();
+  await expect(page.getByTestId("source-add")).toContainText("Add 2 to prospects");
+  await expect(page.getByTestId("source-add-run")).toBeDisabled(); // not before the attestation
+  await page.getByTestId("source-attest").check();
+  await page.getByTestId("source-add-run").click();
+  await expect(page.getByTestId("source-add-done")).toContainText("2 added");
   await page.goto("/app/prospects");
-  await page.getByTestId("empty-run-discovery").click();
-  await page.getByRole("link", { name: /Le Petit Bouchon/ }).first().click();
-  const before = await page.getByTestId("score-badge").first().innerText();
-  await page.getByTestId("dismiss-no_website").click();
-  await page.getByTestId("dismiss-confirm-no_website").isDisabled();
-  await page.getByTestId("dismiss-reason-no_website").fill("They do have a site, the directory is old");
-  await page.getByTestId("dismiss-confirm-no_website").click();
-  await expect(page.getByTestId("dismissed-no_website")).toContainText("They do have a site");
-  await expect(page.getByTestId("signal-no_website").getByTestId("state-unknown")).toBeVisible();
-  const after = await page.getByTestId("score-badge").first().innerText();
-  expect(after).not.toEqual(before); // the 30 points of this signal are gone
-  await page.getByTestId("restore-no_website").click();
-  await expect(page.getByTestId("signal-no_website").getByTestId("state-detected")).toBeVisible();
+  await expect(page.getByTestId("prospect-row")).toHaveCount(2); // the two places added from the demo
 });

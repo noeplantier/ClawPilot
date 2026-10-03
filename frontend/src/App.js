@@ -15,6 +15,7 @@ const Analytics = lazy(() => import("@/pages/Analytics"));
 const Settings = lazy(() => import("@/pages/Settings"));
 const Prospects = lazy(() => import("@/pages/Prospects"));
 const MapSearch = lazy(() => import("@/pages/MapSearch"));
+const Sources = lazy(() => import("@/pages/Sources"));
 const ProspectDetail = lazy(() => import("@/pages/ProspectDetail"));
 const ReviewQueue = lazy(() => import("@/pages/ReviewQueue"));
 const Sending = lazy(() => import("@/pages/Sending"));
@@ -58,6 +59,7 @@ function App() {
               <Route path="leads" element={<Leads />} />
               <Route path="prospects" element={<Prospects />} />
               <Route path="map" element={<MapSearch />} />
+              <Route path="sources" element={<Sources />} />
               <Route path="prospects/import" element={<ProspectImport />} />
               <Route path="prospects/review" element={<ReviewQueue />} />
               <Route path="prospects/:id" element={<ProspectDetail />} />
