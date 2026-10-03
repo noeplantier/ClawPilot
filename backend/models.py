@@ -696,6 +696,15 @@ class MapSearchIn(BaseModel):
     category: str = Field(min_length=1, max_length=40)
 
 
+class MapQueryOut(BaseModel):
+    query: str
+    endpoints: List[str]
+
+
+class MapParseIn(BaseModel):
+    data: dict  # the Overpass JSON answer, fetched by the browser
+
+
 class MapPlaceOut(BaseModel):
     external_id: str  # OpenStreetMap node/way/relation id
     name: str

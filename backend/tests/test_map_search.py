@@ -155,3 +155,51 @@ def test_my_prospects_layer_lists_only_this_organisations_positioned_prospects()
     ).json()["access_token"]
     assert requests.get(f"{API}/map/prospects", headers={"Authorization": f"Bearer {other}"}).json() == []  # isolation
     assert requests.get(f"{API}/map/prospects").status_code in (401, 403)
+
+
+def test_browser_path_query_then_parse_gives_the_same_places_as_a_server_search(monkeypatch):
+    import asyncio
+
+    monkeypatch.setenv("FEATURE_EXTERNAL_SOURCES", "true")
+    user = _user()
+    out = asyncio.run(map_search.query(MapSearchIn(**AREA), user=user))
+    assert out.query.startswith("[out:json]") and out.endpoints and all(e.startswith("https://") for e in out.endpoints)
+    parsed = asyncio.run(map_search.parse(map_search.MapParseIn(data=FIXTURE), user=user))
+    monkeypatch.setattr(map_search.overpass_svc, "default_fetcher", lambda q: FIXTURE)
+    direct = _call(AREA, _user())
+    assert [p.external_id for p in parsed.places] == [p.external_id for p in direct.places]
+    assert parsed.places and all(p.source_url.startswith("https://www.openstreetmap.org/") for p in parsed.places)
+
+
+def test_the_browser_path_is_closed_without_the_flag_and_validates_its_input(monkeypatch):
+    import asyncio
+
+    monkeypatch.delenv("FEATURE_EXTERNAL_SOURCES", raising=False)
+    with pytest.raises(HTTPException) as closed:
+        asyncio.run(map_search.query(MapSearchIn(**AREA), user=_user()))
+    assert closed.value.status_code == 409
+    with pytest.raises(HTTPException) as closed_parse:
+        asyncio.run(map_search.parse(map_search.MapParseIn(data=FIXTURE), user=_user()))
+    assert closed_parse.value.status_code == 409
+    monkeypatch.setenv("FEATURE_EXTERNAL_SOURCES", "true")
+    with pytest.raises(HTTPException) as wide:
+        asyncio.run(
+            map_search.query(MapSearchIn(south=40, west=0, north=50, east=10, category="restaurants"), user=_user())
+        )
+    assert wide.value.status_code == 422
+    for bad in ({}, {"elements": "x"}, {"elements": [{}] * (map_search.MAX_PARSED_ELEMENTS + 1)}):
+        with pytest.raises(HTTPException) as refused:
+            asyncio.run(map_search.parse(map_search.MapParseIn(data=bad), user=_user()))
+        assert refused.value.status_code == 422
+
+
+def test_parse_is_rate_limited_per_organisation(monkeypatch):
+    import asyncio
+
+    monkeypatch.setenv("FEATURE_EXTERNAL_SOURCES", "true")
+    user = _user()
+    for _ in range(12):
+        asyncio.run(map_search.parse(map_search.MapParseIn(data={"elements": []}), user=user))
+    with pytest.raises(HTTPException) as limited:
+        asyncio.run(map_search.parse(map_search.MapParseIn(data={"elements": []}), user=user))
+    assert limited.value.status_code == 429
