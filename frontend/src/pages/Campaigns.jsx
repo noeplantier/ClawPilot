@@ -63,7 +63,7 @@ export default function Campaigns() {
         <div>
           <div className="mono-accent">// outreach.campaigns</div>
           <h1 className="text-4xl font-black tracking-tighter">Campaigns</h1>
-          <p className="text-[#6B6B66] mt-1">Multi-step automations dispatched by ClawPilot agents.</p>
+          <p className="text-[#6B6B66] mt-1">Multi-step automations dispatched by OutreachOS under the send limits.</p>
         </div>
         <button onClick={() => { setEditing(null); setOpen(true); }} className="btn-primary" data-testid="new-campaign-button">
           <Plus size={16} weight="bold" /> NEW CAMPAIGN

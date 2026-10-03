@@ -9,7 +9,7 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   const loadMe = useCallback(async () => {
-    const token = localStorage.getItem("clawpilot_token");
+    const token = localStorage.getItem("outreachos_token");
     if (!token) { 
       setLoading(false); 
       return; 
@@ -20,7 +20,7 @@ export function AuthProvider({ children }) {
       setUser(data.user);
       setOrg(data.organization);
     } catch (e) {
-      localStorage.removeItem("clawpilot_token");
+      localStorage.removeItem("outreachos_token");
       setUser(null);
       setOrg(null);
     } finally {
@@ -32,7 +32,7 @@ export function AuthProvider({ children }) {
 
   const login = async (email, password) => {
     const { data } = await api.post("/auth/login", { email, password });
-    localStorage.setItem("clawpilot_token", data.access_token);
+    localStorage.setItem("outreachos_token", data.access_token);
     setUser(data.user);
     setOrg(data.organization);
     return data;
@@ -40,14 +40,14 @@ export function AuthProvider({ children }) {
 
   const register = async (payload) => {
     const { data } = await api.post("/auth/register", payload);
-    localStorage.setItem("clawpilot_token", data.access_token);
+    localStorage.setItem("outreachos_token", data.access_token);
     setUser(data.user);
     setOrg(data.organization);
     return data;
   };
 
   const logout = () => {
-    localStorage.removeItem("clawpilot_token");
+    localStorage.removeItem("outreachos_token");
     setUser(null);
     setOrg(null);
     window.location.href = "/login";

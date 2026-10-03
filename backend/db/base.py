@@ -1,4 +1,4 @@
-"""Declarative base + shared column mixins for all ClawPilot ORM models.
+"""Declarative base + shared column mixins for all Plantiers - OutreachOS ORM models.
 
 Soft-delete convention: `deleted_at IS NULL` means active. Applied only to mutable
 business tables (leads, campaigns, contacts, segments, tasks, notes). Event/ledger

@@ -103,7 +103,7 @@ function Composer({ channel, onClose, onSent }) {
     try {
       const { data } = await api.post("/ai/generate", {
         recipient_name: to.split("@")[0] || to,
-        product: "ClawPilot agent-powered outreach platform",
+        product: "Plantiers - OutreachOS lead generation platform",
         language: "en",
         tone: "professional",
         channel,

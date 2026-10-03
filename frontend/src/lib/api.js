@@ -6,7 +6,7 @@ export const API = `${BACKEND_URL}/api`;
 export const api = axios.create({ baseURL: API });
 
 api.interceptors.request.use((cfg) => {
-  const token = localStorage.getItem("clawpilot_token");
+  const token = localStorage.getItem("outreachos_token");
   if (token) cfg.headers.Authorization = `Bearer ${token}`;
   return cfg;
 });
@@ -15,7 +15,7 @@ api.interceptors.response.use(
   (r) => r,
   (err) => {
     if (err?.response?.status === 401) {
-      localStorage.removeItem("clawpilot_token");
+      localStorage.removeItem("outreachos_token");
       if (!window.location.pathname.startsWith("/login") && !window.location.pathname.startsWith("/register")) {
         window.location.href = "/login";
       }

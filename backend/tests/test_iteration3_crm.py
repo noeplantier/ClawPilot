@@ -1,5 +1,5 @@
 """
-ClawPilot SaaS Platform - Iteration 3 Feature Tests
+Plantiers - OutreachOS - Iteration 3 Feature Tests
 Tests: CRM Notes, Tasks, Tags (catalog + attach/detach), real analytics splits
 """
 
@@ -12,7 +12,7 @@ from helpers import open_send_limits
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
 
-DEMO_EMAIL = "demo@clawpilot.io"
+DEMO_EMAIL = "demo@outreachos.example"
 DEMO_PASSWORD = "Demo12345!"
 
 
@@ -24,7 +24,7 @@ def auth_token():
             "email": DEMO_EMAIL,
             "password": DEMO_PASSWORD,
             "full_name": "Demo User",
-            "organization_name": "ClawPilot Demo",
+            "organization_name": "OutreachOS Demo",
         },
     )
     response = requests.post(f"{BASE_URL}/api/auth/login", json={"email": DEMO_EMAIL, "password": DEMO_PASSWORD})

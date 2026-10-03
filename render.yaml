@@ -1,4 +1,6 @@
 # Render Blueprint — web API, Celery worker + beat, Postgres, Redis.
+# Service and database names keep the historical `clawpilot-*` identifiers on purpose: renaming them would create NEW
+# services and an empty database on Render. Rename them as a planned infrastructure migration, not as a text change.
 # Secrets (SENDGRID_*, TWILIO_*, ...) are declared with `sync: false`: set them in the dashboard.
 databases:
   - name: clawpilot-db

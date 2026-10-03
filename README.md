@@ -1,4 +1,6 @@
-# ClawPilot
+# Plantiers - OutreachOS
+
+> Formerly *ClawPilot*. Technical identifiers that would break a running deployment (database and Render service names, `clawpilot` in `docker-compose.yml` and CI) keep the old spelling until a planned infrastructure migration; see `backend/tests/unit/test_branding.py`.
 
 B2B lead-generation and multi-channel outreach platform: lead ingestion, scoring,
 email/WhatsApp sequences, CRM pipeline, analytics, and automation — built to run
@@ -138,7 +140,7 @@ export OUTREACH_SENDER_NAME="Your Name" OUTREACH_SENDER_COMPANY="Your Company" \
        OUTREACH_SENDER_ADDRESS="1 rue Fictive, 69000 Lyon" OUTREACH_SENDER_EMAIL=you@example.com   # drafts need these
 alembic upgrade head && python -m scripts.seed_demo && uvicorn server:app --port 8000 &
 TOKEN=$(curl -s localhost:8000/api/auth/login -H 'content-type: application/json' \
-  -d '{"email":"demo@clawpilot.io","password":"Demo12345!"}' | python -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
+  -d '{"email":"demo@outreachos.example","password":"Demo12345!"}' | python -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
 H="Authorization: Bearer $TOKEN"
 curl -s -X POST localhost:8000/api/prospects/discovery/run -H "$H" -H 'content-type: application/json' -d '{}'   # 9 listings → 7 prospects
 curl -s localhost:8000/api/prospects -H "$H"                                    # ranked by score
@@ -246,7 +248,7 @@ and no secret is ever returned.
 ## Demo account
 
 New accounts start **empty**. For local development, `python -m scripts.seed_demo`
-(from `backend/`) creates `demo@clawpilot.io` / `Demo12345!` with sample leads and campaigns.
+(from `backend/`) creates `demo@outreachos.example` / `Demo12345!` with sample leads and campaigns.
 It is idempotent and refuses to run with `APP_ENV=production`. The demo login goes through the
 real `/api/auth/login` — there is no client-side bypass.
 

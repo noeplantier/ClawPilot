@@ -22,7 +22,7 @@ REDIS_BROKER_URL = os.environ.get("CELERY_BROKER_URL", "redis://localhost:6379/0
 REDIS_RESULT_BACKEND = os.environ.get("CELERY_RESULT_BACKEND", "redis://localhost:6379/1")
 
 celery_app = Celery(
-    "clawpilot",
+    "outreachos",
     broker=REDIS_BROKER_URL,
     backend=REDIS_RESULT_BACKEND,
     # Explicit, not autodiscover_tasks(["tasks"]) — that call looks for a

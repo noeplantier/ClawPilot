@@ -18,7 +18,7 @@ from repositories import account_repo, audit_repo, lead_repo
 from tasks._bridge import run_async
 from tasks.send_tasks import send_email_task, send_whatsapp_task
 
-logger = logging.getLogger("clawpilot.automation")
+logger = logging.getLogger("outreachos.automation")
 
 DORMANT_AFTER_DAYS = 30
 UNQUALIFIED_SCORE_THRESHOLD = 15

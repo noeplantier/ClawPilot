@@ -1,4 +1,4 @@
-"""ClawPilot SaaS — FastAPI entry."""
+"""Plantiers - OutreachOS — FastAPI entry."""
 
 import logging
 import os
@@ -30,14 +30,14 @@ from routes.webhooks import router as webhooks_router
 # Delayed campaign steps run as Celery tasks in a separate worker process now
 # (see celery_app.py, tasks/send_tasks.py) — nothing to start/stop here anymore.
 
-app = FastAPI(title="ClawPilot API", version="1.0.0")
+app = FastAPI(title="Plantiers - OutreachOS API", version="1.0.0")
 
 api_router = APIRouter(prefix="/api")
 
 
 @api_router.get("/")
 async def root():
-    return {"service": "clawpilot", "status": "ok"}
+    return {"service": "plantiers-outreachos", "status": "ok"}
 
 
 @api_router.get("/health")
@@ -72,4 +72,4 @@ app.add_middleware(
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-logger = logging.getLogger("clawpilot")
+logger = logging.getLogger("outreachos")

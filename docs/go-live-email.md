@@ -1,6 +1,6 @@
 # Envoi réel depuis `founder@plantiers.com` (SMTP)
 
-Ce document décrit comment faire sortir un vrai e-mail de ClawPilot **depuis votre boîte**, et ce que cela ne couvre pas encore.
+Ce document décrit comment faire sortir un vrai e-mail de Plantiers - OutreachOS **depuis votre boîte**, et ce que cela ne couvre pas encore.
 Par défaut rien ne sort : `FEATURE_LIVE_SENDING` est éteint, l'adaptateur est un simulateur (dry-run).
 
 ## Ce qui est branché
@@ -31,7 +31,7 @@ journaux, ni dans une réponse d'API, ni dans la page Settings (qui n'affiche qu
 ## Procédure de mise en service (dans cet ordre)
 
 1. **Authentifier le domaine `plantiers.com`** chez votre registrar / hébergeur de messagerie : SPF, DKIM (clé fournie par votre
-   messagerie), DMARC (commencer par `p=none` avec une adresse `rua=`, puis durcir). Sans cela, vos messages iront en spam. ClawPilot
+   messagerie), DMARC (commencer par `p=none` avec une adresse `rua=`, puis durcir). Sans cela, vos messages iront en spam. Plantiers - OutreachOS
    ne peut pas le faire à votre place : ce sont des enregistrements DNS.
 2. **Identifiants SMTP** : créez un mot de passe d'application ou un compte dédié si votre messagerie l'exige (beaucoup de fournisseurs
    interdisent l'authentification SMTP avec le mot de passe principal ou la désactivent par défaut ; vérifiez chez le vôtre, ainsi que
@@ -80,6 +80,6 @@ journaux, ni dans une réponse d'API, ni dans la page Settings (qui n'affiche qu
    n'est pas fait (la désinscription ne fonctionne aujourd'hui que pour les prospects de la découverte).
 4. **Base légale et registre de traitement** : à valider par un juriste (prospection B2B, droit d'opposition, information sur l'origine
    des données). Ce document n'est pas un avis juridique.
-5. **Réception non vérifiée par ClawPilot** : « sent » signifie « accepté par votre serveur SMTP », pas « arrivé en boîte ».
+5. **Réception non vérifiée par OutreachOS** : « sent » signifie « accepté par votre serveur SMTP », pas « arrivé en boîte ».
 6. Cet envoi réel n'a **pas** été essayé avec vos identifiants (aucun accès réseau ni secret dans l'environnement de développement) :
    la première vérification réelle est le `test-send` de l'étape 4.

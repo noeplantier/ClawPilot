@@ -17,9 +17,9 @@ from deps import hash_password
 from repositories import account_repo
 from services.seed import seed_demo_data
 
-DEMO_EMAIL = "demo@clawpilot.io"
+DEMO_EMAIL = "demo@outreachos.example"
 DEMO_PASSWORD = "Demo12345!"  # public, local-only credential — never used outside dev
-DEMO_ORG = "ClawPilot Demo"
+DEMO_ORG = "OutreachOS Demo"
 
 
 async def main() -> None:

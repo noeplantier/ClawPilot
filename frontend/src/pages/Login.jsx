@@ -1,3 +1,4 @@
+import Footer from "@/components/Footer";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
@@ -35,7 +36,7 @@ export default function Login() {
       <div className="lg:col-span-2 flex flex-col px-8 md:px-16 py-10 relative bg-[#FFFFFF] border-r-2 border-[#0F172A]">
         <Link to="/" className="flex items-center gap-2" data-testid="brand-logo">
           <Lightning size={22} weight="fill" className="text-[#DC2626]" />
-          <span className="font-display font-black tracking-tight text-xl">CLAWPILOT</span>
+          <span className="font-display font-black tracking-tight text-xl">OUTREACHOS</span>
         </Link>
 
         <motion.div
@@ -46,10 +47,10 @@ export default function Login() {
         >
           <div className="mono-accent mb-4">// SECURE · AUTH</div>
           <h1 className="text-4xl sm:text-5xl font-black tracking-tighter text-[#0A0A0A]">
-            Command your<br /> outreach fleet.
+            Qualify. Review.<br /> Then send.
           </h1>
           <p className="mt-4 text-[#6B6B66] leading-relaxed">
-            Sign in to orchestrate ClawPilot agents across email, WhatsApp, and global markets.
+            Sign in to run compliant B2B outreach: detect, qualify, validate, then send.
           </p>
 
           <form onSubmit={submit} className="mt-10 space-y-4" data-testid="login-form">
@@ -62,7 +63,7 @@ export default function Login() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="neo-input font-mono w-full"
-                placeholder="operator@clawpilot.io"
+                placeholder="you@example.com"
                 data-testid="login-email-input"
                 autoComplete="username"
               />
@@ -95,7 +96,7 @@ export default function Login() {
           </p>
         </motion.div>
 
-        <div className="mono-accent text-[#999995] mt-6">v1.0.0 · command-protocol</div>
+        <Footer className="mt-6 !border-0 !bg-transparent !px-0" />
       </div>
 
       {/* Right visual */}
@@ -108,20 +109,20 @@ export default function Login() {
         <div className="relative z-10 h-full flex flex-col justify-between p-14 text-white">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 bg-[#DC2626] rounded-full pulse-dot" />
-            <span className="mono-accent text-[#DC2626]">// 4 AGENTS ONLINE · 482 TASKS IN-FLIGHT</span>
+            <span className="mono-accent text-[#DC2626]">// DRY-RUN BY DEFAULT · HUMAN REVIEW BEFORE SENDING</span>
           </div>
 
           <div className="max-w-xl">
-            <div className="mono-accent mb-3 text-[#DC2626]">/// orchestrator</div>
+            <div className="mono-accent mb-3 text-[#DC2626]">/// plantiers.outreachos</div>
             <h2 className="text-4xl md:text-5xl font-black tracking-tighter leading-[0.95] text-white">
-              Deploy autonomous agents.<br />
-              <span className="text-[#DC2626]">Close globally.</span>
+              Detect the need.<br />
+              <span className="text-[#DC2626]">Reach out responsibly.</span>
             </h2>
             <p className="mt-5 text-white/80 max-w-md">
-              Multi-language AI messaging, enrichment, and CRM in one dense command console.
+              Find companies that need digital solutions, explain every score, and send only what a human approved.
             </p>
             <div className="mt-6 flex gap-2 flex-wrap">
-              {["email", "whatsapp", "multi-lang", "enrichment", "crm"].map((t) => (
+              {["signals", "explainable score", "human review", "consent", "audit"].map((t) => (
                 <span key={t} className="chip chip-red !bg-white/10 !text-white !border-white/30">{t}</span>
               ))}
             </div>

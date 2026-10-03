@@ -16,6 +16,9 @@ import Prospects from "@/pages/Prospects";
 import ProspectDetail from "@/pages/ProspectDetail";
 import ReviewQueue from "@/pages/ReviewQueue";
 import Sending from "@/pages/Sending";
+import Legal from "@/pages/legal/Legal";
+import Privacy from "@/pages/legal/Privacy";
+import Terms from "@/pages/legal/Terms";
 
 function Protected({ children }) {
   const { user, loading } = useAuth();
@@ -39,6 +42,9 @@ function App() {
           <Toaster theme="light" position="top-right" toastOptions={{ style: { background: "#FFFFFF", border: "1px solid #D6D3C8", color: "#0A0A0A", fontFamily: "IBM Plex Sans" } }} />
           <Routes>
             <Route path="/" element={<Navigate to="/app/dashboard" replace />} />
+            <Route path="/legal" element={<Legal />} />
+            <Route path="/privacy" element={<Privacy />} />
+            <Route path="/terms" element={<Terms />} />
             <Route path="/login" element={<Public><Login /></Public>} />
             <Route path="/register" element={<Public><Register /></Public>} />
             <Route path="/app" element={<Protected><Layout /></Protected>}>
