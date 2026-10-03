@@ -54,3 +54,13 @@ def test_a_client_error_is_not_retried_on_other_servers(monkeypatch):
     with pytest.raises(overpass_svc.Unavailable):
         overpass_svc.http_fetch("bad query")
     assert len(calls) == 1
+
+
+def test_the_cause_of_a_connection_error_is_kept_in_the_message(monkeypatch):
+    def fake(request, timeout):
+        raise urllib.error.URLError(OSError(101, "Network is unreachable"))
+
+    monkeypatch.setattr(overpass_svc.urllib.request, "urlopen", fake)
+    with pytest.raises(overpass_svc.Unavailable) as err:
+        overpass_svc.http_fetch("[out:json];")
+    assert "URLError (OSError: [Errno 101] Network is unreachable)" in str(err.value)
