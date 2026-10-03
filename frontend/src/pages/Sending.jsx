@@ -126,7 +126,7 @@ function LimitsForm({ limits, canEdit, onSaved }) {
         {error && <div role="alert" className="text-sm text-[#991B1B] bg-[#FEF2F2] border border-[#FCA5A5] rounded-md p-3" data-testid="limits-error">{error}</div>}
         <div className="flex items-center gap-3">
           <button className="btn-ink" type="submit" disabled={!canEdit || busy || !dirty || Object.keys(errors).length > 0} data-testid="save-limits">SAVE LIMITS</button>
-          {!canEdit && <span className="mono-accent text-[#999995]">requires owner or admin</span>}
+          {!canEdit && <span className="mono-accent text-[#6B6B66]">requires owner or admin</span>}
         </div>
       </form>
     </section>
@@ -164,7 +164,7 @@ function MessageRow({ message, canEdit, onChanged }) {
     <Fragment>
       <tr className="border-b border-[#EDEBE0] hover:bg-[#FAF9F3] cursor-pointer" onClick={() => setOpen(!open)} data-testid="message-row">
         <td className="p-3 font-mono text-xs">{formatDateTime(message.dispatched_at)}</td>
-        <td className="p-3">{message.to_email || <span className="text-[#999995]">erased</span>}</td>
+        <td className="p-3">{message.to_email || <span className="text-[#6B6B66]">erased</span>}</td>
         <td className="p-3 hidden md:table-cell truncate max-w-xs">{message.subject}</td>
         <td className="p-3"><span className={`chip ${MESSAGE_STATUS_CHIP[message.status] || "chip"}`}>{message.status}</span></td>
         <td className="p-3">{message.dry_run ? <span className="chip chip-ink">dry-run</span> : <span className="chip chip-warn">live</span>}</td>

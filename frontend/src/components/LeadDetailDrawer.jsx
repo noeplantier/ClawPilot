@@ -76,7 +76,7 @@ export default function LeadDetailDrawer({ open, leadId, onClose, onUpdate }) {
                 key={key}
                 onClick={() => setTab(key)}
                 className={`flex items-center gap-1.5 px-3 py-2 text-xs font-mono uppercase border-b-2 transition-colors whitespace-nowrap ${
-                  tab === key ? "border-[#DC2626] text-[#DC2626]" : "border-transparent text-[#999995] hover:text-[#0A0A0A]"
+                  tab === key ? "border-[#DC2626] text-[#DC2626]" : "border-transparent text-[#6B6B66] hover:text-[#0A0A0A]"
                 }`}
                 data-testid={`lead-tab-${key}`}
               >
@@ -192,13 +192,13 @@ function NotesTab({ leadId }) {
           <motion.div key={n.id} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} className="surface p-3" data-testid={`note-${n.id}`}>
             <div className="flex items-start justify-between gap-2">
               <p className="text-sm text-[#0A0A0A] whitespace-pre-wrap flex-1">{n.body}</p>
-              <button onClick={() => remove(n.id)} className="text-[#999995] hover:text-[#DC2626] shrink-0"><Trash size={13} /></button>
+              <button onClick={() => remove(n.id)} className="text-[#6B6B66] hover:text-[#DC2626] shrink-0"><Trash size={13} /></button>
             </div>
             <div className="mono-accent mt-2 text-[9px]">{new Date(n.created_at).toLocaleString()}</div>
           </motion.div>
         ))}
         {notes.length === 0 && (
-          <div className="text-sm text-[#999995] italic py-4 text-center">No notes yet.</div>
+          <div className="text-sm text-[#6B6B66] italic py-4 text-center">No notes yet.</div>
         )}
       </div>
     </div>
@@ -266,18 +266,18 @@ function TasksTab({ leadId }) {
               <CheckSquare
                 size={18}
                 weight={t.status === "done" ? "fill" : "regular"}
-                className={t.status === "done" ? "text-[#10B981]" : "text-[#999995]"}
+                className={t.status === "done" ? "text-[#10B981]" : "text-[#6B6B66]"}
               />
             </button>
-            <span className={`text-sm flex-1 ${t.status === "done" ? "line-through text-[#999995]" : "text-[#0A0A0A]"}`}>
+            <span className={`text-sm flex-1 ${t.status === "done" ? "line-through text-[#6B6B66]" : "text-[#0A0A0A]"}`}>
               {t.title}
             </span>
             {t.due_at && <span className="mono-accent text-[9px]">{new Date(t.due_at).toLocaleDateString()}</span>}
-            <button onClick={() => remove(t.id)} className="text-[#999995] hover:text-[#DC2626]"><Trash size={13} /></button>
+            <button onClick={() => remove(t.id)} className="text-[#6B6B66] hover:text-[#DC2626]"><Trash size={13} /></button>
           </motion.div>
         ))}
         {tasks.length === 0 && (
-          <div className="text-sm text-[#999995] italic py-4 text-center">No tasks yet.</div>
+          <div className="text-sm text-[#6B6B66] italic py-4 text-center">No tasks yet.</div>
         )}
       </div>
     </div>
@@ -357,7 +357,7 @@ function TagsTab({ lead, onChanged }) {
               <button onClick={() => detach(t.id)} disabled={busy}><X size={10} /></button>
             </span>
           ))}
-          {attached.length === 0 && <span className="text-sm text-[#999995] italic">No tags attached.</span>}
+          {attached.length === 0 && <span className="text-sm text-[#6B6B66] italic">No tags attached.</span>}
         </div>
       </div>
 
@@ -422,7 +422,7 @@ function HistoryTab({ leadId }) {
     api.get("/messages", { params: { lead_id: leadId } }).then((r) => setMessages(r.data)).finally(() => setLoading(false));
   }, [leadId]);
 
-  if (loading) return <div className="text-sm text-[#999995] italic py-4 text-center">Loading...</div>;
+  if (loading) return <div className="text-sm text-[#6B6B66] italic py-4 text-center">Loading...</div>;
 
   return (
     <div className="space-y-2">
@@ -440,7 +440,7 @@ function HistoryTab({ leadId }) {
         </div>
       ))}
       {messages.length === 0 && (
-        <div className="text-sm text-[#999995] italic py-4 text-center">No messages sent to this lead yet.</div>
+        <div className="text-sm text-[#6B6B66] italic py-4 text-center">No messages sent to this lead yet.</div>
       )}
     </div>
   );

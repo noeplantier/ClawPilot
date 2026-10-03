@@ -28,7 +28,7 @@ export default function Layout() {
   const [aiOpen, setAiOpen] = useState(false);
 
   return (
-    <div className="min-h-screen flex bg-[#EDEBE0] text-[#0A0A0A] grid-bg">
+    <div className="min-h-screen md:h-screen flex bg-[#EDEBE0] text-[#0A0A0A] grid-bg">
       {/* Sidebar */}
       <aside className="hidden md:flex w-64 flex-col border-r-2 border-[#0F172A] bg-[#FFFFFF] sticky top-0 h-screen">
         <div className="px-6 py-6 border-b border-[#D6D3C8]">
@@ -36,7 +36,7 @@ export default function Layout() {
             <Lightning size={20} weight="fill" className="text-[#DC2626]" />
             <div className="font-display font-black tracking-tight text-lg">OUTREACHOS</div>
           </div>
-          <div className="mono-accent text-[#999995] mt-1">/// command.center</div>
+          <div className="mono-accent text-[#6B6B66] mt-1">/// command.center</div>
         </div>
 
         <div className="px-4 py-5 border-b border-[#D6D3C8]">
@@ -54,7 +54,7 @@ export default function Layout() {
               className={({ isActive }) =>
                 `group flex items-center gap-3 px-3 py-2.5 rounded-md transition-all ${
                   isActive
-                    ? "bg-[#FEF2F2] text-[#DC2626] border border-[#FCA5A5]"
+                    ? "bg-[#FEF2F2] text-[#B91C1C] border border-[#FCA5A5]"
                     : "text-[#595955] hover:text-[#0A0A0A] hover:bg-[#F4F2E7] border border-transparent"
                 }`
               }
@@ -76,7 +76,7 @@ export default function Layout() {
       </aside>
 
       {/* Main */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 md:min-h-0">
        
 
         <main className="flex-1 overflow-y-auto">

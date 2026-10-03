@@ -57,7 +57,7 @@ export default function ScoreBreakdown({ detail }) {
           </tfoot>
         </table>
       </div>
-      <p className="mono-accent text-[#999995]">
+      <p className="mono-accent text-[#6B6B66]">
         // config v{detail.version} “{detail.config_label}” · hash {detail.config_hash} · computed {formatDateTime(detail.computed_at)}
       </p>
     </div>

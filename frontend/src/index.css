@@ -1,4 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Chivo:wght@400;500;700;900&family=IBM+Plex+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -10,7 +9,7 @@
   --bg-surface-hover: #FAF9F3;
   --text-primary: #0A0A0A;
   --text-secondary: #595955;
-  --text-muted: #999995;
+  --text-muted: #6B6B66;
   --accent-red: #DC2626;
   --accent-red-dark: #991B1B;
   --accent-ink: #0F172A;
@@ -258,8 +257,8 @@
   letter-spacing: 0.08em;
 }
 
-.chip-cyan    { color: var(--accent-red); border-color: rgba(220, 38, 38, 0.4); background: #FEF2F2; }
-.chip-red     { color: var(--accent-red); border-color: rgba(220, 38, 38, 0.4); background: #FEF2F2; }
+.chip-cyan    { color: #B91C1C; border-color: rgba(220, 38, 38, 0.4); background: #FEF2F2; }
+.chip-red     { color: #B91C1C; border-color: rgba(220, 38, 38, 0.4); background: #FEF2F2; }
 .chip-purple  { color: var(--accent-ink); border-color: rgba(15, 23, 42, 0.3); background: #F1F5F9; }
 .chip-ink     { color: var(--accent-ink); border-color: rgba(15, 23, 42, 0.3); background: #F1F5F9; }
 .chip-success { color: #065F46; border-color: rgba(16, 185, 129, 0.4); background: #ECFDF5; }

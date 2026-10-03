@@ -4,7 +4,7 @@ const BAND_STYLE = {
   high: "bg-[#0F172A] text-white border-[#0F172A]",
   medium: "bg-[#F1F5F9] text-[#0F172A] border-[#0F172A]/30",
   low: "bg-white text-[#475569] border-[#D6D3C8]",
-  none: "bg-white text-[#999995] border-dashed border-[#D6D3C8]",
+  none: "bg-white text-[#6B6B66] border-dashed border-[#D6D3C8]",
 };
 
 // The number is always printed: colour only reinforces it. `null` means "never scored", not zero.
@@ -18,7 +18,7 @@ export default function ScoreBadge({ score, coverage, showCoverage = false }) {
         ) : (
           <>
             <span className="text-base font-bold">{score}</span>
-            <span className="text-[10px] opacity-70">/100</span>
+            <span className="text-[10px]">/100</span>
           </>
         )}
       </span>

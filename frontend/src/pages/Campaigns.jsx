@@ -118,7 +118,7 @@ export default function Campaigns() {
               ))}
               <span className="chip">{(c.steps || []).length} steps</span>
               <span className="chip"><Users size={10} /> {(c.lead_ids || []).length} leads</span>
-              <span className="chip font-mono text-[#999995]">id · {c.id.slice(0, 8)}</span>
+              <span className="chip font-mono text-[#6B6B66]">id · {c.id.slice(0, 8)}</span>
             </div>
           </motion.div>
         ))}

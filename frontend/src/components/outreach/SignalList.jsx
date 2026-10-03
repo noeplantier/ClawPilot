@@ -14,7 +14,7 @@ export default function SignalList({ signals }) {
             <StateChip state={s.state} />
           </div>
           <p className="text-sm text-[#475569] mt-2">{s.evidence}</p>
-          <p className="mono-accent text-[#999995] mt-2">observed {formatDateTime(s.observed_at)}</p>
+          <p className="mono-accent text-[#6B6B66] mt-2">observed {formatDateTime(s.observed_at)}</p>
         </li>
       ))}
     </ul>

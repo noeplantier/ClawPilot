@@ -55,7 +55,7 @@ export default function DraftPanel({ prospect, drafts, messages, canDecide, dryR
         >
           <NotePencil size={14} /> PREPARE DRAFT
         </button>
-        {!canDecide && <span className="mono-accent text-[#999995]">requires owner or admin</span>}
+        {!canDecide && <span className="mono-accent text-[#6B6B66]">requires owner or admin</span>}
         {canDecide && createHint && <span className="text-xs text-[#5F5F5A]" data-testid="create-hint">{createHint}</span>}
       </div>
 
@@ -71,7 +71,7 @@ export default function DraftPanel({ prospect, drafts, messages, canDecide, dryR
               <span className="font-display font-semibold text-sm flex-1 min-w-0 truncate">{d.subject}</span>
               <span className={`chip ${DRAFT_CHIP[d.status] || "chip"}`} data-testid="draft-status">{d.status}</span>
               {d.dry_run && <span className="chip chip-ink">dry-run</span>}
-              <span className="mono-accent text-[#999995]">{d.template_version}</span>
+              <span className="mono-accent text-[#6B6B66]">{d.template_version}</span>
             </header>
             <div className="p-3 space-y-3">
               {d.facts.length > 0 ? (

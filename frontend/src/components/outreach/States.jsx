@@ -29,7 +29,7 @@ export function ErrorBlock({ message, onRetry }) {
 export function EmptyBlock({ title, children, testId = "empty-block" }) {
   return (
     <div className="surface p-10 text-center" data-testid={testId}>
-      <Tray size={28} className="mx-auto text-[#999995]" />
+      <Tray size={28} className="mx-auto text-[#6B6B66]" />
       <div className="font-display font-bold text-lg mt-3">{title}</div>
       <div className="text-sm text-[#5F5F5A] mt-2 max-w-xl mx-auto space-y-3">{children}</div>
     </div>

@@ -39,7 +39,7 @@ export default function Analytics() {
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={funnel} layout="vertical" margin={{ left: 20, right: 20 }}>
                 <CartesianGrid stroke="#F0F0EA" horizontal={false} />
-                <XAxis type="number" stroke="#999995" fontSize={11} tickLine={false} axisLine={false} />
+                <XAxis type="number" stroke="#6B6B66" fontSize={11} tickLine={false} axisLine={false} />
                 <YAxis dataKey="name" type="category" stroke="#1a1a1a" fontSize={12} tickLine={false} axisLine={false} width={80} />
                 <Tooltip contentStyle={{ background: "#FFFFFF", border: "1px solid #D6D3C8", borderRadius: 6 }} />
                 <Bar dataKey="value" radius={[0, 4, 4, 0]} />
@@ -60,8 +60,8 @@ export default function Analytics() {
                 </linearGradient>
               </defs>
               <CartesianGrid stroke="#F0F0EA" vertical={false} />
-              <XAxis dataKey="date" stroke="#999995" fontSize={11} tickLine={false} axisLine={false} />
-              <YAxis stroke="#999995" fontSize={11} tickLine={false} axisLine={false} />
+              <XAxis dataKey="date" stroke="#6B6B66" fontSize={11} tickLine={false} axisLine={false} />
+              <YAxis stroke="#6B6B66" fontSize={11} tickLine={false} axisLine={false} />
               <Tooltip contentStyle={{ background: "#FFFFFF", border: "1px solid #D6D3C8", borderRadius: 6 }} />
               <Area type="monotone" dataKey="replied" stroke="#0F172A" fill="url(#an1)" strokeWidth={2} />
               <Line type="monotone" dataKey="opened" stroke="#DC2626" strokeWidth={2} dot={false} />
@@ -97,8 +97,8 @@ export default function Analytics() {
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={topCountries} margin={{ top: 10, right: 10, bottom: 0, left: -20 }}>
               <CartesianGrid stroke="#F0F0EA" vertical={false} />
-              <XAxis dataKey="country" stroke="#999995" fontSize={11} />
-              <YAxis stroke="#999995" fontSize={11} tickLine={false} axisLine={false} />
+              <XAxis dataKey="country" stroke="#6B6B66" fontSize={11} />
+              <YAxis stroke="#6B6B66" fontSize={11} tickLine={false} axisLine={false} />
               <Tooltip contentStyle={{ background: "#FFFFFF", border: "1px solid #D6D3C8", borderRadius: 6 }} />
               <Bar dataKey="leads" fill="#0F172A" radius={[4, 4, 0, 0]} />
             </BarChart>

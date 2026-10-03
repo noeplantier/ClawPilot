@@ -1,4 +1,4 @@
-import { DASH, ago, kpiCards, modeOf, pct, quotaShare, seriesHasData, seriesSummary, shortDay } from "@/lib/dashboardFormat";
+import { chartGeometry, DASH, ago, kpiCards, modeOf, pct, quotaShare, seriesHasData, seriesSummary, shortDay } from "@/lib/dashboardFormat";
 
 const K = { prospects: 3, pending_review: 2, approved: 1, scored: 3, avg_score: 41.5, sent_today: 2, messages: 4, replies: 1, reply_rate: 0.25, bounces: 0, bounce_rate: 0, unsubscribed: 1 };
 const L = { dry_run: true, kill_switch: false, paused: false, smtp_configured: false, sandbox: true, allowlist_size: 0, max_per_day: 20, sent_today: 2, remaining_today: 18 };
@@ -51,4 +51,23 @@ test("relative time", () => {
   expect(ago("2026-10-03T11:30:00Z", now)).toBe("30 min ago");
   expect(ago("2026-10-03T09:00:00Z", now)).toBe("3 h ago");
   expect(ago("2026-10-01T12:00:00Z", now)).toBe("2 d ago");
+});
+
+describe("chartGeometry", () => {
+  const series = [{ date: "2026-10-01", sent: 0, replied: 0 }, { date: "2026-10-02", sent: 3, replied: 1 }, { date: "2026-10-03", sent: 2, replied: 0 }];
+  test("the scale starts at 0 and ends on an integer tick at or above the maximum", () => {
+    const g = chartGeometry(series);
+    expect(g.ticks[0]).toBe(0);
+    expect(g.ticks[g.ticks.length - 1]).toBeGreaterThanOrEqual(3);
+    expect(g.ticks.every(Number.isInteger)).toBe(true);
+    expect(g.y(0)).toBeGreaterThan(g.y(g.max)); // bigger values are higher on the screen
+  });
+  test("points are spread left to right, one per day, and an empty series does not break", () => {
+    const g = chartGeometry(series);
+    expect(g.x(0)).toBeLessThan(g.x(1));
+    expect(g.x(1)).toBeLessThan(g.x(2));
+    expect(g.line("sent").split(" ")).toHaveLength(3);
+    expect(() => chartGeometry([{ date: "2026-10-01", sent: 0, replied: 0 }])).not.toThrow();
+    expect(chartGeometry([{ date: "2026-10-01", sent: 0, replied: 0 }]).max).toBe(1);
+  });
 });

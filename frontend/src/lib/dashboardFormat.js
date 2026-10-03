@@ -56,3 +56,28 @@ export function ago(iso, now = new Date()) {
   if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
   return `${Math.floor(s / 86400)} d ago`;
 }
+
+// Geometry of the 14-day activity chart, pure so it can be tested: no charting library on the dashboard.
+// -> { max, ticks, x(i), y(v), area(key), line(key) }. The vertical scale always starts at 0 and ends on an integer.
+export function chartGeometry(series, { width = 600, height = 220, left = 32, right = 8, top = 8, bottom = 22 } = {}) {
+  const count = series.length;
+  const max = Math.max(1, ...series.map((p) => Math.max(p.sent, p.replied)));
+  const step = Math.max(1, Math.ceil(max / 4));
+  const top_ = step * Math.ceil(max / step);
+  const ticks = [];
+  for (let v = 0; v <= top_; v += step) ticks.push(v);
+  const x = (i) => left + (count <= 1 ? 0 : (i * (width - left - right)) / (count - 1));
+  const y = (v) => top + (1 - v / top_) * (height - top - bottom);
+  const pts = (key) => series.map((p, i) => `${x(i).toFixed(1)},${y(p[key]).toFixed(1)}`);
+  return {
+    max: top_,
+    ticks,
+    x,
+    y,
+    line: (key) => pts(key).join(" "),
+    area: (key) => [`${x(0).toFixed(1)},${y(0).toFixed(1)}`, ...pts(key), `${x(count - 1).toFixed(1)},${y(0).toFixed(1)}`].join(" "),
+    baseline: y(0),
+    width,
+    height,
+  };
+}

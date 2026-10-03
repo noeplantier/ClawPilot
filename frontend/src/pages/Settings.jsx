@@ -155,7 +155,7 @@ function Integrations({ s }) {
           <span>Not configured on this server: {missing.join("; ")}. Set them in the server environment (see backend/.env.example).</span>
         </p>
       ) : (
-        <p className="mono-accent text-[#999995]">// every integration above is configured on this server.</p>
+        <p className="mono-accent text-[#6B6B66]">// every integration above is configured on this server.</p>
       )}
     </>
   );
@@ -190,7 +190,7 @@ function IntegrationRow({ icon: Icon, name, description, tone, statusLabel, deta
             <div className="mt-3 grid md:grid-cols-2 gap-2 text-xs">
               {details.map(([k, v]) => (
                 <div key={k} className="flex gap-2 font-mono">
-                  <span className="text-[#999995]">{k}:</span>
+                  <span className="text-[#6B6B66]">{k}:</span>
                   <span className="text-[#1a1a1a] truncate">{v}</span>
                 </div>
               ))}
