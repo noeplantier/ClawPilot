@@ -130,7 +130,11 @@ async def merge_keys(session: AsyncSession, lead: Lead, keys: list[str]) -> None
 def _fields_of(listing: RawListing) -> dict:
     data = asdict(listing)
     data["last_updated"] = listing.last_updated.isoformat() if listing.last_updated else None
-    for key in ("lat", "lon"):  # absent, not null, so rows (and hashes) of coordinate-less sources stay as they were
+    for key in (
+        "lat",
+        "lon",
+        "raw",
+    ):  # absent, not null, so rows (and hashes) of coordinate-less sources stay as they were
         if data[key] is None:
             del data[key]
     return data

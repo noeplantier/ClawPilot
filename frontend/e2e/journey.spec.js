@@ -155,3 +155,38 @@ test("the map shows real places from the search, marks what is published and nev
   await page.getByTestId("map-select-all").click();
   await expect(page.getByTestId("map-import-off")).toContainText("FEATURE_PROSPECT_IMPORT"); // import stays closed without its flag
 });
+
+test("sources: discover from the world demo, see explained signals, page, add to the review queue; live sources say why they are off", async ({ page }) => {
+  await register(page);
+  await page.getByTestId("nav-sources").click();
+  await expect(page.getByTestId("sources-page")).toBeVisible();
+  // The server runs with the flags off: live providers are shown but disabled, with the reason.
+  await expect(page.getByTestId("source-openstreetmap-off")).toContainText("FEATURE_EXTERNAL_SOURCES");
+  await expect(page.getByTestId("source-registry_fr-off")).toContainText("FEATURE_EXTERNAL_SOURCES");
+
+  await page.getByTestId("source-limit").fill("30");
+  await page.getByTestId("source-discover").click();
+  await expect(page.getByTestId("source-summary")).toContainText("places");
+  await expect(page.getByTestId("source-summary")).toContainText("Fictional data");
+  const rows = page.locator('[data-testid^="place-wf-"]');
+  await expect(rows.first()).toBeVisible();
+  await expect(rows.first()).toContainText("unknown"); // signals are explained and "unknown" stays unknown
+  const firstPage = await rows.count();
+  expect(firstPage).toBeGreaterThan(0);
+
+  if (await page.getByTestId("source-next").isEnabled()) {
+    await page.getByTestId("source-next").click();
+    await expect(page.getByTestId("source-range")).toContainText("26");
+    await page.getByTestId("source-prev").click();
+  }
+
+  await rows.first().getByRole("checkbox").check();
+  await rows.nth(1).getByRole("checkbox").check();
+  await expect(page.getByTestId("source-add")).toContainText("Add 2 to prospects");
+  await expect(page.getByTestId("source-add-run")).toBeDisabled(); // not before the attestation
+  await page.getByTestId("source-attest").check();
+  await page.getByTestId("source-add-run").click();
+  await expect(page.getByTestId("source-add-done")).toContainText("2 added");
+  await page.goto("/app/prospects");
+  await expect(page.getByTestId("prospect-row")).toHaveCount(2); // the two places added from the demo
+});

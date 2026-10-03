@@ -1,0 +1,14 @@
+{
+ "results": [
+  {"siren": "123456782", "nom_complet": "BOULANGERIE DES CELESTINS", "date_mise_a_jour": "2026-08-20T10:00:00",
+   "siege": {"adresse": "3 PLACE DES CELESTINS 69002 LYON 2EME", "code_postal": "69002", "libelle_commune": "LYON 2EME",
+             "latitude": "45.7595", "longitude": "4.8330", "activite_principale": "10.71C"}},
+  {"siren": "234567891", "nom_complet": "LA PATISSERIE DU RHONE", "date_mise_a_jour": "2025-11-02",
+   "siege": {"adresse": "10 QUAI DU RHONE 69003 LYON 3EME", "code_postal": "69003", "libelle_commune": "LYON 3EME",
+             "latitude": "45.7600", "longitude": "4.8500", "activite_principale": "10.71D"}},
+  {"siren": "", "nom_complet": "SANS SIREN", "siege": {}},
+  {"siren": "345678912", "nom_complet": "", "siege": {}},
+  {"siren": "456789123", "nom_complet": "SANS COORDONNEES", "siege": {"adresse": "1 RUE X", "latitude": null, "longitude": "n/a"}}
+ ],
+ "total_results": 5, "page": 1, "per_page": 25, "total_pages": 1
+}
