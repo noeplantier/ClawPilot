@@ -256,3 +256,26 @@ def test_without_the_option_nothing_is_fetched_even_with_the_flag_on(org, monkey
 
     monkeypatch.setattr(routes, "HttpSiteFetcher", Boom)
     assert _call(org, _commit()).sites_checked == 0
+
+
+def test_a_missing_email_is_filled_only_from_a_mailto_on_the_businesss_own_site(org, monkeypatch):
+    from services.outreach_os.types import SiteSnapshot
+
+    class SiteWithMailto:
+        def fetch(self, url):
+            return SiteSnapshot(
+                url=url, status=200, html='<a href="mailto:bonjour@atelier-dupont-%s.example">Mail</a>' % UID
+            )
+
+    monkeypatch.setenv("FEATURE_EXTERNAL_SOURCES", "true")
+    monkeypatch.setattr(routes, "HttpSiteFetcher", SiteWithMailto)
+    csv = f"Nom,Site,Ville\nAtelier Dupont,https://atelier-dupont-{UID}.example,Lyon\nSans Site,,Paris\n"
+    out = _call(org, _commit(content=csv, check_websites=True))
+    assert out.sites_checked == 1
+    items = {p["name"]: p for p in _prospects(org)}
+    detail = requests.get(f"{API}/prospects/{items['Atelier Dupont']['id']}", headers=org["headers"]).json()
+    assert detail["contact_email"] == f"bonjour@atelier-dupont-{UID}.example"
+    history = requests.get(f"{API}/prospects/{items['Atelier Dupont']['id']}/events", headers=org["headers"]).json()
+    assert "prospect.email_found" in [e["action"] for e in history]  # provenance is in the audit trail
+    other = requests.get(f"{API}/prospects/{items['Sans Site']['id']}", headers=org["headers"]).json()
+    assert other["contact_email"] is None  # nothing guessed for a business without a site

@@ -130,6 +130,9 @@ async def merge_keys(session: AsyncSession, lead: Lead, keys: list[str]) -> None
 def _fields_of(listing: RawListing) -> dict:
     data = asdict(listing)
     data["last_updated"] = listing.last_updated.isoformat() if listing.last_updated else None
+    for key in ("lat", "lon"):  # absent, not null, so rows (and hashes) of coordinate-less sources stay as they were
+        if data[key] is None:
+            del data[key]
     return data
 
 
@@ -304,6 +307,20 @@ async def get_any(session: AsyncSession, account_id: uuid.UUID, lead_id: str) ->
     return (
         await session.execute(select(Lead).where(Lead.id == lid, Lead.account_id == account_id, ACTIVE))
     ).scalar_one_or_none()
+
+
+async def fill_email(session: AsyncSession, account_id: uuid.UUID, lead: Lead, email: str) -> bool:
+    """Set a missing e-mail found on the business's own site (refused if suppressed or another lead's)."""
+    if lead.email or await suppression_repo.is_suppressed(session, account_id, email=email):
+        return False
+    taken = await session.execute(
+        select(Lead.id).where(Lead.account_id == account_id, Lead.email == email, Lead.id != lead.id, ACTIVE)
+    )
+    if taken.first() is not None:
+        return False
+    lead.email = email
+    await session.flush()
+    return True
 
 
 async def sources_of(session: AsyncSession, lead_id: uuid.UUID) -> list[ProspectSource]:

@@ -15,6 +15,10 @@ export const importsApi = {
   submit: (body) => api.post("/prospect-imports", body).then((r) => r.data),
 };
 
+export const mapApi = {
+  search: (area) => api.post("/map/search", area).then((r) => r.data),
+};
+
 export const prospectsApi = {
   list: (params) => api.get("/prospects", { params }).then((r) => r.data),
   get: (id) => api.get(`/prospects/${id}`).then((r) => r.data),
