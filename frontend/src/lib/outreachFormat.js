@@ -98,6 +98,18 @@ export function describeTestSend(result) {
   return { tone: "danger", text: `Not sent: ${result.error || "the SMTP server refused the message"}` };
 }
 
+// What a mailbox read did, in the numbers the API returned. Zero everywhere is said plainly, never dressed up.
+export function describeInboxSync(r) {
+  const parts = [];
+  if (r.replies) parts.push(`${r.replies} repl${r.replies === 1 ? "y" : "ies"}`);
+  if (r.opt_outs) parts.push(`${r.opt_outs} opt-out${r.opt_outs === 1 ? "" : "s"} applied`);
+  if (r.bounces) parts.push(`${r.bounces} hard bounce${r.bounces === 1 ? "" : "s"} (address suppressed)`);
+  if (r.unmatched) parts.push(`${r.unmatched} not linked to a message of ours`);
+  if (r.duplicates) parts.push(`${r.duplicates} already recorded`);
+  if (!r.fetched) return "Mailbox read: no new message.";
+  return `Mailbox read: ${r.fetched} new message${r.fetched === 1 ? "" : "s"}. ${parts.length ? parts.join(", ") : "Nothing to record."}`;
+}
+
 export function blockText(code) {
   return BLOCK_TEXT[code] || null;
 }

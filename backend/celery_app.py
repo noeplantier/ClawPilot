@@ -28,7 +28,7 @@ celery_app = Celery(
     # Explicit, not autodiscover_tasks(["tasks"]) — that call looks for a
     # `tasks` *submodule inside* each listed package (Django app convention),
     # not a top-level `tasks` package like this one.
-    include=["tasks.send_tasks", "tasks.automation_tasks", "tasks.webhook_tasks"],
+    include=["tasks.send_tasks", "tasks.automation_tasks", "tasks.webhook_tasks", "tasks.inbox_tasks"],
 )
 
 celery_app.conf.update(
@@ -43,6 +43,7 @@ celery_app.conf.update(
         "tasks.send_tasks.*": {"queue": "sends"},
         "tasks.automation_tasks.*": {"queue": "automation"},
         "tasks.webhook_tasks.*": {"queue": "webhooks"},
+        "tasks.inbox_tasks.*": {"queue": "webhooks"},
     },
     beat_schedule={
         # Safety net for apply_async(eta=...) sends that got lost (e.g. a
@@ -71,6 +72,12 @@ celery_app.conf.update(
         # No separate "requeue window-blocked sends" beat entry: send_tasks.py's
         # window check uses `self.retry(eta=..., max_retries=None)`, so Celery
         # itself already reschedules those — a second sweep would be redundant.
+        # Replies and bounces from the sending mailbox (no-op without IMAP_*): an opt-out must land fast.
+        "poll-inbox": {
+            "task": "tasks.inbox_tasks.poll_inbox",
+            "schedule": 300.0,
+            "options": {"queue": "webhooks"},
+        },
         "retry-unprocessed-webhooks": {
             "task": "tasks.webhook_tasks.retry_unprocessed_webhooks",
             "schedule": 300.0,

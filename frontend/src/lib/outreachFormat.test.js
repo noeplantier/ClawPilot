@@ -1,6 +1,6 @@
 import {
   auditLabel, blockText, coverageLabel, describeApiError, detailSummary, domainOf, explainTotal, formatRetry,
-  limitsPatch, mergeTimeline, scoreBand, validateLimits, describeTestSend,
+  limitsPatch, mergeTimeline, scoreBand, validateLimits, describeTestSend, describeInboxSync,
 } from "./outreachFormat";
 
 const NOW = new Date("2026-06-01T14:00:00Z");
@@ -136,5 +136,18 @@ describe("describeTestSend", () => {
     const unknown = describeTestSend({ status: "unknown", error: "connection lost while sending" });
     expect(unknown.tone).toBe("warn");
     expect(unknown.text).toMatch(/Sent folder/);
+  });
+});
+
+describe("describeInboxSync", () => {
+  test("an empty mailbox is said plainly", () => {
+    expect(describeInboxSync({ fetched: 0 })).toBe("Mailbox read: no new message.");
+  });
+  test("counts only what the API returned", () => {
+    const text = describeInboxSync({ fetched: 4, replies: 2, opt_outs: 1, bounces: 1, unmatched: 0, duplicates: 0 });
+    expect(text).toBe("Mailbox read: 4 new messages. 2 replies, 1 opt-out applied, 1 hard bounce (address suppressed)");
+  });
+  test("mail that changed nothing says so", () => {
+    expect(describeInboxSync({ fetched: 1, replies: 0 })).toBe("Mailbox read: 1 new message. Nothing to record.");
   });
 });

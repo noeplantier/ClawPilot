@@ -20,6 +20,7 @@ from db.session import get_db_session
 from deps import get_current_user, require_roles
 from models import (
     DispatchIn,
+    InboxSyncOut,
     LimitsOut,
     LimitsPatch,
     OutboundEventOut,
@@ -32,7 +33,7 @@ from models import (
 )
 from repositories import audit_repo, draft_repo, outbound_repo, outreach_repo, send_policy_repo
 from routes._refusal import refusal
-from services import feature_flags, send_gate, smtp_svc
+from services import feature_flags, imap_svc, inbox_sync, send_gate, smtp_svc
 from services.outreach_os import channels
 from services.outreach_os import dispatch as dispatch_svc
 from services.outreach_os import drafts, sandbox
@@ -253,6 +254,21 @@ async def smtp_test_send(
     return SmtpCheckOut(
         status=result.status, to=to, adapter=adapter.name, provider_message_id=result.provider_id, error=result.error
     )
+
+
+# ---------------------------------------------------------------- inbound mailbox
+@router.post("/sync-inbox", response_model=InboxSyncOut)
+async def sync_inbox(user: dict = Depends(decider), session: AsyncSession = Depends(get_db_session)):
+    """Read the sending mailbox now (the beat task does it every 5 minutes where a worker runs): replies, hard bounces,
+    STOP. 501 when IMAP_* is not configured; a connection or login failure is a 502 that names the error class only."""
+    mailbox = imap_svc.mailbox_from_env()
+    if mailbox is None:
+        raise HTTPException(status_code=501, detail="IMAP is not configured (IMAP_HOST, IMAP_USERNAME, IMAP_PASSWORD)")
+    try:
+        result = await inbox_sync.sync(session, mailbox)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Mailbox unreachable ({type(exc).__name__})")
+    return InboxSyncOut(**result.as_dict())
 
 
 # ---------------------------------------------------------------- history

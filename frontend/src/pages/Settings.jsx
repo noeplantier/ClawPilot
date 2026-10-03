@@ -129,6 +129,7 @@ function Integrations({ s }) {
           ["sender.email", out.sender_email || "not set"],
           ["FEATURE_LIVE_SENDING", out.live_sending_flag ? "on" : "off"],
           ["smtp.host", out.smtp_configured ? out.smtp_host : "not configured"],
+          ["imap.host (replies, bounces)", out.imap_configured ? out.imap_host : "not configured"],
           ["OUTREACH_SANDBOX", out.sandbox ? `on (${out.allowlist_size} allowed)` : "off"],
         ]}
         testId="row-outreach"

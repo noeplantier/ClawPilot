@@ -5,7 +5,7 @@ import { ArrowsClockwise, Pause, Play, Warning } from "@phosphor-icons/react";
 import { useAuth } from "@/contexts/AuthContext";
 import { canDecide, outboundApi, prospectsApi, useAsync } from "@/lib/outreach";
 import {
-  LIMIT_RANGES, MESSAGE_STATUS_CHIP, describeApiError, describeTestSend, formatDateTime, formatRetry, limitsPatch,
+  LIMIT_RANGES, MESSAGE_STATUS_CHIP, describeApiError, describeInboxSync, describeTestSend, formatDateTime, formatRetry, limitsPatch,
   validateLimits,
 } from "@/lib/outreachFormat";
 import HistoryTimeline from "@/components/outreach/HistoryTimeline";
@@ -199,6 +199,40 @@ function MessageRow({ message, canEdit, onChanged }) {
 
 const TONE_TEXT = { ok: "text-[#166534]", warn: "text-[#92400E]", danger: "text-[#991B1B]" };
 
+function InboxSyncPanel({ onDone }) {
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState(null);
+
+  const sync = async () => {
+    setBusy(true);
+    setResult(null);
+    setError(null);
+    try {
+      setResult(describeInboxSync(await outboundApi.syncInbox()));
+      onDone();
+    } catch (e) {
+      setError(describeApiError(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="surface p-5 space-y-3" data-testid="inbox-sync">
+      <h2 className="font-display text-xl font-bold">Replies and bounces</h2>
+      <p className="text-sm text-[#5F5F5A]">
+        Reads the sending mailbox over IMAP (needs IMAP_HOST, IMAP_USERNAME and IMAP_PASSWORD). A reply is recorded with a short
+        excerpt, a STOP from the recipient opts them out, and only a permanent delivery failure suppresses an address.
+        Where a worker runs, this also happens every 5 minutes.
+      </p>
+      <button className="btn-ghost" disabled={busy} onClick={sync} data-testid="inbox-sync-run">{busy ? "READING…" : "READ MAILBOX NOW"}</button>
+      {result && <div role="status" className="text-sm text-[#166534]" data-testid="inbox-sync-result">{result}</div>}
+      {error && <div role="alert" className="text-sm text-[#991B1B]" data-testid="inbox-sync-error">{error}</div>}
+    </section>
+  );
+}
+
 function SmtpTestPanel({ onDone }) {
   const [to, setTo] = useState("");
   const [busy, setBusy] = useState(false);
@@ -268,6 +302,7 @@ export default function Sending() {
           <StatusPanel status={page.data.status} settings={page.data.settings} />
           <LimitsForm key={JSON.stringify(page.data.limits)} limits={page.data.limits} canEdit={edit} onSaved={page.reload} />
           {edit && <SmtpTestPanel onDone={page.reload} />}
+          {edit && <InboxSyncPanel onDone={page.reload} />}
           <section className="space-y-3" data-testid="messages-panel">
             <h2 className="font-display text-xl font-bold">Dispatched messages</h2>
             {page.data.messages.length === 0 ? (
