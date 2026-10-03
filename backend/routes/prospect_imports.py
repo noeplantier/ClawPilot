@@ -21,6 +21,7 @@ from models import ImportBatchOut, ImportIn, ImportOut, ImportRowError
 from repositories import audit_repo, import_repo
 from services import feature_flags
 from services.outreach_os import importer, pipeline
+from services.site_fetcher_svc import HttpSiteFetcher
 
 router = APIRouter(prefix="/prospect-imports", tags=["prospect-imports"])
 decider = require_roles("owner", "admin")
@@ -61,6 +62,10 @@ async def import_prospects(
 ):
     if not feature_flags.is_enabled("prospect_import"):
         raise _refuse(403, "feature_disabled", "Prospect import is off (FEATURE_PROSPECT_IMPORT)")
+    if payload.check_websites and not feature_flags.is_enabled("external_sources"):
+        raise _refuse(
+            409, "external_sources_disabled", "Checking websites needs FEATURE_EXTERNAL_SOURCES (off by default)"
+        )
     account_id = _account(user)
     batch_id = uuid.uuid4()
     source_name = f"import:{batch_id.hex[:8]}"
@@ -75,7 +80,15 @@ async def import_prospects(
     shown_errors = [ImportRowError(row=e.row, message=e.message) for e in parsed.errors[:MAX_ERRORS_SHOWN]]
 
     def result(
-        *, preview: bool, batch_id: str | None, entities: int, merged: int, suppressed: int, created: int, updated: int
+        *,
+        preview: bool,
+        batch_id: str | None,
+        entities: int,
+        merged: int,
+        suppressed: int,
+        created: int,
+        updated: int,
+        sites_checked: int = 0,
     ) -> ImportOut:
         return ImportOut(
             preview=preview,
@@ -90,6 +103,7 @@ async def import_prospects(
             suppressed=suppressed,
             created=created,
             updated=updated,
+            sites_checked=sites_checked,
             already_imported=already,
         )
 
@@ -117,7 +131,7 @@ async def import_prospects(
         session,
         account_id,
         adapter=importer.ListAdapter(source_name, license_note, parsed.listings),
-        fetcher=importer.NoNetworkFetcher(),
+        fetcher=HttpSiteFetcher() if payload.check_websites else importer.NoNetworkFetcher(),
         now=date.today(),
         user_id=uuid.UUID(user["id"]),
         vertical=payload.vertical,
@@ -155,6 +169,8 @@ async def import_prospects(
             "rows_total": parsed.rows_total,
             "created": summary.prospects_created,
             "suppressed": summary.suppressed,
+            "check_websites": payload.check_websites,
+            "sites_checked": summary.sites_checked,
         },
     )
     return result(
@@ -165,4 +181,5 @@ async def import_prospects(
         suppressed=summary.suppressed,
         created=summary.prospects_created,
         updated=summary.prospects_updated,
+        sites_checked=summary.sites_checked,
     )

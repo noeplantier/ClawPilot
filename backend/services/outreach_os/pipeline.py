@@ -6,6 +6,7 @@ The caller owns the transaction (the FastAPI session dependency commits on succe
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from dataclasses import dataclass
 from datetime import date
@@ -170,7 +171,10 @@ async def _ingest(
         source_ids.append(source.id)
         summary.sources_recorded += int(created)
 
-    snapshot = fetcher.fetch(cand.listing.website) if cand.domain and cand.listing.website else None
+    # The fetcher may block on the network: keep the event loop free.
+    snapshot = (
+        await asyncio.to_thread(fetcher.fetch, cand.listing.website) if cand.domain and cand.listing.website else None
+    )
     if snapshot is not None:
         summary.sites_checked += 1
     results = sig.analyze(cand.listing, snapshot, now=now, stale_days=config.stale_days, trust_absence=trust_absence)

@@ -120,7 +120,7 @@ SendGrid/Twilio/AI all fall back to graceful mocks when unconfigured.
 | `OUTREACH_SENDER_NAME`, `_COMPANY`, `_ADDRESS`, `_EMAIL` | Sender identity printed in drafts; all four required, no default |
 | `PUBLIC_BASE_URL` | Public API URL (https in production), used in unsubscribe links |
 | `FEATURE_PROSPECT_IMPORT` | `true` lets owners/admins import a prospect list (CSV/JSON); off by default |
-| `FEATURE_LIVE_SENDING`, `FEATURE_EXTERNAL_SOURCES` | Dangerous capabilities, off unless `true`. Live sending = real e-mail over SMTP (below); no network source exists yet |
+| `FEATURE_LIVE_SENDING`, `FEATURE_EXTERNAL_SOURCES` | Dangerous capabilities, off unless `true`. Live sending = real e-mail over SMTP (below). External sources = the opt-in "check websites" of a list import: each company's own public homepage is fetched (`robots.txt` respected, identified User-Agent, platforms and non-public addresses refused, 25 sites max per import). Enabling it is your attestation that this is permitted for the sites concerned |
 | `SMTP_HOST`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_SECURITY`, `SMTP_PORT` | The real e-mail channel. The first three are required; `SMTP_SECURITY` is `starttls` (587, default) or `ssl` (465); TLS is verified and mandatory |
 | `OUTREACH_SANDBOX`, `OUTREACH_LIVE_ALLOWLIST` | While live sending is on, only the allowlisted addresses/`@domains` receive mail. The sandbox is on unless set to `false`; an empty allowlist allows nobody |
 | `SEND_KILL_SWITCH` | `true` halts every send immediately (dispatch, SMTP test, SendGrid, Twilio) |

@@ -195,6 +195,64 @@ def test_the_audit_trail_has_hashes_and_counts_never_the_rows(org):
         return [r.diff for r in rows.scalars()]
 
     (diff,) = run_async(entries)
-    assert set(diff) == {"sha256", "legal_basis", "rows_total", "created", "suppressed"}
+    assert set(diff) == {
+        "sha256",
+        "legal_basis",
+        "rows_total",
+        "created",
+        "suppressed",
+        "check_websites",
+        "sites_checked",
+    }
     assert len(diff["sha256"]) == 64 and diff["created"] == 3 and out.batch_id
     assert "atelier-dupont" not in str(diff)  # the list content itself is never written to the audit log
+
+
+def _commit(**kw):
+    return _payload(preview=False, attestation=True, **kw)
+
+
+def test_checking_websites_is_refused_while_external_sources_are_off(org, monkeypatch):
+    monkeypatch.delenv("FEATURE_EXTERNAL_SOURCES", raising=False)
+    with pytest.raises(HTTPException) as refused:
+        _call(org, _commit(check_websites=True))
+    assert refused.value.status_code == 409 and refused.value.detail["code"] == "external_sources_disabled"
+    assert _prospects(org) == []  # refused before anything was written
+
+
+def test_with_the_flag_on_only_listed_sites_are_fetched_and_the_rest_stays_unknown(org, monkeypatch):
+    """The fetcher is replaced: no network. It proves the wiring (flag + option → fetcher → signals → summary)."""
+    from services.outreach_os.types import SiteSnapshot
+
+    asked: list[str] = []
+
+    class FakeFetcher:
+        def fetch(self, url):
+            asked.append(url)
+            return SiteSnapshot(url=url, status=200, html="<html><body>Bienvenue</body></html>")
+
+    monkeypatch.setenv("FEATURE_EXTERNAL_SOURCES", "true")
+    monkeypatch.setattr(routes, "HttpSiteFetcher", FakeFetcher)
+    out = _call(org, _commit(check_websites=True))
+    assert out.sites_checked == 1 and asked == [f"https://atelier-dupont-{UID}.example"]  # the only row with a site
+    dupont = next(p for p in _prospects(org) if p["name"].startswith("Atelier Dupont"))
+    detail = requests.get(f"{API}/prospects/{dupont['id']}", headers=org["headers"]).json()
+    states = {s["key"]: s["state"] for s in detail["signals"]}
+    assert states["website_unreachable"] == "not_detected"  # it answered
+    other = next(p for p in _prospects(org) if p["name"] == "Cabinet Durand")
+    other_states = {
+        s["key"]: s["state"]
+        for s in requests.get(f"{API}/prospects/{other['id']}", headers=org["headers"]).json()["signals"]
+    }
+    assert other_states["website_unreachable"] == "unknown"  # no site listed: nothing concluded
+
+
+def test_without_the_option_nothing_is_fetched_even_with_the_flag_on(org, monkeypatch):
+    monkeypatch.setenv("FEATURE_EXTERNAL_SOURCES", "true")
+
+    class Boom:
+        def __init__(self):
+            raise AssertionError("the fetcher must not be built without check_websites")
+
+    monkeypatch.setattr(routes, "HttpSiteFetcher", Boom)
+    assert _call(org, _commit()).sites_checked == 0

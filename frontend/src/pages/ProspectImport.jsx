@@ -23,10 +23,11 @@ function Field({ label, error, children, testId }) {
   );
 }
 
-function ImportForm({ onImported }) {
+function ImportForm({ onImported, externalSources }) {
   const [values, setValues] = useState(EMPTY);
   const [errors, setErrors] = useState({});
   const [attest, setAttest] = useState(false);
+  const [checkSites, setCheckSites] = useState(false);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
   const [apiError, setApiError] = useState(null);
@@ -50,11 +51,11 @@ function ImportForm({ onImported }) {
     setApiError(null);
     setBusy(true);
     try {
-      const body = { ...check.data, country: check.data.country.toUpperCase(), language: check.data.language.toLowerCase(), filename: values.filename || null, legal_basis_note: check.data.legal_basis_note || null, preview, attestation: !preview && attest };
+      const body = { ...check.data, country: check.data.country.toUpperCase(), language: check.data.language.toLowerCase(), filename: values.filename || null, legal_basis_note: check.data.legal_basis_note || null, preview, attestation: !preview && attest, check_websites: !preview && externalSources && checkSites };
       const data = await importsApi.submit(body);
       setResult(data);
       if (!preview) {
-        toast.success(`Imported: ${data.created} new prospect${data.created === 1 ? "" : "s"}, all pending your review`);
+        toast.success(`Imported: ${data.created} new prospect${data.created === 1 ? "" : "s"}, all pending your review${checkSites ? ` · ${data.sites_checked} website${data.sites_checked === 1 ? "" : "s"} checked` : ""}`);
         setAttest(false);
         onImported();
       }
@@ -128,6 +129,13 @@ function ImportForm({ onImported }) {
                 <input type="checkbox" checked={attest} onChange={(e) => setAttest(e.target.checked)} className="mt-1" data-testid="import-attest" />
                 <span>I confirm that I have the right to use this list for B2B prospecting on the legal basis stated above, and that the origin I gave is accurate.</span>
               </label>
+              <label className={`flex items-start gap-2 text-sm ${externalSources ? "" : "opacity-60"}`}>
+                <input type="checkbox" checked={externalSources && checkSites} disabled={!externalSources} onChange={(e) => setCheckSites(e.target.checked)} className="mt-1" data-testid="import-check-sites" />
+                <span>
+                  Also look at each company&apos;s own public homepage (robots.txt respected, one polite request per site, at most 25 per import; a site that
+                  refuses, throttles or cannot be read stays “not checked”, never “bad”). {externalSources ? "" : "Disabled: FEATURE_EXTERNAL_SOURCES is off on this server."}
+                </span>
+              </label>
               <button className="btn-ink" disabled={busy || !attest || result.rows_valid === 0} onClick={() => run(false)} data-testid="import-commit">
                 IMPORT {result.created + result.updated} PROSPECT{result.created + result.updated === 1 ? "" : "S"}
               </button>
@@ -166,7 +174,7 @@ export default function ProspectImport() {
       {page.data && enabled && !canDecide(user) && (
         <EmptyBlock title="Only an owner or admin can import a list" testId="import-forbidden"><p>Ask an owner or admin of your organisation.</p></EmptyBlock>
       )}
-      {page.data && enabled && canDecide(user) && <ImportForm onImported={page.reload} />}
+      {page.data && enabled && canDecide(user) && <ImportForm onImported={page.reload} externalSources={Boolean(page.data.settings.flags.external_sources)} />}
 
       {page.data && (
         <section className="space-y-3" data-testid="import-history">

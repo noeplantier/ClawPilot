@@ -7,7 +7,7 @@ fournisseurs). Les points à valider avec un juriste sont marqués **[à valider
 
 | Exigence | Mise en œuvre |
 |---|---|
-| Sources autorisées uniquement | Seule une source locale fictive est implémentée. Les sources réseau sont derrière `FEATURE_EXTERNAL_SOURCES` (inexistant, éteint). Avant d'en écrire une : lire ses CGU et son `robots.txt`, pas de contournement de CAPTCHA, de login, de paywall ni de limite de débit. |
+| Sources autorisées uniquement | Sources de prospects : annuaire fictif local et listes que vous importez (origine et base légale obligatoires). Aucune source réseau de *découverte*. Le seul accès réseau est l'option « vérifier les sites » d'un import, derrière `FEATURE_EXTERNAL_SOURCES` : la page d'accueil **propre** de chaque entreprise, jamais une plateforme (LinkedIn, Facebook, Google, avis…), `robots.txt` lu et respecté (fichier illisible = refus), `User-Agent` identifié avec l'adresse de contact, 1 requête à la fois, 2 s entre deux requêtes au même site, 25 sites et 60 s au plus par import, pas de cookie ni de JavaScript, adresses privées/locales refusées (SSRF, y compris après redirection). Un site qui répond 401/403/429/503 (anti-robot, limite de débit) n'est jamais contourné ni réessayé : il reste « non vérifié » (signal `unknown`). Activer le drapeau vaut déclaration de l'exploitant que cette consultation est permise pour les sites concernés (CGU). |
 | Pas de LinkedIn | Aucun code, aucune extension, aucun navigateur automatisé. |
 | Pas d'invention | Un brouillon n'énonce que des faits portés par un signal `detected` avec preuve. Sans fait exploitable : introduction neutre. |
 | Provenance | Chaque prospect garde ses sources (nom, URL, date, hash du contenu, note de licence). |

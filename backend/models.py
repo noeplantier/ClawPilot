@@ -508,6 +508,8 @@ class ImportIn(BaseModel):
     vertical: str = Field(default="unspecified", min_length=1, max_length=60)
     preview: bool = True  # nothing is written until `preview` is false AND `attestation` is true
     attestation: bool = False  # "I have the right to use this list for B2B prospecting on the stated basis"
+    # Look at each company's own public homepage (robots.txt respected). Needs FEATURE_EXTERNAL_SOURCES; off by default.
+    check_websites: bool = False
 
 
 class ImportRowError(BaseModel):
@@ -528,6 +530,7 @@ class ImportOut(BaseModel):
     suppressed: int
     created: int  # preview: would create
     updated: int  # preview: would update (already known prospects)
+    sites_checked: int = 0  # homepages really fetched (the others stay "not checked", never "bad")
     already_imported: bool = False  # a file with the same content was imported before
 
 
