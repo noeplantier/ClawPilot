@@ -125,6 +125,13 @@ test("the map shows real places from the search, marks what is published and nev
   });
   await page.route(/(tile\.openstreetmap\.org|basemaps\.cartocdn\.com)/, (route) =>
     route.fulfill({ contentType: "image/png", body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64") }));
+  await page.route("**/api/map/prospects", (route) =>
+    route.fulfill({
+      json: [
+        { id: "p1", name: "Chez Marcel", city: "Lyon", lat: 45.7641, lon: 4.8358, review_status: "pending", has_email: true, external_id: "node/1" },
+        { id: "p2", name: "Déjà prospect", city: "Lyon", lat: 45.762, lon: 4.83, review_status: "approved", has_email: false, external_id: null },
+      ],
+    }));
   await page.route("**/api/map/search", (route) =>
     route.fulfill({
       json: {
@@ -139,10 +146,12 @@ test("the map shows real places from the search, marks what is published and nev
   await expect(page.getByTestId("map")).toBeVisible();
   await expect(page.getByTestId("map-empty")).toBeVisible();
   await page.getByTestId("map-search").click();
-  await expect(page.getByTestId("map-summary")).toHaveText("2 places: 1 with a published e-mail, 1 with a phone, 1 with a website.");
-  await expect(page.locator(".map-pin")).toHaveCount(2); // one pin per real place
-  await page.locator(".map-pin").first().dispatchEvent("click");
+  // "Chez Marcel" is already one of my prospects: it is drawn as a prospect (square), not offered again as a search result.
+  await expect(page.getByTestId("map-mine-toggle")).toContainText("2 prospects on the map: 1 to review, 1 approved, 0 rejected");
+  await expect(page.getByTestId("map-summary")).toHaveText("1 place: 0 with a published e-mail, 0 with a phone, 0 with a website.");
+  await expect(page.locator(".map-pin")).toHaveCount(3); // 2 of my prospects + 1 new place
+  await page.locator(".map-pin").nth(2).dispatchEvent("click"); // the search result (drawn last)
   await expect(page.locator(".leaflet-popup-content")).toContainText("source on OpenStreetMap");
-  await page.getByTestId("map-select-email").click();
+  await page.getByTestId("map-select-all").click();
   await expect(page.getByTestId("map-import-off")).toContainText("FEATURE_PROSPECT_IMPORT"); // import stays closed without its flag
 });

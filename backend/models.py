@@ -695,3 +695,14 @@ class MapSearchOut(BaseModel):
     license_note: str
     truncated: bool = False  # the area held more places than the cap: zoom in to see the rest
     places: List[MapPlaceOut]
+
+
+class MapProspectOut(BaseModel):
+    id: str
+    name: str
+    city: Optional[str] = None
+    lat: float
+    lon: float
+    review_status: Literal["pending", "approved", "rejected"]
+    has_email: bool
+    external_id: Optional[str] = None  # the source's id (e.g. OpenStreetMap node/123): lets the map hide duplicates

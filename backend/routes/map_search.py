@@ -11,9 +11,12 @@ import asyncio
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from deps import require_roles
-from models import MapPlaceOut, MapSearchIn, MapSearchOut
+from db.session import get_db_session
+from deps import get_current_user, require_roles
+from models import MapPlaceOut, MapProspectOut, MapSearchIn, MapSearchOut
+from repositories import prospect_repo
 from services import feature_flags, overpass_svc
 from services.outreach_os import osm
 from services.rate_limit import AttemptLimiter
@@ -21,6 +24,12 @@ from services.rate_limit import AttemptLimiter
 router = APIRouter(prefix="/map", tags=["map"])
 decider = require_roles("owner", "admin")
 _limiter = AttemptLimiter(6, 60.0)
+
+
+@router.get("/prospects", response_model=list[MapProspectOut])
+async def my_prospects(user: dict = Depends(get_current_user), session: AsyncSession = Depends(get_db_session)):
+    """The organisation's own prospects that have a position (imported from the map or from a file with lat/lon)."""
+    return await prospect_repo.list_positions(session, uuid.UUID(user["org_id"]))
 
 
 @router.get("/categories")
