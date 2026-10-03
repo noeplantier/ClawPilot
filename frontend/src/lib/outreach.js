@@ -17,6 +17,7 @@ export const importsApi = {
 
 export const mapApi = {
   search: (area) => api.post("/map/search", area).then((r) => r.data),
+  prospects: () => api.get("/map/prospects").then((r) => r.data),
 };
 
 export const prospectsApi = {

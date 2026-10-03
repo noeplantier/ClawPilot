@@ -4,6 +4,11 @@ Page **Map search** (`/app/map`) : on déplace une carte interactive (Leaflet, t
 catégorie, « Search this area » interroge l'API Overpass (données OpenStreetMap) **en direct** et affiche les établissements
 réels de la zone avec ce que leurs contributeurs ont publié : adresse, téléphone, e-mail, site web. Gratuit, sans clé, sans compte.
 
+## Mes prospects sur la carte
+Les prospects déjà importés qui ont une position (importés depuis la carte, ou depuis un fichier avec colonnes `lat`/`lon`) sont
+dessinés en **carrés** (bleu : à valider, vert : approuvé, rouge : refusé), cliquables vers leur fiche. Un lieu déjà importé n'est
+plus proposé comme résultat de recherche (reconnu par son identifiant OpenStreetMap). Endpoint : `GET /api/map/prospects`.
+
 ## Ce qui est affiché, et ce qui ne l'est pas
 - Uniquement les champs publiés dans OpenStreetMap (`phone`, `email`/`contact:email`, `website`, `addr:*`). Un champ absent s'affiche
   « not published » : rien n'est deviné ni complété. Beaucoup d'établissements n'ont pas d'e-mail dans OSM.

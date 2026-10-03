@@ -323,6 +323,45 @@ async def fill_email(session: AsyncSession, account_id: uuid.UUID, lead: Lead, e
     return True
 
 
+async def list_positions(session: AsyncSession, account_id: uuid.UUID, limit: int = 2000) -> list[dict]:
+    """Discovery prospects whose latest source carries a position (lat/lon), for the map. Newest first."""
+    ranked = (
+        select(
+            ProspectSource.lead_id,
+            ProspectSource.fields,
+            func.row_number()
+            .over(partition_by=ProspectSource.lead_id, order_by=ProspectSource.created_at.desc())
+            .label("rn"),
+        )
+        .where(ProspectSource.account_id == account_id)
+        .subquery()
+    )
+    rows = await session.execute(
+        select(Lead, ranked.c.fields)
+        .join(ranked, ranked.c.lead_id == Lead.id)
+        .where(ranked.c.rn == 1, Lead.account_id == account_id, ACTIVE, IN_DISCOVERY)
+        .order_by(Lead.created_at.desc())
+        .limit(limit * 2)
+    )
+    out: list[dict] = []
+    for lead, fields in rows.all():
+        lat, lon = fields.get("lat"), fields.get("lon")
+        if isinstance(lat, (int, float)) and isinstance(lon, (int, float)) and -90 <= lat <= 90 and -180 <= lon <= 180:
+            out.append(
+                {
+                    "id": str(lead.id),
+                    "name": lead.full_name,
+                    "city": lead.city,
+                    "lat": float(lat),
+                    "lon": float(lon),
+                    "review_status": lead.review_status,
+                    "has_email": bool(lead.email),
+                    "external_id": fields.get("external_id"),
+                }
+            )
+    return out[:limit]
+
+
 async def sources_of(session: AsyncSession, lead_id: uuid.UUID) -> list[ProspectSource]:
     rows = await session.execute(
         select(ProspectSource).where(ProspectSource.lead_id == lead_id).order_by(ProspectSource.created_at)

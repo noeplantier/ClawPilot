@@ -1,4 +1,4 @@
-import { areaTooLarge, importRows, summarize, summaryText, markerColor } from "@/lib/mapSearch";
+import { areaTooLarge, importRows, summarize, summaryText, markerColor, knownIds, mineSummary } from "@/lib/mapSearch";
 
 const A = { external_id: "node/1", name: "A", lat: 45.7, lon: 4.8, email: "a@a.fr", phone: "+33 1", website: "https://a.fr", source_url: "u" };
 const B = { external_id: "node/2", name: "B", lat: 45.7, lon: 4.8, email: null, phone: "+33 2", website: null, source_url: "u" };
@@ -27,4 +27,15 @@ test("marker colours tell what is reachable", () => {
   expect(markerColor(A)).toBe("#15803D");
   expect(markerColor(B)).toBe("#B45309");
   expect(markerColor(C)).toBe("#6B6B66");
+});
+
+test("already imported places are recognised by their source id and the layer is summarised exactly", () => {
+  const mine = [
+    { id: "1", external_id: "node/1", review_status: "pending" },
+    { id: "2", external_id: null, review_status: "approved" },
+    { id: "3", external_id: "way/9", review_status: "rejected" },
+  ];
+  expect([...knownIds(mine)].sort()).toEqual(["node/1", "way/9"]);
+  expect(mineSummary(mine)).toBe("3 prospects on the map: 1 to review, 1 approved, 1 rejected.");
+  expect(mineSummary([])).toBe("No prospect with a position yet.");
 });

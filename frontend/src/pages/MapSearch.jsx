@@ -9,7 +9,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { canDecide, importsApi, mapApi, prospectsApi, useAsync } from "@/lib/outreach";
 import { describeApiError } from "@/lib/outreachFormat";
 import {
-  CATEGORY_LABELS, IMPORT_ORIGIN, MAX_SITES_CHECKED, areaTooLarge, importRows, markerColor, summaryText,
+  CATEGORY_LABELS, IMPORT_ORIGIN, MAX_SITES_CHECKED, STATUS_COLOR, STATUS_LABEL, areaTooLarge, importRows, knownIds, markerColor,
+  mineSummary, summaryText,
 } from "@/lib/mapSearch";
 import { EmptyBlock, ErrorBlock, LoadingBlock } from "@/components/outreach/States";
 
@@ -20,6 +21,19 @@ const BASEMAPS = {
   osm: { label: "Standard", url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png", credit: "© OpenStreetMap contributors" },
 };
 const GLASS = "bg-white/85 backdrop-blur-md border border-white/60 shadow-xl rounded-2xl";
+
+const minePin = (p) =>
+  L.divIcon({
+    className: "map-pin",
+    html: `<span style="--c:${STATUS_COLOR[p.review_status]}" class="map-pin-square"></span>`,
+    iconSize: [22, 22], iconAnchor: [11, 11], popupAnchor: [0, -10],
+  });
+
+function minePopup(p) {
+  const esc = (v) => String(v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  return `<strong>${esc(p.name)}</strong><div>${p.city ? esc(p.city) : "<i>city not set</i>"}</div><div><b>status</b> ${STATUS_LABEL[p.review_status]} · <b>e-mail</b> ${p.has_email ? "known" : "<i>not known</i>"}</div>` +
+    `<div><a href="/app/prospects/${esc(p.id)}">Open the prospect</a></div>`;
+}
 
 const pin = (p, active) =>
   L.divIcon({
@@ -103,10 +117,14 @@ function MapView({ canImport }) {
   const [full, setFull] = useState(false);
   const [query, setQuery] = useState("");
   const [cities, setCities] = useState([]);
+  const [mine, setMine] = useState([]);
+  const [showMine, setShowMine] = useState(true);
+  const mineLayer = useRef(null);
 
   useEffect(() => {
     const m = L.map(el.current, { center: START.center, zoom: START.zoom, zoomControl: false });
     L.control.zoom({ position: "bottomleft" }).addTo(m);
+    mineLayer.current = L.layerGroup().addTo(m);
     layer.current = L.layerGroup().addTo(m);
     const check = () => setTooLarge(areaTooLarge(bounds(m)));
     m.on("moveend", check);
@@ -149,7 +167,20 @@ function MapView({ canImport }) {
     return () => { clearTimeout(t); ctl.abort(); };
   }, [query]);
 
-  const places = useMemo(() => (result ? result.places : []), [result]);
+  useEffect(() => {
+    mapApi.prospects().then(setMine).catch(() => setMine([]));
+  }, []);
+
+  useEffect(() => {
+    if (!mineLayer.current) return;
+    mineLayer.current.clearLayers();
+    if (!showMine) return;
+    mine.forEach((p) => L.marker([p.lat, p.lon], { icon: minePin(p), title: p.name }).bindPopup(minePopup(p), { className: "map-popup" }).addTo(mineLayer.current));
+  }, [mine, showMine]);
+
+  const known = useMemo(() => knownIds(mine), [mine]);
+  // A place already in the prospects is shown by its prospect pin, not offered again.
+  const places = useMemo(() => (result ? result.places.filter((p) => !known.has(p.external_id)) : []), [result, known]);
   const toggle = useCallback((id) => setSelected((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; }), []);
 
   useEffect(() => {
@@ -223,6 +254,10 @@ function MapView({ canImport }) {
               className={`px-3 py-1 rounded-full text-xs border ${base === k ? "bg-[#0F172A] text-white border-[#0F172A]" : "bg-white/70 border-[#D6D3C8]"}`}>{v.label}</button>
           ))}
         </div>
+        <label className="flex items-center gap-2 text-xs" data-testid="map-mine-toggle">
+          <input type="checkbox" checked={showMine} onChange={(e) => setShowMine(e.target.checked)} />
+          <span><b>My prospects</b> (squares) — {mineSummary(mine)}</span>
+        </label>
         <button className="btn-ink w-full justify-center" onClick={search} disabled={busy || tooLarge} data-testid="map-search">
           <MagnifyingGlass size={14} /> {busy ? "SEARCHING…" : "SEARCH THIS AREA"}
         </button>
@@ -285,7 +320,7 @@ function MapView({ canImport }) {
         {panelOpen ? "Hide results" : result ? `Results (${places.length})` : "Results"}
       </button>
       <p className="absolute z-[400] bottom-1 left-24 text-[10px] text-[#0F172A]/70 bg-white/70 px-2 rounded-full pointer-events-none hidden lg:block">
-        Green: e-mail published · amber: phone or site · grey: name only · double-click a pin to select
+        Round: search results (green e-mail, amber phone/site, grey name) · square: my prospects (blue to review, green approved) · double-click a pin to select
       </p>
     </div>
   );

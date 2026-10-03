@@ -37,3 +37,16 @@ export const importRows = (places) =>
 export const IMPORT_ORIGIN = "OpenStreetMap contributors (ODbL), read live through the Overpass API from the map of this application";
 
 export const markerColor = (p) => (p.email ? "#15803D" : p.phone || p.website ? "#B45309" : "#6B6B66");
+
+// The organisation's own prospects on the map: colour = where they stand in the review, never a score.
+export const STATUS_COLOR = { pending: "#2563EB", approved: "#15803D", rejected: "#991B1B" };
+export const STATUS_LABEL = { pending: "to review", approved: "approved", rejected: "rejected" };
+
+// Source ids already imported: the search must not offer them a second time.
+export const knownIds = (mine) => new Set(mine.map((p) => p.external_id).filter(Boolean));
+
+export function mineSummary(mine) {
+  if (mine.length === 0) return "No prospect with a position yet.";
+  const by = (s) => mine.filter((p) => p.review_status === s).length;
+  return `${mine.length} prospect${mine.length === 1 ? "" : "s"} on the map: ${by("pending")} to review, ${by("approved")} approved, ${by("rejected")} rejected.`;
+}
