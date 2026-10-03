@@ -122,6 +122,7 @@ SendGrid/Twilio/AI all fall back to graceful mocks when unconfigured.
 | `FEATURE_PROSPECT_IMPORT` | `true` lets owners/admins import a prospect list (CSV/JSON); off by default |
 | `FEATURE_LIVE_SENDING`, `FEATURE_EXTERNAL_SOURCES` | Dangerous capabilities, off unless `true`. Live sending = real e-mail over SMTP (below); no network source exists yet |
 | `SMTP_HOST`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_SECURITY`, `SMTP_PORT` | The real e-mail channel. The first three are required; `SMTP_SECURITY` is `starttls` (587, default) or `ssl` (465); TLS is verified and mandatory |
+| `IMAP_HOST`, `IMAP_USERNAME`, `IMAP_PASSWORD`, `IMAP_PORT`, `IMAP_FOLDER` | Reads replies, hard bounces and STOP from the sending mailbox (TLS only, port 993, folder `INBOX` by default). The first three are required; without them nothing is read. Run by beat every 5 minutes where a worker exists, or by `POST /api/outbound/sync-inbox` |
 | `OUTREACH_SANDBOX`, `OUTREACH_LIVE_ALLOWLIST` | While live sending is on, only the allowlisted addresses/`@domains` receive mail. The sandbox is on unless set to `false`; an empty allowlist allows nobody |
 | `SEND_KILL_SWITCH` | `true` halts every send immediately (dispatch, SMTP test, SendGrid, Twilio) |
 | `EMERGENT_LLM_KEY` | AI composer (mock when unset) |

@@ -1,0 +1,13 @@
+From: Alice <alice@client.example>
+To: Noe <founder@plantiers.com>
+Subject: Re: A propos de Chez Marcel
+Message-ID: <reply1@client.example>
+In-Reply-To: <orig1@plantiers.com>
+References: <orig1@plantiers.com>
+Content-Type: text/plain; charset=utf-8
+
+Oui, appelez-moi demain.
+
+Le 3 oct. 2026, Noe a écrit :
+> Bonjour, ...
+> Pour ne plus recevoir : https://x/api/unsubscribe/abc

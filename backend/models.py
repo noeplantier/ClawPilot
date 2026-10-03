@@ -350,6 +350,8 @@ class OutreachStatus(BaseModel):
     smtp_host: Optional[str] = None  # never the username or the password
     sandbox: bool = True  # live sending only reaches OUTREACH_LIVE_ALLOWLIST while this is true
     allowlist_size: int = 0
+    imap_configured: bool = False  # IMAP_HOST, IMAP_USERNAME and IMAP_PASSWORD are set: replies and bounces are read
+    imap_host: Optional[str] = None  # never the username or the password
 
 
 class WebhookStatus(BaseModel):
@@ -611,6 +613,16 @@ class OutboundMessageDetail(OutboundMessageOut):
 
 class SmtpCheckIn(BaseModel):
     to: EmailStr
+
+
+class InboxSyncOut(BaseModel):
+    fetched: int = 0
+    replies: int = 0
+    opt_outs: int = 0
+    bounces: int = 0
+    duplicates: int = 0
+    unmatched: int = 0
+    ignored: int = 0
 
 
 class SmtpCheckOut(BaseModel):

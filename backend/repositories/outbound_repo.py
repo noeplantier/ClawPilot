@@ -156,3 +156,32 @@ async def dispatch_times_since(
         )
     times += [t for (t,) in legacy.all()]
     return times
+
+
+# ---------------------------------------------------------------- inbound mailbox
+async def find_by_provider_ids(session: AsyncSession, provider_ids: list[str]) -> list[OutboundMessage]:
+    """Messages (any organisation: the mailbox is the server's) whose SMTP Message-ID is one of `provider_ids`."""
+    if not provider_ids:
+        return []
+    rows = await session.execute(select(OutboundMessage).where(OutboundMessage.provider_message_id.in_(provider_ids)))
+    return list(rows.scalars())
+
+
+async def latest_sent_to(session: AsyncSession, email: str) -> Optional[OutboundMessage]:
+    rows = await session.execute(
+        select(OutboundMessage)
+        .where(OutboundMessage.to_email == email, OutboundMessage.status.in_(("sent", "replied")))
+        .order_by(OutboundMessage.dispatched_at.desc())
+        .limit(1)
+    )
+    return rows.scalar_one_or_none()
+
+
+async def has_inbound_event(session: AsyncSession, message_id: uuid.UUID, inbound_id: str) -> bool:
+    """Idempotence: an inbound e-mail already recorded on this message is never recorded twice."""
+    rows = await session.execute(
+        select(OutboundEvent.id)
+        .where(OutboundEvent.message_id == message_id, OutboundEvent.detail["inbound_message_id"].astext == inbound_id)
+        .limit(1)
+    )
+    return rows.first() is not None

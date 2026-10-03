@@ -67,13 +67,24 @@ journaux, ni dans une réponse d'API, ni dans la page Settings (qui n'affiche qu
 
 ## Limites connues (à lire avant de compter dessus)
 
-1. **La seule source de prospects est l'annuaire fictif** (`restaurants_demo`). Il n'existe pas encore de moyen d'importer de vrais
-   prospects dans le parcours « découverte → validation → brouillon → envoi ». Tant que ce n'est pas fait, l'envoi réel depuis ce
-   parcours n'a pas de destinataire réel ; seul `test-send` sort. Ne **jamais** mettre les adresses fictives (`*.example`) dans la liste
-   blanche. Prochaine tranche : import d'une liste que vous avez le droit d'utiliser (avec origine et base légale), ou une API officielle.
-2. **Pas de suivi des rebonds ni des réponses en SMTP.** `simulate` ne marche que pour le dry-run. Un rebond (message d'erreur dans la
-   boîte) ou une réponse « STOP » se traite à la main : `POST /api/prospects/suppressions` avec l'adresse. Lire la boîte par IMAP serait une
-   autre intégration, à décider séparément.
+1. **Il faut de vrais prospects, importés par vous.** Les annuaires fictifs (`*.example`) ne sortent jamais. L'import d'une liste
+   que vous avez le droit d'utiliser (origine et base légale obligatoires, `FEATURE_PROSPECT_IMPORT=true`) alimente le parcours
+   « validation → brouillon → envoi ». Ne **jamais** mettre d'adresse fictive dans la liste blanche.
+2. **Suivi des rebonds et des réponses : IMAP, à activer séparément.** Avec `IMAP_HOST`, `IMAP_USERNAME`, `IMAP_PASSWORD` (mêmes
+   précautions que SMTP : mot de passe d'application, posé dans le tableau de bord de l'hébergeur), la boîte d'envoi est lue
+   (TLS vérifié, lecture sans marquer lu, puis drapeau « lu » seulement après l'enregistrement en base) :
+   - une réponse qui cite un de nos `Message-ID` passe le message à `replied` et garde un extrait de 500 caractères au plus
+     (jamais le message complet, jamais le fil cité) ; les réponses automatiques (absence) sont ignorées ;
+   - un « STOP » désinscrit le prospect **seulement s'il vient de l'adresse à laquelle nous avons écrit** (sinon l'événement est
+     enregistré et signalé, à traiter par un humain) ;
+   - un rebond **définitif** (rapport de remise `Action: failed`, `Status: 5.x.x`) passe le message à `bounced` et met l'adresse en
+     liste de suppression ; un échec temporaire (4.x.x) ou un rapport illisible ne suppriment rien ;
+   - un courrier qui ne se rattache à aucun de nos messages est compté « non rattaché » et ne change rien ; relire deux fois le même
+     courrier n'enregistre rien deux fois.
+   Déclenchement : tâche beat toutes les 5 minutes là où un worker tourne (non disponible sur le plan gratuit de Render), ou à la
+   demande par le bouton « Read mailbox now » de la page *Sending* (`POST /api/outbound/sync-inbox`, rôle owner/admin).
+   Sans variables IMAP, rien n'est lu : `simulate` reste réservé au dry-run, et un rebond/une réponse se traite à la main
+   (`POST /api/prospects/suppressions`). Le chemin SendGrid (anciens chemins) a ses propres webhooks signés.
 3. **Les anciens chemins (page Messages, lots, campagnes) n'utilisent pas SMTP.** Ils passent par SendGrid (ou mock). Sans
    `SENDGRID_FROM_EMAIL` ils restent en mock. Depuis cette tranche, chaque e-mail qu'ils envoient porte le même pied de page que
    les brouillons (identité de l'expéditeur, origine des données lue dans la source du prospect — « source non renseignée » si
@@ -83,6 +94,6 @@ journaux, ni dans une réponse d'API, ni dans la page Settings (qui n'affiche qu
    prospects, découverte ou non. WhatsApp n'est pas concerné (opt-in explicite).
 4. **Base légale et registre de traitement** : à valider par un juriste (prospection B2B, droit d'opposition, information sur l'origine
    des données). Ce document n'est pas un avis juridique.
-5. **Réception non vérifiée par OutreachOS** : « sent » signifie « accepté par votre serveur SMTP », pas « arrivé en boîte ».
-6. Cet envoi réel n'a **pas** été essayé avec vos identifiants (aucun accès réseau ni secret dans l'environnement de développement) :
+5. **Réception non vérifiée par OutreachOS** (le suivi IMAP ne lit que ce que la boîte reçoit : un message jamais rebondi n'est pas « remis ») : « sent » signifie « accepté par votre serveur SMTP », pas « arrivé en boîte ».
+6. Ni cet envoi réel ni la lecture IMAP n'ont été essayés avec vos identifiants (aucun accès réseau ni secret dans l'environnement de développement) :
    la première vérification réelle est le `test-send` de l'étape 4.

@@ -20,7 +20,7 @@ const BASE = {
   ai: { key_configured: false, library_available: false, active: false, mode: "template", reason: "EMERGENT_LLM_KEY is not set" },
   outreach: {
     dry_run: true, live_sending_flag: false, kill_switch: false, sender_configured: false, sender_email: null,
-    smtp_configured: false, smtp_host: null, sandbox: true, allowlist_size: 0,
+    smtp_configured: false, smtp_host: null, imap_configured: false, imap_host: null, sandbox: true, allowlist_size: 0,
   },
   webhooks: { production: false, twilio_signature_ready: false, twilio_webhook_url_set: false, sendgrid_signature_ready: false },
 };
