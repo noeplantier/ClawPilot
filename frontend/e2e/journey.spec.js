@@ -235,3 +235,21 @@ test("the prospects map clusters nearby prospects, filters them, refreshes by po
   expect(assigned.lead_ids.length).toBe(1); // only the approved one is sent to the API
   expect(polled).toBeGreaterThan(0);
 });
+
+test("a reviewer dismisses a wrong signal: it reads as unknown, the score is recomputed and the decision is reversible", async ({ page }) => {
+  await register(page);
+  await page.goto("/app/prospects");
+  await page.getByTestId("empty-run-discovery").click();
+  await page.getByRole("link", { name: /Le Petit Bouchon/ }).first().click();
+  const before = await page.getByTestId("score-badge").first().innerText();
+  await page.getByTestId("dismiss-no_website").click();
+  await page.getByTestId("dismiss-confirm-no_website").isDisabled();
+  await page.getByTestId("dismiss-reason-no_website").fill("They do have a site, the directory is old");
+  await page.getByTestId("dismiss-confirm-no_website").click();
+  await expect(page.getByTestId("dismissed-no_website")).toContainText("They do have a site");
+  await expect(page.getByTestId("signal-no_website").getByTestId("state-unknown")).toBeVisible();
+  const after = await page.getByTestId("score-badge").first().innerText();
+  expect(after).not.toEqual(before); // the 30 points of this signal are gone
+  await page.getByTestId("restore-no_website").click();
+  await expect(page.getByTestId("signal-no_website").getByTestId("state-detected")).toBeVisible();
+});
