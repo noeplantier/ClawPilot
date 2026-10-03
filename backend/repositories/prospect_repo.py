@@ -27,11 +27,12 @@ from db.models import (
     ProspectSignal,
     ProspectSource,
     ScoreVersion,
+    SignalDismissal,
 )
 from repositories import consent_repo, lead_repo, suppression_repo
 from services.outreach_os.normalize import normalize_email, normalize_phone
 from services.outreach_os.scoring import ScoreConfig, ScoreResult
-from services.outreach_os.types import Candidate, RawListing, SignalResult
+from services.outreach_os.types import Candidate, RawListing, SignalResult, SignalState
 
 ACTIVE = Lead.deleted_at.is_(None)
 IN_DISCOVERY = Lead.review_status.is_not(None)
@@ -184,6 +185,69 @@ async def current_signals(session: AsyncSession, lead_id: uuid.UUID) -> list[Pro
         .order_by(ProspectSignal.signal_key, ProspectSignal.created_at.desc(), ProspectSignal.id)
     )
     return list(rows.scalars())
+
+
+async def dismissals_in_force(session: AsyncSession, lead_id: uuid.UUID) -> dict[str, str]:
+    """signal_key -> reason, for the signals a reviewer has dismissed and not restored."""
+    rows = await session.execute(
+        select(SignalDismissal)
+        .where(SignalDismissal.lead_id == lead_id)
+        .distinct(SignalDismissal.signal_key)
+        .order_by(SignalDismissal.signal_key, SignalDismissal.created_at.desc(), SignalDismissal.id)
+    )
+    return {d.signal_key: d.reason or "" for d in rows.scalars() if d.action == "dismiss"}
+
+
+async def add_dismissal(
+    session: AsyncSession,
+    account_id: uuid.UUID,
+    lead_id: uuid.UUID,
+    signal_key: str,
+    action: str,
+    reason: Optional[str],
+    user_id: Optional[uuid.UUID],
+) -> SignalDismissal:
+    row = SignalDismissal(
+        account_id=account_id,
+        lead_id=lead_id,
+        signal_key=signal_key,
+        action=action,
+        reason=reason,
+        actor_user_id=user_id,
+    )
+    session.add(row)
+    await session.flush()
+    return row
+
+
+async def effective_results(session: AsyncSession, lead_id: uuid.UUID) -> list[SignalResult]:
+    """The current signals as scoring and drafts must read them: reviewer dismissals applied (as UNKNOWN)."""
+    from services.outreach_os.signals import apply_dismissals
+
+    stored = await current_signals(session, lead_id)
+    results = [SignalResult(s.signal_key, SignalState(s.state), s.evidence) for s in stored]
+    return apply_dismissals(results, await dismissals_in_force(session, lead_id))
+
+
+async def rescore_lead(
+    session: AsyncSession, account_id: uuid.UUID, lead: Lead, user_id: Optional[uuid.UUID]
+) -> tuple[ProspectScore, ScoreVersion]:
+    """Recompute a prospect's score from its stored signals (dismissals applied) with the active configuration."""
+    from services.outreach_os.scoring import compute_score
+
+    version = await active_score_version(session, account_id)
+    if version is None:
+        version = await create_score_version(session, account_id, ScoreConfig(), user_id)
+    await append_score(
+        session,
+        account_id,
+        lead.id,
+        version,
+        compute_score(await effective_results(session, lead.id), config_of(version)),
+    )
+    row = await latest_score(session, lead.id)
+    assert row is not None
+    return row, version
 
 
 async def append_signals(
@@ -430,6 +494,7 @@ async def erase(session: AsyncSession, account_id: uuid.UUID, lead: Lead) -> Non
     now = datetime.now(timezone.utc)
     await session.execute(update(ProspectSource).where(ProspectSource.lead_id == lead.id).values(fields={}))
     await session.execute(update(ProspectSignal).where(ProspectSignal.lead_id == lead.id).values(evidence="[erased]"))
+    await session.execute(update(SignalDismissal).where(SignalDismissal.lead_id == lead.id).values(reason=None))
     await session.execute(update(ProspectScore).where(ProspectScore.lead_id == lead.id).values(breakdown=[]))
     sent_ids = select(OutboundMessage.id).where(OutboundMessage.lead_id == lead.id)
     await session.execute(update(OutboundEvent).where(OutboundEvent.message_id.in_(sent_ids)).values(detail={}))

@@ -33,6 +33,8 @@ export const prospectsApi = {
   events: (id) => api.get(`/prospects/${id}/events`).then((r) => r.data),
   review: (id, decision, note) => api.post(`/prospects/${id}/review`, { decision, note: note || null }).then((r) => r.data),
   rescore: (id) => api.post(`/prospects/${id}/rescore`).then((r) => r.data),
+  dismissSignal: (id, key, reason) => api.post(`/prospects/${id}/signals/${key}/dismiss`, { reason }).then((r) => r.data),
+  restoreSignal: (id, key) => api.post(`/prospects/${id}/signals/${key}/restore`).then((r) => r.data),
   erase: (id) => api.post(`/prospects/${id}/erase`),
   runDiscovery: () => api.post("/prospects/discovery/run", { source: "fixture_directory" }).then((r) => r.data),
   createDraft: (id) => api.post(`/prospects/${id}/drafts`).then((r) => r.data),

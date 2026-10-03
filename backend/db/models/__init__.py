@@ -15,6 +15,7 @@ from db.models.prospect import (
     ProspectSignal,
     ProspectSource,
     ScoreVersion,
+    SignalDismissal,
     SuppressionEntry,
     UsageRecord,
 )
@@ -49,6 +50,7 @@ __all__ = [
     "MessageDraft",
     "ProspectScore",
     "ProspectSignal",
+    "SignalDismissal",
     "ProspectImportBatch",
     "ProspectSource",
     "ScoreVersion",

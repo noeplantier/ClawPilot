@@ -102,7 +102,7 @@ def test_detail_shows_provenance_signals_and_explained_score(org):
 
     bouchon = _detail(org, prospects["Le Petit Bouchon"]["id"])
     signals = {s["key"]: s for s in bouchon["signals"]}
-    assert len(signals) == 7
+    assert len(signals) == 9  # the seven original signals + outdated_technology + no_social_presence
     assert signals["no_website"]["state"] == "detected" and "No website listed" in signals["no_website"]["evidence"]
     assert signals["website_unreachable"]["state"] == "unknown"  # not applicable: never concluded from absence
     assert signals["booking_page_missing"]["state"] == "unknown"

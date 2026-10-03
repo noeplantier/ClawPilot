@@ -89,6 +89,33 @@ class ProspectSignal(Base, UUIDPKMixin, CreatedAtMixin):
     evidence: Mapped[str] = mapped_column(Text, nullable=False)
 
 
+class SignalDismissal(Base, UUIDPKMixin):
+    """A reviewer says an observed signal is wrong (or takes that back).
+
+    Append-only: the current decision is the latest row per (lead, signal_key). It never edits the observation: the
+    signal row stays as observed, and scoring and drafts read it as UNKNOWN while a dismissal is in force. `reason` is
+    blanked by the erasure path."""
+
+    __tablename__ = "signal_dismissals"
+    __table_args__ = (
+        CheckConstraint("action IN ('dismiss','restore')", name="action"),
+        Index("ix_signal_dismissals_lead_key", "lead_id", "signal_key", text("created_at DESC")),
+    )
+
+    account_id: Mapped[uuid.UUID] = _account_fk()
+    lead_id: Mapped[uuid.UUID] = _lead_fk()
+    signal_key: Mapped[str] = mapped_column(String, nullable=False)
+    action: Mapped[str] = mapped_column(String, nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    actor_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    # clock_timestamp(), not now(): a dismissal and its restore can share a transaction and must keep their order.
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("clock_timestamp()"), nullable=False
+    )
+
+
 class ScoreVersion(Base, UUIDPKMixin, CreatedAtMixin):
     """An immutable scoring configuration. Every change adds a version; the highest is active."""
 

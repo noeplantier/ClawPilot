@@ -24,6 +24,8 @@ NOT_MOBILE_FRIENDLY = "not_mobile_friendly"
 PUBLIC_CONTACT_PRESENT = "public_contact_present"
 STALE_LISTING = "stale_listing"
 INCOMPLETE_LISTING = "incomplete_listing"
+OUTDATED_TECHNOLOGY = "outdated_technology"
+NO_SOCIAL_PRESENCE = "no_social_presence"
 
 SIGNAL_LABELS: dict[str, str] = {
     NO_WEBSITE: "No own website listed",
@@ -33,12 +35,34 @@ SIGNAL_LABELS: dict[str, str] = {
     PUBLIC_CONTACT_PRESENT: "Public contact details available",
     STALE_LISTING: "Listing not updated recently",
     INCOMPLETE_LISTING: "Listing is missing key information",
+    OUTDATED_TECHNOLOGY: "Homepage shows outdated technology",
+    NO_SOCIAL_PRESENCE: "No social network linked from the homepage",
 }
 ALL_SIGNALS = tuple(SIGNAL_LABELS)
 
 BOOKING_MARKERS = ("reserv", "réserv", "book", "thefork", "lafourchette", "zenchef", "opentable", "resy", "calendly")
 _VIEWPORT_RE = re.compile(r"<meta[^>]+name=[\"']viewport[\"'][^>]*content=[\"']([^\"']*)[\"']", re.IGNORECASE)
 INCOMPLETE_THRESHOLD = 2
+
+# Outdated technology: markers read from the homepage HTML only (never from another page, never from a third party).
+_JQUERY_RE = re.compile(r"jquery[-.]?(?:min[-.]?)?v?(\d+)\.(\d+)(?:\.\d+)?", re.IGNORECASE)
+_GENERATOR_RE = re.compile(
+    r"<meta[^>]+name=[\"']generator[\"'][^>]*content=[\"']\s*(WordPress|Joomla!?|Drupal)\s*v?(\d+)(?:\.(\d+))?",
+    re.IGNORECASE,
+)
+_OLD_CMS_BELOW = {"wordpress": 5, "joomla": 3, "drupal": 8}  # major versions before these are no longer maintained
+_LEGACY_TAGS = ("<marquee", "<blink", "<frameset", "<font ", "<center>", ".swf")
+_SOCIAL_HOSTS = (
+    "facebook.com",
+    "instagram.com",
+    "linkedin.com",
+    "tiktok.com",
+    "twitter.com",
+    "x.com",
+    "youtube.com",
+    "pinterest.com",
+)
+_HREF_RE = re.compile(r"href=[\"']([^\"']+)[\"']", re.IGNORECASE)
 
 
 class MobileAnalyzer(Protocol):
@@ -129,6 +153,63 @@ def _mobile(snap: SiteSnapshot | None, analyzer: MobileAnalyzer) -> SignalResult
     )
 
 
+def _outdated(listing: RawListing, snap: SiteSnapshot | None) -> SignalResult:
+    if not _own_website(listing)[0]:
+        return SignalResult(OUTDATED_TECHNOLOGY, SignalState.UNKNOWN, "Not applicable: no own website listed")
+    if not snap or not _has_html(snap):
+        return SignalResult(OUTDATED_TECHNOLOGY, SignalState.UNKNOWN, "Homepage HTML not available")
+    assert snap.html is not None
+    html = snap.html
+    found: list[str] = []
+    for match in _JQUERY_RE.finditer(html):
+        if int(match.group(1)) < 3:
+            found.append(f"jQuery {match.group(1)}.{match.group(2)}")
+            break
+    generator = _GENERATOR_RE.search(html)
+    if generator and int(generator.group(2)) < _OLD_CMS_BELOW[generator.group(1).lower().rstrip("!")]:
+        found.append(f"{generator.group(1).rstrip('!')} {generator.group(2)}.{generator.group(3) or 0}")
+    lowered = html.lower()
+    found += [f"legacy markup ({tag.strip('<. >')})" for tag in _LEGACY_TAGS if tag in lowered]
+    if found:
+        return SignalResult(
+            OUTDATED_TECHNOLOGY,
+            SignalState.DETECTED,
+            f"Found on the homepage: {', '.join(found)} (heuristic from the HTML, other pages not checked)",
+        )
+    return SignalResult(
+        OUTDATED_TECHNOLOGY,
+        SignalState.NOT_DETECTED,
+        "No outdated marker on the homepage (heuristic, other pages not checked)",
+    )
+
+
+def _social(listing: RawListing, snap: SiteSnapshot | None) -> SignalResult:
+    own, third = _own_website(listing)
+    if third:
+        return SignalResult(NO_SOCIAL_PRESENCE, SignalState.NOT_DETECTED, f"The listed page is a profile on {third}")
+    if not own:
+        return SignalResult(NO_SOCIAL_PRESENCE, SignalState.UNKNOWN, "Not applicable: no own website listed")
+    if not snap or not _has_html(snap):
+        return SignalResult(NO_SOCIAL_PRESENCE, SignalState.UNKNOWN, "Homepage HTML not available")
+    assert snap.html is not None
+    hosts = {
+        host
+        for href in _HREF_RE.findall(snap.html)
+        for host in _SOCIAL_HOSTS
+        if (normalize_domain(href) or "") == host or (normalize_domain(href) or "").endswith("." + host)
+    }
+    if hosts:
+        return SignalResult(
+            NO_SOCIAL_PRESENCE, SignalState.NOT_DETECTED, f"Homepage links to: {', '.join(sorted(hosts))}"
+        )
+    return SignalResult(
+        NO_SOCIAL_PRESENCE,
+        SignalState.DETECTED,
+        "No link to a social network on the homepage "
+        "(other pages not checked; a presence may exist without being linked)",
+    )
+
+
 def _contact(listing: RawListing) -> SignalResult:
     present = [label for label, value in (("phone", listing.phone), ("email", listing.email)) if value]
     if present:
@@ -206,6 +287,30 @@ def analyze(
         _contact(listing),
         _stale(listing, now, stale_days),
         _incomplete(listing, trust_absence),
+        _outdated(listing, snapshot),
+        _social(listing, snapshot),
     ]
     assert tuple(r.key for r in results) == ALL_SIGNALS
     return results
+
+
+DISMISSED_PREFIX = "Dismissed by a reviewer"
+
+
+def apply_dismissals(results: list[SignalResult], dismissed: dict[str, str]) -> list[SignalResult]:
+    """A reviewer's dismissal turns the signal into UNKNOWN (never into 'not detected'): it neither counts for nor
+    against the prospect, and no draft may state it. The original observation stays visible in the evidence."""
+    out: list[SignalResult] = []
+    for r in results:
+        if r.key in dismissed and r.state is not SignalState.UNKNOWN:
+            reason = dismissed[r.key].strip() or "no reason given"
+            out.append(
+                SignalResult(
+                    r.key,
+                    SignalState.UNKNOWN,
+                    f"{DISMISSED_PREFIX} ({reason}). Observed: {r.state.value}. {r.evidence}",
+                )
+            )
+        else:
+            out.append(r)
+    return out
