@@ -6,7 +6,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { Lightning, ArrowRight } from "@phosphor-icons/react";
 
-const HERO_BG = "https://images.unsplash.com/photo-1754738381772-897447d10eb6?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1OTV8MHwxfHNlYXJjaHwzfHxhYnN0cmFjdCUyMGRhcmslMjB0ZWNobm9sb2d5fGVufDB8fHx8MTc3NjM3MTc2Nnww&ixlib=rb-4.1.0&q=85";
 
 export default function Login() {
   const { login } = useAuth();
@@ -49,7 +48,7 @@ export default function Login() {
           <h1 className="text-4xl sm:text-5xl font-black tracking-tighter text-[#0A0A0A]">
             Qualify. Review.<br /> Then send.
           </h1>
-          <p className="mt-4 text-[#6B6B66] leading-relaxed">
+          <p className="mt-4 text-[#5F5F5A] leading-relaxed">
             Sign in to run compliant B2B outreach: detect, qualify, validate, then send.
           </p>
 
@@ -88,9 +87,9 @@ export default function Login() {
             </button>
           </form>
 
-          <p className="mt-8 text-sm text-[#6B6B66]">
+          <p className="mt-8 text-sm text-[#5F5F5A]">
             No account?{" "}
-            <Link to="/register" className="text-[#DC2626] hover:underline" data-testid="goto-register-link">
+            <Link to="/register" className="text-[#B91C1C] underline" data-testid="goto-register-link">
               Request access →
             </Link>
           </p>
@@ -101,7 +100,7 @@ export default function Login() {
 
       {/* Right visual */}
       <div className="hidden lg:block lg:col-span-3 relative overflow-hidden bg-[#0F172A]">
-        <img src={HERO_BG} alt="Abstract dark technology background" className="absolute inset-0 w-full h-full object-cover opacity-70" />
+        <div aria-hidden="true" className="absolute inset-0" style={{ background: "radial-gradient(80% 60% at 20% 20%, rgba(37,99,235,0.55), transparent 60%), radial-gradient(60% 50% at 85% 75%, rgba(124,58,237,0.5), transparent 60%), radial-gradient(40% 40% at 60% 10%, rgba(34,211,238,0.25), transparent 60%)" }} />
         <div className="absolute inset-0 bg-[#0F172A]/60" />
         <div className="absolute inset-0" style={{ backgroundImage: "linear-gradient(rgba(255,255,255,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.06) 1px, transparent 1px)", backgroundSize: "32px 32px" }} />
         <div className="absolute inset-0 scanline" />

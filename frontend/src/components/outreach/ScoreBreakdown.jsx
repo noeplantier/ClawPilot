@@ -5,7 +5,7 @@ import { coverageLabel, explainTotal, formatDateTime } from "@/lib/outreachForma
 export default function ScoreBreakdown({ detail }) {
   if (!detail) {
     return (
-      <p className="text-sm text-[#6B6B66]" data-testid="score-empty">
+      <p className="text-sm text-[#5F5F5A]" data-testid="score-empty">
         This prospect has not been scored yet. Run discovery or recompute the score.
       </p>
     );
@@ -35,7 +35,7 @@ export default function ScoreBreakdown({ detail }) {
                 <td className="p-2 whitespace-nowrap">
                   <StateChip state={line.state} />
                 </td>
-                <td className="p-2 text-right font-mono text-[#6B6B66]">{line.weight}</td>
+                <td className="p-2 text-right font-mono text-[#5F5F5A]">{line.weight}</td>
                 <td className="p-2 text-right font-mono font-bold">{line.points}</td>
                 <td className="p-2 text-[#475569]">{line.explanation}</td>
               </tr>
@@ -49,7 +49,7 @@ export default function ScoreBreakdown({ detail }) {
               <td className="p-2 text-right font-mono font-bold" data-testid="score-total">
                 {detail.score}
               </td>
-              <td className="p-2 text-[#6B6B66]">
+              <td className="p-2 text-[#5F5F5A]">
                 {total.clamped ? `${total.raw} raw points, capped to ${total.capped}. ` : ""}
                 {total.observed} of {total.weighted} weighted signals could be observed (coverage {coverageLabel(detail.coverage)}).
               </td>

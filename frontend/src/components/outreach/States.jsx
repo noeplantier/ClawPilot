@@ -2,7 +2,7 @@ import { Warning, CircleNotch, Tray } from "@phosphor-icons/react";
 
 export function LoadingBlock({ label = "Loading…" }) {
   return (
-    <div className="surface p-8 flex items-center gap-3 text-[#6B6B66]" role="status" data-testid="loading-block">
+    <div className="surface p-8 flex items-center gap-3 text-[#5F5F5A]" role="status" data-testid="loading-block">
       <CircleNotch size={18} className="animate-spin" /> <span className="font-mono text-sm">{label}</span>
     </div>
   );
@@ -31,7 +31,7 @@ export function EmptyBlock({ title, children, testId = "empty-block" }) {
     <div className="surface p-10 text-center" data-testid={testId}>
       <Tray size={28} className="mx-auto text-[#999995]" />
       <div className="font-display font-bold text-lg mt-3">{title}</div>
-      <div className="text-sm text-[#6B6B66] mt-2 max-w-xl mx-auto space-y-3">{children}</div>
+      <div className="text-sm text-[#5F5F5A] mt-2 max-w-xl mx-auto space-y-3">{children}</div>
     </div>
   );
 }

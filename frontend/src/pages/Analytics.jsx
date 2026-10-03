@@ -9,7 +9,7 @@ export default function Analytics() {
   const [data, setData] = useState(null);
   useEffect(() => { api.get("/analytics/overview").then((r) => setData(r.data)); }, []);
 
-  if (!data) return <div className="p-10 text-[#6B6B66] font-mono">loading telemetry...</div>;
+  if (!data) return <div className="p-10 text-[#5F5F5A] font-mono">loading telemetry...</div>;
 
   const totals = data.totals || {};
   const timeseries = data.timeseries || [];
@@ -28,7 +28,7 @@ export default function Analytics() {
       <div>
         <div className="mono-accent">// deep.analytics</div>
         <h1 className="text-4xl font-black tracking-tighter">Analytics</h1>
-        <p className="text-[#6B6B66] mt-1">Cross-channel performance breakdown.</p>
+        <p className="text-[#5F5F5A] mt-1">Cross-channel performance breakdown.</p>
       </div>
 
       <div className="grid lg:grid-cols-2 gap-4">

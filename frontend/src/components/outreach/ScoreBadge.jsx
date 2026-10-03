@@ -23,7 +23,7 @@ export default function ScoreBadge({ score, coverage, showCoverage = false }) {
         )}
       </span>
       {showCoverage && score !== null && score !== undefined && (
-        <span className="mono-accent text-[#6B6B66] mt-1" title="Share of the weighted signals that could be observed">
+        <span className="mono-accent text-[#5F5F5A] mt-1" title="Share of the weighted signals that could be observed">
           coverage {coverageLabel(coverage)}
         </span>
       )}

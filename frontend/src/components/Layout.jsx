@@ -42,7 +42,7 @@ export default function Layout() {
         <div className="px-4 py-5 border-b border-[#D6D3C8]">
           <div className="mono-accent mb-1">organization</div>
           <div className="font-display font-semibold truncate" data-testid="org-name">{org?.name || "—"}</div>
-          <div className="mono-accent text-[#6B6B66] mt-2">plan · <span className="text-[#0F172A]">{org?.plan || "pro"}</span></div>
+          <div className="mono-accent text-[#5F5F5A] mt-2">plan · <span className="text-[#0F172A]">{org?.plan || "pro"}</span></div>
         </div>
 
         <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
@@ -69,7 +69,7 @@ export default function Layout() {
           <button onClick={() => setAiOpen(true)} className="btn-purple w-full justify-center" data-testid="open-ai-composer">
             <Sparkle size={14} weight="fill" /> AI COMPOSER
           </button>
-          <button onClick={logout} className="mt-3 w-full text-left flex items-center gap-2 text-sm text-[#6B6B66] hover:text-[#DC2626] transition-colors px-2 py-2" data-testid="logout-button">
+          <button onClick={logout} className="mt-3 w-full text-left flex items-center gap-2 text-sm text-[#5F5F5A] hover:text-[#DC2626] transition-colors px-2 py-2" data-testid="logout-button">
             <SignOut size={16} /> Sign out · <span className="font-mono truncate">{user?.email}</span>
           </button>
         </div>

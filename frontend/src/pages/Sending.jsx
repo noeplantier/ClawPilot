@@ -105,7 +105,7 @@ function LimitsForm({ limits, canEdit, onSaved }) {
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h2 className="font-display text-xl font-bold">Limits</h2>
-          <p className="text-sm text-[#6B6B66]">Applied before every dispatch. The day is the calendar day in the organisation’s timezone.</p>
+          <p className="text-sm text-[#5F5F5A]">Applied before every dispatch. The day is the calendar day in the organisation’s timezone.</p>
         </div>
         <button className={limits.sending_paused ? "btn-primary" : "btn-ghost"} onClick={togglePause} disabled={!canEdit || busy} data-testid="toggle-pause"
           title="Stops all dispatches for this organisation until resumed">
@@ -174,7 +174,7 @@ function MessageRow({ message, canEdit, onChanged }) {
           <td colSpan={5} className="p-4 space-y-3">
             <div className="flex flex-wrap gap-3 text-sm">
               <Link to={`/app/prospects/${message.lead_id}`} className="underline">open the prospect</Link>
-              <span className="mono-accent text-[#6B6B66]">adapter {message.adapter} · id {message.provider_message_id || "—"}</span>
+              <span className="mono-accent text-[#5F5F5A]">adapter {message.adapter} · id {message.provider_message_id || "—"}</span>
             </div>
             {detail.loading && <LoadingBlock label="Loading events…" />}
             {detail.error && <ErrorBlock message={detail.error} onRetry={detail.reload} />}
@@ -222,7 +222,7 @@ function SmtpTestPanel({ onDone }) {
   return (
     <section className="surface p-5 space-y-3" data-testid="smtp-test">
       <h2 className="font-display text-xl font-bold">Test the real e-mail connection</h2>
-      <p className="text-sm text-[#6B6B66]">
+      <p className="text-sm text-[#5F5F5A]">
         Sends one technical message (not prospecting) to the sender&apos;s own address or to the sandbox allowlist, through the
         same limits and kill switch. Needs live sending and the SMTP settings; otherwise it is refused and nothing is sent.
       </p>
@@ -255,7 +255,7 @@ export default function Sending() {
         <div>
           <div className="mono-accent">// controlled.sending</div>
           <h1 className="text-4xl font-black tracking-tighter">Sending</h1>
-          <p className="text-[#6B6B66] mt-1 max-w-2xl">Limits, emergency stop and the history of dispatched messages. Dry-run by default; real e-mail leaves over SMTP only when live sending is enabled. A message stuck in “sending” has an unknown outcome: check the mailbox before sending again.</p>
+          <p className="text-[#5F5F5A] mt-1 max-w-2xl">Limits, emergency stop and the history of dispatched messages. Dry-run by default; real e-mail leaves over SMTP only when live sending is enabled. A message stuck in “sending” has an unknown outcome: check the mailbox before sending again.</p>
         </div>
         <button className="btn-ghost" onClick={page.reload} data-testid="refresh"><ArrowsClockwise size={14} /> REFRESH</button>
       </div>

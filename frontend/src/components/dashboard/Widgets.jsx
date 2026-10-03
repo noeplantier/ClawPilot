@@ -87,7 +87,7 @@ export function LiveSignals({ prospects, signals }) {
         {prospects.map((p) => (
           <li key={p.id}>
             <Link to={`/app/prospects/${p.id}`} className="flex items-center justify-between gap-2 text-sm hover:underline">
-              <span className="truncate">{p.name}{p.city ? <span className="text-[#6B6B66]"> · {p.city}</span> : null}</span>
+              <span className="truncate">{p.name}{p.city ? <span className="text-[#5F5F5A]"> · {p.city}</span> : null}</span>
               <span className="chip chip-ink shrink-0">{p.score === null ? "not scored" : p.score}</span>
             </Link>
           </li>
@@ -100,7 +100,7 @@ export function LiveSignals({ prospects, signals }) {
             <div className="text-xs text-[#595955] mt-1"><Link to={`/app/prospects/${s.lead_id}`} className="font-semibold hover:underline">{s.name}</Link> — {s.evidence}</div>
           </li>
         ))}
-        {signals.length === 0 && <li className="text-sm text-[#6B6B66]" data-testid="signals-none">No signal detected yet (an unknown signal is not a finding).</li>}
+        {signals.length === 0 && <li className="text-sm text-[#5F5F5A]" data-testid="signals-none">No signal detected yet (an unknown signal is not a finding).</li>}
       </ul>
     </div>
   );
@@ -148,12 +148,12 @@ export function LimitsCompliance({ limits, canEdit, busy, onTogglePause }) {
         </div>
       </div>
       <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
-        <dt className="text-[#6B6B66]">last hour</dt><dd data-testid="limits-hour">{limits.sent_last_hour} / {limits.max_per_hour}</dd>
-        <dt className="text-[#6B6B66]">min delay</dt><dd>{limits.min_delay_seconds}s</dd>
-        <dt className="text-[#6B6B66]">kill switch</dt><dd data-testid="limits-kill">{limits.kill_switch ? "ON" : "off"}</dd>
-        <dt className="text-[#6B6B66]">organisation</dt><dd data-testid="limits-paused">{limits.paused ? "paused" : "active"}</dd>
-        <dt className="text-[#6B6B66]">sandbox allowlist</dt><dd>{limits.sandbox ? `${limits.allowlist_size} address(es)` : "sandbox off"}</dd>
-        <dt className="text-[#6B6B66]">SMTP</dt><dd>{limits.smtp_configured ? "configured" : "not configured"}</dd>
+        <dt className="text-[#5F5F5A]">last hour</dt><dd data-testid="limits-hour">{limits.sent_last_hour} / {limits.max_per_hour}</dd>
+        <dt className="text-[#5F5F5A]">min delay</dt><dd>{limits.min_delay_seconds}s</dd>
+        <dt className="text-[#5F5F5A]">kill switch</dt><dd data-testid="limits-kill">{limits.kill_switch ? "ON" : "off"}</dd>
+        <dt className="text-[#5F5F5A]">organisation</dt><dd data-testid="limits-paused">{limits.paused ? "paused" : "active"}</dd>
+        <dt className="text-[#5F5F5A]">sandbox allowlist</dt><dd>{limits.sandbox ? `${limits.allowlist_size} address(es)` : "sandbox off"}</dd>
+        <dt className="text-[#5F5F5A]">SMTP</dt><dd>{limits.smtp_configured ? "configured" : "not configured"}</dd>
       </dl>
       <div className="flex gap-2 flex-wrap">
         {canEdit && (
@@ -181,7 +181,7 @@ export function Inbox({ items }) {
         <li key={m.message_id} className="text-sm" data-testid="inbox-item">
           <div className="flex items-center justify-between gap-2">
             <span className="font-medium inline-flex items-center gap-1"><ChatCircleDots size={14} /> {m.name}</span>
-            <span className="text-xs text-[#6B6B66]">{ago(m.at)}{m.simulated ? " · simulated" : ""}</span>
+            <span className="text-xs text-[#5F5F5A]">{ago(m.at)}{m.simulated ? " · simulated" : ""}</span>
           </div>
           <p className="text-[#595955] mt-0.5">{m.excerpt || DASH}</p>
           <Link to={`/app/prospects/${m.lead_id}`} className="text-xs font-semibold inline-flex items-center gap-1 mt-1 hover:underline" data-testid="inbox-follow-up">

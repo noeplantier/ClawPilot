@@ -6,7 +6,7 @@ import { Robot, Play, Pause, Trash, Plus, Terminal, Circle, X } from "@phosphor-
 
 const STATUS_STYLE = {
   running: { color: "#10B981", label: "RUNNING" },
-  idle: { color: "#6B6B66", label: "IDLE" },
+  idle: { color: "#5F5F5A", label: "IDLE" },
   paused: { color: "#F59E0B", label: "PAUSED" },
   error: { color: "#EF4444", label: "ERROR" },
 };
@@ -53,7 +53,7 @@ export default function Agents() {
         <div>
           <div className="mono-accent">// orchestrator.outreachos</div>
           <h1 className="text-4xl font-black tracking-tighter">Agents</h1>
-          <p className="text-[#6B6B66] mt-1">{list.filter((a) => a.status === "running").length} active · {list.length} total</p>
+          <p className="text-[#5F5F5A] mt-1">{list.filter((a) => a.status === "running").length} active · {list.length} total</p>
         </div>
         <button onClick={() => setShowCreate(true)} className="btn-primary" data-testid="spawn-agent-button"><Plus size={14} weight="bold" /> SPAWN AGENT</button>
       </div>
@@ -76,7 +76,7 @@ export default function Agents() {
                     <Robot size={24} weight="duotone" style={{ color: st.color }} />
                     <h3 className="font-display text-lg font-bold">{a.name}</h3>
                   </div>
-                  <div className="mono-accent text-[#6B6B66] mt-0.5">role · {a.role}</div>
+                  <div className="mono-accent text-[#5F5F5A] mt-0.5">role · {a.role}</div>
                 </div>
                 <div className="flex items-center gap-1.5 text-xs font-mono" style={{ color: st.color }}>
                   <Circle size={8} weight="fill" className={a.status === "running" ? "pulse-dot" : ""} />
@@ -86,11 +86,11 @@ export default function Agents() {
 
               <div className="grid grid-cols-2 gap-3 mt-4">
                 <div>
-                  <div className="mono-accent text-[#6B6B66]">tasks.done</div>
+                  <div className="mono-accent text-[#5F5F5A]">tasks.done</div>
                   <div className="font-mono text-xl font-bold">{a.tasks_completed}</div>
                 </div>
                 <div>
-                  <div className="mono-accent text-[#6B6B66]">in.queue</div>
+                  <div className="mono-accent text-[#5F5F5A]">in.queue</div>
                   <div className="font-mono text-xl font-bold">{a.tasks_in_queue}</div>
                 </div>
               </div>
@@ -126,7 +126,7 @@ function CreateAgent({ onClose, onSave }) {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-50 bg-[#0F172A]/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
       <motion.div initial={{ y: 10 }} animate={{ y: 0 }} className="surface w-full max-w-md p-8 relative" onClick={(e) => e.stopPropagation()}>
-        <button onClick={onClose} className="absolute top-4 right-4 text-[#6B6B66] hover:text-[#0A0A0A]"><X size={20} /></button>
+        <button onClick={onClose} className="absolute top-4 right-4 text-[#5F5F5A] hover:text-[#0A0A0A]"><X size={20} /></button>
         <div className="mono-accent">/// spawn.agent</div>
         <h2 className="text-2xl font-black tracking-tighter mt-1">Deploy new agent</h2>
 

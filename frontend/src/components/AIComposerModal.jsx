@@ -100,7 +100,7 @@ export default function AIComposerModal({ open, onClose, defaults }) {
             className={`relative w-full max-w-4xl surface p-6 md:p-8 ${loading ? "glow-purple" : ""}`}
             data-testid="ai-composer-modal"
           >
-            <button onClick={onClose} className="absolute top-4 right-4 text-[#6B6B66] hover:text-[#DC2626]" data-testid="close-ai-composer">
+            <button onClick={onClose} className="absolute top-4 right-4 text-[#5F5F5A] hover:text-[#DC2626]" data-testid="close-ai-composer">
               <X size={20} />
             </button>
 
@@ -109,7 +109,7 @@ export default function AIComposerModal({ open, onClose, defaults }) {
               <span className="mono-accent text-[#0F172A]">/// gemini-3-flash</span>
             </div>
             <h2 className="text-2xl font-black tracking-tighter">AI Message Composer</h2>
-            <p className="text-[#6B6B66] text-sm mt-1">Multi-language, tone-aware outreach copy generated in seconds.</p>
+            <p className="text-[#5F5F5A] text-sm mt-1">Multi-language, tone-aware outreach copy generated in seconds.</p>
 
             <div className="grid md:grid-cols-2 gap-6 mt-6">
               <div className="space-y-3">

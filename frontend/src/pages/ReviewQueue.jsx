@@ -44,7 +44,7 @@ export default function ReviewQueue() {
       <div>
         <div className="mono-accent">// human.review</div>
         <h1 className="text-4xl font-black tracking-tighter">Review queue</h1>
-        <p className="text-[#6B6B66] mt-1">
+        <p className="text-[#5F5F5A] mt-1">
           Decide on each prospect from its evidence. An approval makes it eligible for a draft; it does not send anything.
         </p>
       </div>
@@ -69,7 +69,7 @@ export default function ReviewQueue() {
 
       {current && (
         <>
-          <div className="flex items-center justify-between text-sm text-[#6B6B66]" data-testid="queue-position">
+          <div className="flex items-center justify-between text-sm text-[#5F5F5A]" data-testid="queue-position">
             <span>
               {pending.length} of {queue.data.total} pending prospect{queue.data.total === 1 ? "" : "s"} left in this session
             </span>
@@ -82,7 +82,7 @@ export default function ReviewQueue() {
             <div className="flex items-start justify-between gap-4 flex-wrap">
               <div>
                 <h2 className="font-display text-2xl font-bold" data-testid="queue-name">{current.name}</h2>
-                <p className="text-sm text-[#6B6B66]">
+                <p className="text-sm text-[#5F5F5A]">
                   {[current.city, domainOf(current.website) || "no own website listed"].filter(Boolean).join(" · ")}
                 </p>
               </div>

@@ -47,7 +47,7 @@ export default function Register() {
 
         <div className="mono-accent mb-3">// new.operator · init</div>
         <h1 className="text-3xl font-black tracking-tighter">Forge your command center</h1>
-        <p className="text-[#6B6B66] mt-2">Provision an organization and deploy your first agents.</p>
+        <p className="text-[#5F5F5A] mt-2">Provision an organization and deploy your first agents.</p>
 
         <form onSubmit={submit} className="mt-8 space-y-4" data-testid="register-form">
           <div>
@@ -72,9 +72,9 @@ export default function Register() {
           </button>
         </form>
 
-        <p className="mt-6 text-sm text-[#6B6B66]">
+        <p className="mt-6 text-sm text-[#5F5F5A]">
           Existing operator?{" "}
-          <Link to="/login" className="text-[#DC2626] hover:underline" data-testid="goto-login-link">
+          <Link to="/login" className="text-[#B91C1C] underline" data-testid="goto-login-link">
             Sign in →
           </Link>
         </p>

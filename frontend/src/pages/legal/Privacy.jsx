@@ -76,7 +76,7 @@ export default function Privacy() {
         <h2>Cookies et stockage local</h2>
         <p>
           Le service n&apos;utilise ni cookie publicitaire ni outil de mesure d&apos;audience tiers. Un jeton de session est conservé dans
-          le stockage local de votre navigateur, strictement nécessaire à la connexion. Les polices sont chargées depuis Google Fonts.
+          le stockage local de votre navigateur, strictement nécessaire à la connexion. Les polices sont chargées depuis Google Fonts (aucune image tierce n&apos;est chargée).
         </p>
       </section>
     </LegalLayout>

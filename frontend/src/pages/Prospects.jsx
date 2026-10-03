@@ -85,7 +85,7 @@ export default function Prospects() {
         <div>
           <div className="mono-accent">// outreach.discovery</div>
           <h1 className="text-4xl font-black tracking-tighter">Prospects</h1>
-          <p className="text-[#6B6B66] mt-1 max-w-2xl">
+          <p className="text-[#5F5F5A] mt-1 max-w-2xl">
             Businesses found in authorised sources, scored from verifiable signals. Nothing is contacted until a person approves it.
           </p>
         </div>
@@ -203,7 +203,7 @@ export default function Prospects() {
               ))}
             </tbody>
           </table>
-          <div className="flex items-center justify-between p-3 border-t border-[#D6D3C8] text-sm text-[#6B6B66]">
+          <div className="flex items-center justify-between p-3 border-t border-[#D6D3C8] text-sm text-[#5F5F5A]">
             <span data-testid="prospects-total">{total} prospect{total === 1 ? "" : "s"}</span>
             <span className="flex items-center gap-2">
               <button className="btn-ghost" disabled={page === 0} onClick={() => setParam("page", String(page - 1))} aria-label="Previous page">

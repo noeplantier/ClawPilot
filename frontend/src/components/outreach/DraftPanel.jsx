@@ -56,11 +56,11 @@ export default function DraftPanel({ prospect, drafts, messages, canDecide, dryR
           <NotePencil size={14} /> PREPARE DRAFT
         </button>
         {!canDecide && <span className="mono-accent text-[#999995]">requires owner or admin</span>}
-        {canDecide && createHint && <span className="text-xs text-[#6B6B66]" data-testid="create-hint">{createHint}</span>}
+        {canDecide && createHint && <span className="text-xs text-[#5F5F5A]" data-testid="create-hint">{createHint}</span>}
       </div>
 
       {(!drafts || drafts.length === 0) && (
-        <p className="text-sm text-[#6B6B66]" data-testid="drafts-empty">No draft has been prepared for this prospect.</p>
+        <p className="text-sm text-[#5F5F5A]" data-testid="drafts-empty">No draft has been prepared for this prospect.</p>
       )}
 
       {(drafts || []).map((d) => {
@@ -84,7 +84,7 @@ export default function DraftPanel({ prospect, drafts, messages, canDecide, dryR
                   </ul>
                 </div>
               ) : (
-                <p className="text-xs text-[#6B6B66]">No signal supports a specific statement, so the draft stays neutral.</p>
+                <p className="text-xs text-[#5F5F5A]">No signal supports a specific statement, so the draft stays neutral.</p>
               )}
               <pre className="whitespace-pre-wrap text-sm font-sans bg-[#FAFAF7] border border-[#EDEBE0] rounded-md p-3" data-testid="draft-body">
                 {d.body}

@@ -14,6 +14,7 @@ INFRA_IDENTIFIERS = {
     ".github/workflows/ci.yml",  # CI database name and role
     "backend/alembic.ini",  # local default connection string
     "backend/.env.example",  # local default connection string
+    "docs/deployment.md",  # documents the Render service names above
 }
 HISTORY = {
     "README.md",

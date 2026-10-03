@@ -211,6 +211,13 @@ curl -s -X POST localhost:8000/api/outbound/<message_id>/simulate -H "$H" -H 'co
 Endpoints (`/api/outbound`): `dispatch`, list, detail (with events), `simulate` (dry-run only), `limits` (GET/PUT), `status`,
 `test-send`.
 
+### Tests
+
+`cd backend && pytest tests/` (server running, see `.github/workflows/ci.yml`); `cd frontend && npm test -- --watchAll=false`;
+**E2E** (Playwright, real API and PostgreSQL, dry-run, no network): start the API, `REACT_APP_BACKEND_URL=http://localhost:8000 npm run build`,
+then `npm run e2e` in `frontend/` (set `PW_CHROMIUM` to a Chromium binary if the browser is not installed with `npx playwright install chromium`).
+Login is rate limited (10 failures per address per 15 min), see `docs/deployment.md`.
+
 ### Dashboard
 
 `GET /api/dashboard/overview` (any member) feeds the home page: KPIs (prospects, average score, sent today, replies, bounces,
