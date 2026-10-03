@@ -1,4 +1,4 @@
-"""Pydantic models for ClawPilot SaaS platform."""
+"""Pydantic models for the Plantiers - OutreachOS platform."""
 
 from __future__ import annotations
 
@@ -176,7 +176,7 @@ class CampaignUpdate(BaseModel):
     agent_id: Optional[str] = None
 
 
-# ------------------------ Agents (ClawPilot) ------------------------
+# ------------------------ Agents ------------------------
 AgentStatus = Literal["idle", "running", "paused", "error"]
 
 

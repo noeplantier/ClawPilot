@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { Lightning, ArrowRight } from "@phosphor-icons/react";
+import Footer from "@/components/Footer";
 
 export default function Register() {
   const { register } = useAuth();
@@ -41,7 +42,7 @@ export default function Register() {
       >
         <Link to="/" className="flex items-center gap-2 mb-8" data-testid="brand-logo">
           <Lightning size={22} weight="fill" className="text-[#DC2626]" />
-          <span className="font-display font-black tracking-tight text-xl">ClawPilot</span>
+          <span className="font-display font-black tracking-tight text-xl">OutreachOS</span>
         </Link>
 
         <div className="mono-accent mb-3">// new.operator · init</div>
@@ -77,6 +78,7 @@ export default function Register() {
             Sign in →
           </Link>
         </p>
+        <Footer className="mt-8 !border-0 !bg-transparent !px-0" />
       </motion.div>
     </div>
   );

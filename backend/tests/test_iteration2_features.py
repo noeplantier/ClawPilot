@@ -1,5 +1,5 @@
 """
-ClawPilot SaaS Platform - Iteration 2 Feature Tests
+Plantiers - OutreachOS - Iteration 2 Feature Tests
 Tests: Bulk Leads, Batch Messaging, Campaign Assign/Run-Step, AI Variants
 """
 
@@ -13,7 +13,7 @@ from helpers import open_send_limits
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
 
 # Demo credentials (pre-seeded)
-DEMO_EMAIL = "demo@clawpilot.io"
+DEMO_EMAIL = "demo@outreachos.example"
 DEMO_PASSWORD = "Demo12345!"
 
 
@@ -27,7 +27,7 @@ def auth_token():
             "email": DEMO_EMAIL,
             "password": DEMO_PASSWORD,
             "full_name": "Demo User",
-            "organization_name": "ClawPilot Demo",
+            "organization_name": "OutreachOS Demo",
         },
     )
 
@@ -190,7 +190,7 @@ class TestBatchEmail:
             json={
                 "lead_ids": lead_ids,
                 "subject": "Hello {{first_name}} from {{company}}",
-                "body": "Hi {{first_name}},\n\nThis is a test message for {{company}}.\n\nBest,\nClawPilot",
+                "body": "Hi {{first_name}},\n\nThis is a test message for {{company}}.\n\nBest,\nPlantiers",
             },
         )
         assert response.status_code == 200, f"Batch email failed: {response.text}"
@@ -572,7 +572,7 @@ class TestAIGenerateVariants:
         payload = {
             "recipient_name": "John Smith",
             "company": "Acme Corp",
-            "product": "ClawPilot outreach platform",
+            "product": "Plantiers - OutreachOS platform",
             "language": "en",
             "tone": "professional",  # This is ignored, all 3 tones generated
             "channel": "email",
@@ -600,7 +600,7 @@ class TestAIGenerateVariants:
         payload = {
             "recipient_name": "Maria Garcia",
             "company": "Tech Startup",
-            "product": "ClawPilot",
+            "product": "Plantiers - OutreachOS",
             "language": "en",
             "tone": "friendly",
             "channel": "whatsapp",
@@ -629,7 +629,7 @@ class TestRegressionEndpoints:
         """Test root API endpoint still works"""
         response = requests.get(f"{BASE_URL}/api/")
         assert response.status_code == 200
-        assert response.json()["service"] == "clawpilot"
+        assert response.json()["service"] == "plantiers-outreachos"
         print("✓ Root endpoint working")
 
     def test_health_endpoint(self):
@@ -695,7 +695,7 @@ class TestRegressionEndpoints:
             headers=auth_headers,
             json={
                 "recipient_name": "Test User",
-                "product": "ClawPilot",
+                "product": "Plantiers - OutreachOS",
                 "language": "en",
                 "tone": "professional",
                 "channel": "email",

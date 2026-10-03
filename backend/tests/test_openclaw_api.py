@@ -1,5 +1,5 @@
 """
-ClawPilot SaaS Platform - Backend API Tests
+Plantiers - OutreachOS - Backend API Tests
 Tests: Auth, Leads, Campaigns, Agents, Messages, AI, Analytics, Settings
 """
 
@@ -14,13 +14,13 @@ from helpers import open_send_limits, unique_email
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
 
 # Test credentials
-TEST_EMAIL = f"test_{uuid.uuid4().hex[:8]}@clawpilot.io"
+TEST_EMAIL = f"test_{uuid.uuid4().hex[:8]}@outreachos.example"
 TEST_PASSWORD = "TestPass123!"
 TEST_ORG = "Test Organization"
 TEST_NAME = "Test User"
 
 # Demo credentials (pre-seeded)
-DEMO_EMAIL = "demo@clawpilot.io"
+DEMO_EMAIL = "demo@outreachos.example"
 DEMO_PASSWORD = "Demo12345!"
 
 
@@ -32,7 +32,7 @@ class TestHealthAndRoot:
         response = requests.get(f"{BASE_URL}/api/")
         assert response.status_code == 200
         data = response.json()
-        assert data["service"] == "clawpilot"
+        assert data["service"] == "plantiers-outreachos"
         assert data["status"] == "ok"
         print("✓ Root endpoint working")
 
@@ -103,7 +103,7 @@ class TestAuthentication:
                 "email": DEMO_EMAIL,
                 "password": DEMO_PASSWORD,
                 "full_name": "Demo User",
-                "organization_name": "ClawPilot Demo",
+                "organization_name": "OutreachOS Demo",
             },
         )
 
@@ -164,7 +164,7 @@ def auth_token():
             "email": DEMO_EMAIL,
             "password": DEMO_PASSWORD,
             "full_name": "Demo User",
-            "organization_name": "ClawPilot Demo",
+            "organization_name": "OutreachOS Demo",
         },
     )
 
@@ -547,7 +547,7 @@ class TestAIGeneration:
         payload = {
             "recipient_name": "John Smith",
             "company": "Acme Corp",
-            "product": "ClawPilot outreach platform",
+            "product": "Plantiers - OutreachOS platform",
             "language": "en",
             "tone": "professional",
             "channel": "email",
@@ -570,7 +570,7 @@ class TestAIGeneration:
         payload = {
             "recipient_name": "Maria Garcia",
             "company": "Tech Startup",
-            "product": "ClawPilot",
+            "product": "Plantiers - OutreachOS",
             "language": "en",
             "tone": "friendly",
             "channel": "whatsapp",
@@ -591,7 +591,7 @@ class TestAIGeneration:
         for lang in ["es", "fr", "de"]:
             payload = {
                 "recipient_name": "Test User",
-                "product": "ClawPilot",
+                "product": "Plantiers - OutreachOS",
                 "language": lang,
                 "tone": "professional",
                 "channel": "email",
@@ -616,7 +616,11 @@ class TestMessages:
 
     def test_send_email(self, auth_headers):
         """Test sending email (mock expected)"""
-        payload = {"to": "test@example.com", "subject": "Test Email", "body": "This is a test email from ClawPilot."}
+        payload = {
+            "to": "test@example.com",
+            "subject": "Test Email",
+            "body": "This is a test email from Plantiers - OutreachOS.",
+        }
         response = requests.post(f"{BASE_URL}/api/messages/email", headers=auth_headers, json=payload)
         assert response.status_code == 200
         data = response.json()
@@ -632,7 +636,7 @@ class TestMessages:
 
     def test_send_whatsapp(self, auth_headers):
         """Test sending WhatsApp (mock expected)"""
-        payload = {"to": "+14155550123", "body": "Test WhatsApp message from ClawPilot"}
+        payload = {"to": "+14155550123", "body": "Test WhatsApp message from Plantiers - OutreachOS"}
         response = requests.post(f"{BASE_URL}/api/messages/whatsapp", headers=auth_headers, json=payload)
         assert response.status_code == 200
         data = response.json()

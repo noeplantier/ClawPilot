@@ -7,6 +7,7 @@ import {
 } from "@phosphor-icons/react";
 import { useState } from "react";
 import AIComposerModal from "@/components/AIComposerModal";
+import Footer from "@/components/Footer";
 
 const NAV = [
   { to: "/app/dashboard", icon: SquaresFour, label: "Dashboard" },
@@ -33,7 +34,7 @@ export default function Layout() {
         <div className="px-6 py-6 border-b border-[#D6D3C8]">
           <div className="flex items-center gap-2">
             <Lightning size={20} weight="fill" className="text-[#DC2626]" />
-            <div className="font-display font-black tracking-tight text-lg">CLAWPILOT</div>
+            <div className="font-display font-black tracking-tight text-lg">OUTREACHOS</div>
           </div>
           <div className="mono-accent text-[#999995] mt-1">/// command.center</div>
         </div>
@@ -88,6 +89,7 @@ export default function Layout() {
             <Outlet />
           </motion.div>
         </main>
+        <Footer />
       </div>
 
       <AIComposerModal open={aiOpen} onClose={() => setAiOpen(false)} />

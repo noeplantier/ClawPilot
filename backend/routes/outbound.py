@@ -162,12 +162,12 @@ async def dispatch(
 
 
 # ---------------------------------------------------------------- SMTP connection test
-TEST_SUBJECT = "[ClawPilot] SMTP connection test"
+TEST_SUBJECT = "[Plantiers - OutreachOS] SMTP connection test"
 
 
 def _test_body(sender: drafts.SenderIdentity) -> str:
     return (
-        "Ceci est un message de test technique envoyé depuis ClawPilot. Il vérifie la connexion SMTP et "
+        "Ceci est un message de test technique envoyé depuis Plantiers - OutreachOS. Il vérifie la connexion SMTP et "
         "l'authentification de l'expéditeur ; ce n'est pas un message de prospection.\n\n"
         f"Expéditeur : {sender.name}, {sender.company}, {sender.postal_address}\n"
         "Origine des données : aucune donnée de prospect ; l'adresse destinataire a été saisie par un administrateur.\n"

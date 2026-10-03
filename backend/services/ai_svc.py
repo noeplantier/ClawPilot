@@ -37,7 +37,7 @@ def _fallback(recipient_name: str, product: str, language: str, tone: str, chann
     body = (
         f"Hi {recipient_name},\n\n"
         f"I noticed {company or 'your team'} is doing great work and thought {product} might help you move faster.\n\n"
-        f"Worth a 15-min chat this week?\n\nBest,\nThe ClawPilot Team"
+        f"Worth a 15-min chat this week?\n\nBest,\nThe Plantiers Team"
     )
     return {"subject": subj if channel == "email" else None, "body": body, "language": language}
 

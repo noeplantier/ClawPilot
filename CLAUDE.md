@@ -1,4 +1,4 @@
-# CLAUDE.md — ClawPilot
+# CLAUDE.md — Plantiers - OutreachOS
 
 Plateforme de génération de leads B2B et d'outreach multicanal (email / WhatsApp) :
 sourcing → enrichissement → scoring → séquences → suivi des réponses. Voir `README.md`

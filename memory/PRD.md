@@ -1,4 +1,4 @@
-# ClawPilot — Outreach SaaS Platform · PRD
+# Plantiers - OutreachOS (ex-ClawPilot) — PRD (historique)
 
 ## Original problem statement
 Build a highly scalable, production-grade SaaS platform for automated global outreach powered by ClawPilot agents. Features: agent orchestration, multi-step campaign builder, lead scraping/enrichment, multi-channel messaging (email + WhatsApp), real-time analytics, AI-powered message generation (multi-language), CRM pipeline. Dark futuristic cyberpunk UI with neon cyan/purple/blue + Framer Motion animations.
@@ -34,7 +34,7 @@ Build a highly scalable, production-grade SaaS platform for automated global out
 - Mock statuses for email/whatsapp are expected (user provided SK API key, not AC Account SID; SendGrid sender unverified)
 
 ## Seeded demo account
-- email: demo@clawpilot.io / password: Demo12345! — 12 leads, 4 agents, 4 campaigns, 8+ messages, 6+ activity events
+- email: demo@outreachos.example / password: Demo12345! — 12 leads, 4 agents, 4 campaigns, 8+ messages, 6+ activity events
 
 ## Backlog (P1)
 - Real WhatsApp once user provides Twilio AC Account SID
