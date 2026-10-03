@@ -67,7 +67,12 @@ def http_fetch(query: str) -> dict[str, Any]:
             if exc.code not in RETRY_STATUS:
                 break
         except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError) as exc:
-            failures.append(f"{host}: {type(exc).__name__}")
+            reason = getattr(
+                exc, "reason", None
+            )  # URLError wraps the socket/SSL/DNS cause: keep it, it says what to fix
+            failures.append(
+                f"{host}: {type(exc).__name__}" + (f" ({type(reason).__name__}: {reason})"[:120] if reason else "")
+            )
     last = "; ".join(failures) or "no endpoint"
     logger.warning("overpass unavailable (%s)", last)
     raise Unavailable(f"OpenStreetMap servers are busy or unreachable ({last}); try again in a minute")
