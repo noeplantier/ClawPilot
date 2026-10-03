@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { describeApiError } from "@/lib/outreachFormat";
+import { fetchOverpass } from "@/lib/overpassBrowser";
 
 // The API enforces roles; the UI only hides what would be refused anyway.
 export const canDecide = (user) => ["owner", "admin"].includes(user && user.role);
@@ -24,6 +25,25 @@ export const sourcesApi = {
 
 export const mapApi = {
   search: (area) => api.post("/map/search", area).then((r) => r.data),
+  query: (area) => api.post("/map/query", area).then((r) => r.data),
+  parse: (data) => api.post("/map/parse", { data }).then((r) => r.data),
+  // Browser first (a visitor's connection is not throttled like the API host's), the server's own search as a fallback.
+  async find(area) {
+    const { query, endpoints } = await mapApi.query(area);
+    try {
+      return await mapApi.parse(await fetchOverpass(query, endpoints));
+    } catch (browserError) {
+      if (browserError && browserError.response) throw browserError; // the API refused the parse: not a network problem
+      try {
+        return await mapApi.search(area);
+      } catch (serverError) {
+        if (serverError && serverError.response && serverError.response.data && typeof serverError.response.data.detail === "string") {
+          serverError.response.data.detail = `${browserError.message}. ${serverError.response.data.detail}`;
+        }
+        throw serverError;
+      }
+    }
+  },
   prospects: () => api.get("/map/prospects").then((r) => r.data),
 };
 

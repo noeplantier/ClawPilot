@@ -132,7 +132,10 @@ test("the map shows real places from the search, marks what is published and nev
         { id: "p2", name: "Déjà prospect", city: "Lyon", lat: 45.762, lon: 4.83, review_status: "approved", has_email: false, external_id: null },
       ],
     }));
-  await page.route("**/api/map/search", (route) =>
+  // The browser asks a public Overpass server itself (faked here); the server's parser turns the answer into places.
+  await page.route("**/api/map/query", (route) => route.fulfill({ json: { query: "[out:json];", endpoints: ["https://overpass.test/api/interpreter"] } }));
+  await page.route("https://overpass.test/**", (route) => route.fulfill({ headers: { "access-control-allow-origin": "*" }, json: { elements: [] } }));
+  await page.route("**/api/map/parse", (route) =>
     route.fulfill({
       json: {
         attribution: "© OpenStreetMap contributors (ODbL)", license_note: "ODbL", truncated: false,

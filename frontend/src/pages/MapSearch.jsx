@@ -267,7 +267,7 @@ function MapView({ canImport }) {
     setBusy(true);
     setError(null);
     try {
-      const out = await mapApi.search({ ...bounds(map.current), category });
+      const out = await mapApi.find({ ...bounds(map.current), category });
       setResult(out);
       setSelected(new Set());
       setPanelOpen(true);

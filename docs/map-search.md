@@ -9,6 +9,14 @@ Les prospects déjà importés qui ont une position (importés depuis la carte, 
 dessinés en **carrés** (bleu : à valider, vert : approuvé, rouge : refusé), cliquables vers leur fiche. Un lieu déjà importé n'est
 plus proposé comme résultat de recherche (reconnu par son identifiant OpenStreetMap). Endpoint : `GET /api/map/prospects`.
 
+## D'où part la requête Overpass
+Les serveurs Overpass publics répondent mal à l'adresse partagée de l'hébergeur de l'API (délais, « network unreachable »). La recherche
+passe donc **par le navigateur** : `POST /api/map/query` (le serveur construit et valide la requête, limite 6/min/organisation), le
+navigateur interroge lui-même un serveur Overpass public (CORS ouvert, 15 s par serveur), puis `POST /api/map/parse` (12/min) renvoie
+la réponse au **même analyseur** que la recherche côté serveur : seuls les champs publiés sont gardés, rien n'est complété. Si le
+navigateur n'atteint aucun serveur, la recherche côté serveur (`POST /api/map/search`) sert de repli et le message d'erreur nomme
+les deux causes. La réponse transmise à `/map/parse` n'est conservée nulle part ; l'import reste attesté et audité.
+
 ## Ce qui est affiché, et ce qui ne l'est pas
 - Uniquement les champs publiés dans OpenStreetMap (`phone`, `email`/`contact:email`, `website`, `addr:*`). Un champ absent s'affiche
   « not published » : rien n'est deviné ni complété. Beaucoup d'établissements n'ont pas d'e-mail dans OSM.
