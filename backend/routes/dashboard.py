@@ -71,4 +71,9 @@ async def overview(user: dict = Depends(get_current_user), session: AsyncSession
             "smtp_configured": smtp_svc.is_configured(),
         },
         inbox=await dashboard_repo.inbox(session, account_id, 6),
+        top_signals=[
+            {**t, "label": SIGNAL_LABELS.get(t["key"], t["key"])}
+            for t in await dashboard_repo.top_signals(session, account_id, 6)
+        ],
+        geography=await dashboard_repo.geography(session, account_id, 6),
     )

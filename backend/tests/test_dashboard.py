@@ -49,6 +49,8 @@ def test_a_new_organisation_gets_explicit_empty_values_not_invented_zeros():
     assert (k["prospects"], k["messages"], k["replies"], k["bounces"], k["unsubscribed"], k["sent_today"]) == (0,) * 6
     assert k["avg_score"] is None and k["reply_rate"] is None and k["bounce_rate"] is None
     assert d["latest_prospects"] == [] and d["latest_signals"] == [] and d["campaigns"] == [] and d["inbox"] == []
+    assert d["top_signals"] == []
+    assert d["geography"]["total"] == 0 and d["geography"]["countries"] == [] and d["geography"]["unknown_country"] == 0
     assert len(d["series"]) == 14 and all(p["sent"] == 0 and p["replied"] == 0 for p in d["series"])
     lim = d["limits"]
     assert lim["dry_run"] is True and lim["kill_switch"] is False and lim["paused"] is False
@@ -66,6 +68,33 @@ def test_discovery_fills_prospects_scores_and_live_signals():
     assert d["latest_signals"], "the fixture directory has detected signals"
     first = d["latest_signals"][0]
     assert first["label"] and first["evidence"] and first["name"]  # provenance: what was observed, on whom
+    top = d["top_signals"]
+    assert top and all(t["label"] and t["prospects"] >= 1 for t in top)
+    assert [t["prospects"] for t in top] == sorted((t["prospects"] for t in top), reverse=True)
+    geo = d["geography"]
+    assert geo["total"] == k["prospects"]
+    assert sum(c["prospects"] for c in geo["countries"]) + geo["unknown_country"] == geo["total"]  # nothing invented
+
+
+def test_top_signals_follow_a_reviewer_dismissal():
+    h = _org()
+    requests.post(f"{API}/prospects/discovery/run", headers=h, json={})
+    before = {t["key"]: t["prospects"] for t in _overview(h)["top_signals"]}
+    key = next(iter(before))
+    items = requests.get(f"{API}/prospects", headers=h, params={"limit": 200}).json()["items"]
+    target = None
+    for item in items:
+        detail = requests.get(f"{API}/prospects/{item['id']}", headers=h).json()
+        if any(s["key"] == key and s["state"] == "detected" for s in detail["signals"]):
+            target = item["id"]
+            break
+    assert target
+    done = requests.post(
+        f"{API}/prospects/{target}/signals/{key}/dismiss", headers=h, json={"reason": "Checked by hand: it is wrong"}
+    )
+    assert done.status_code == 200, done.text
+    after = {t["key"]: t["prospects"] for t in _overview(h)["top_signals"]}
+    assert after.get(key, 0) == before[key] - 1  # a dismissed signal reads as unknown: it no longer counts
 
 
 def test_dispatch_reply_bounce_and_unsubscribe_show_up_with_real_rates():

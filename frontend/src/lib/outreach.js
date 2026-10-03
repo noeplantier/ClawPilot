@@ -27,6 +27,11 @@ export const mapApi = {
   prospects: () => api.get("/map/prospects").then((r) => r.data),
 };
 
+export const campaignsApi = {
+  create: (body) => api.post("/campaigns", body).then((r) => r.data),
+  assign: (id, leadIds) => api.post(`/campaigns/${id}/assign-leads`, { lead_ids: leadIds }).then((r) => r.data),
+};
+
 export const prospectsApi = {
   list: (params) => api.get("/prospects", { params }).then((r) => r.data),
   get: (id) => api.get(`/prospects/${id}`).then((r) => r.data),

@@ -391,8 +391,37 @@ async def fill_email(session: AsyncSession, account_id: uuid.UUID, lead: Lead, e
     return True
 
 
+async def detected_by_lead(session: AsyncSession, account_id: uuid.UUID) -> dict[uuid.UUID, list[str]]:
+    """lead_id -> signal keys currently detected, a reviewer-dismissed signal not counting (it reads as unknown)."""
+    signals = await session.execute(
+        select(ProspectSignal.lead_id, ProspectSignal.signal_key, ProspectSignal.state)
+        .join(Lead, Lead.id == ProspectSignal.lead_id)
+        .where(ProspectSignal.account_id == account_id, Lead.deleted_at.is_(None), IN_DISCOVERY)
+        .distinct(ProspectSignal.lead_id, ProspectSignal.signal_key)
+        .order_by(
+            ProspectSignal.lead_id, ProspectSignal.signal_key, ProspectSignal.created_at.desc(), ProspectSignal.id
+        )
+    )
+    dismissals = await session.execute(
+        select(SignalDismissal.lead_id, SignalDismissal.signal_key, SignalDismissal.action)
+        .where(SignalDismissal.account_id == account_id)
+        .distinct(SignalDismissal.lead_id, SignalDismissal.signal_key)
+        .order_by(
+            SignalDismissal.lead_id, SignalDismissal.signal_key, SignalDismissal.created_at.desc(), SignalDismissal.id
+        )
+    )
+    dismissed = {(lid, key) for lid, key, action in dismissals.all() if action == "dismiss"}
+    out: dict[uuid.UUID, list[str]] = {}
+    for lid, key, state in signals.all():
+        if state == "detected" and (lid, key) not in dismissed:
+            out.setdefault(lid, []).append(key)
+    return out
+
+
 async def list_positions(session: AsyncSession, account_id: uuid.UUID, limit: int = 2000) -> list[dict]:
     """Discovery prospects whose latest source carries a position (lat/lon), for the map. Newest first."""
+    latest = _latest_scores_subquery()
+    detected = await detected_by_lead(session, account_id)
     ranked = (
         select(
             ProspectSource.lead_id,
@@ -405,14 +434,15 @@ async def list_positions(session: AsyncSession, account_id: uuid.UUID, limit: in
         .subquery()
     )
     rows = await session.execute(
-        select(Lead, ranked.c.fields)
+        select(Lead, ranked.c.fields, latest.c.score)
         .join(ranked, ranked.c.lead_id == Lead.id)
+        .outerjoin(latest, latest.c.lead_id == Lead.id)
         .where(ranked.c.rn == 1, Lead.account_id == account_id, ACTIVE, IN_DISCOVERY)
         .order_by(Lead.created_at.desc())
         .limit(limit * 2)
     )
     out: list[dict] = []
-    for lead, fields in rows.all():
+    for lead, fields, score in rows.all():
         lat, lon = fields.get("lat"), fields.get("lon")
         if isinstance(lat, (int, float)) and isinstance(lon, (int, float)) and -90 <= lat <= 90 and -180 <= lon <= 180:
             out.append(
@@ -425,6 +455,11 @@ async def list_positions(session: AsyncSession, account_id: uuid.UUID, limit: in
                     "review_status": lead.review_status,
                     "has_email": bool(lead.email),
                     "external_id": fields.get("external_id"),
+                    "vertical": lead.vertical,
+                    "country": lead.country,
+                    "score": score,  # None = not scored, never 0
+                    "signals": sorted(detected.get(lead.id, [])),
+                    "created_at": lead.created_at,
                 }
             )
     return out[:limit]

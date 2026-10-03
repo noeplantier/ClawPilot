@@ -5,7 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { canDecide, dashboardApi, outboundApi, useAsync } from "@/lib/outreach";
 import { describeApiError } from "@/lib/outreachFormat";
 import { ErrorBlock, LoadingBlock } from "@/components/outreach/States";
-import { ActivityChart, CampaignHealth, Inbox, KpiStrip, LimitsCompliance, LiveSignals, Widget } from "@/components/dashboard/Widgets";
+import { ActivityChart, CampaignHealth, GeoDistribution, Inbox, KpiStrip, LimitsCompliance, LiveSignals, TopSignals, Widget } from "@/components/dashboard/Widgets";
 
 const REFRESH_MS = 30000;
 
@@ -56,7 +56,7 @@ export default function Dashboard() {
           <div className="grid xl:grid-cols-3 gap-4">
             <div className="xl:col-span-2 space-y-4">
               <Widget title="Sends and replies" kicker="// last 14 days" testId="widget-activity"><ActivityChart series={d.series} /></Widget>
-              <Widget title="Live signals" kicker="// latest prospects and detected signals" testId="widget-signals">
+              <Widget title="Live discoveries" kicker="// latest prospects and detected signals" testId="widget-signals">
                 <LiveSignals prospects={d.latest_prospects} signals={d.latest_signals} />
               </Widget>
               <Widget title="Campaign health" kicker="// per campaign" testId="widget-campaigns"><CampaignHealth campaigns={d.campaigns} /></Widget>
@@ -65,6 +65,8 @@ export default function Dashboard() {
               <Widget title="Limits & compliance" kicker="// quotas · kill switch · pause · allowlist" testId="widget-limits">
                 <LimitsCompliance limits={d.limits} canEdit={canDecide(user)} busy={busy} onTogglePause={togglePause} />
               </Widget>
+              <Widget title="Top signals" kicker="// prospects per detected signal" testId="widget-top-signals"><TopSignals items={d.top_signals} /></Widget>
+              <Widget title="Geographic distribution" kicker="// where your prospects are" testId="widget-geo"><GeoDistribution geo={d.geography} /></Widget>
               <Widget title="Inbox" kicker="// latest replies" testId="widget-inbox"><Inbox items={d.inbox} /></Widget>
             </div>
           </div>

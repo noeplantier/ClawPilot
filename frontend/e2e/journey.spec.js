@@ -190,3 +190,48 @@ test("sources: discover from the world demo, see explained signals, page, add to
   await page.goto("/app/prospects");
   await expect(page.getByTestId("prospect-row")).toHaveCount(2); // the two places added from the demo
 });
+
+test("the prospects map clusters nearby prospects, filters them, refreshes by polling and starts a campaign from the selection", async ({ page }) => {
+  await register(page);
+  await page.route("**/api/prospects/settings", async (route) => {
+    const real = await (await route.fetch()).json();
+    await route.fulfill({ json: { ...real, flags: { ...real.flags, external_sources: true, prospect_import: false } } });
+  });
+  await page.route(/(tile\.openstreetmap\.org|basemaps\.cartocdn\.com)/, (route) =>
+    route.fulfill({ contentType: "image/png", body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64") }));
+  const base = { has_email: false, external_id: null, country: "FR", created_at: "2026-10-03T10:00:00Z" };
+  const rows = [
+    { ...base, id: "a1", name: "Boulangerie Un", city: "Lyon", lat: 45.7641, lon: 4.8358, review_status: "approved", vertical: "bakery", score: 70, signals: ["no_website"] },
+    { ...base, id: "a2", name: "Boulangerie Deux", city: "Lyon", lat: 45.7643, lon: 4.8361, review_status: "pending", vertical: "bakery", score: null, signals: [] },
+    { ...base, id: "a3", name: "Hôtel Trois", city: "Lyon", lat: 45.7642, lon: 4.8359, review_status: "approved", vertical: "hotel", score: 40, signals: ["outdated_technology"] },
+    { ...base, id: "a4", name: "Café Lointain", city: "Paris", lat: 48.8566, lon: 2.3522, review_status: "approved", vertical: "restaurant", score: 55, signals: [] },
+  ];
+  let polled = 0;
+  await page.route("**/api/map/prospects", (route) => { polled += 1; return route.fulfill({ json: rows }); });
+  let assigned = null;
+  await page.route("**/api/campaigns", (route) =>
+    route.request().method() === "POST" ? route.fulfill({ json: { id: "c-map", name: "Map selection" } }) : route.continue());
+  await page.route("**/api/campaigns/c-map/assign-leads", (route) => { assigned = route.request().postDataJSON(); return route.fulfill({ json: { id: "c-map" } }); });
+
+  await page.goto("/app/map");
+  await expect(page.getByTestId("filter-summary")).toHaveText("4 prospects on the map.");
+  await expect(page.locator(".map-cluster")).toHaveText("3"); // the three Lyon prospects merge; Paris is out of view
+  await page.getByTestId("filter-vertical").selectOption("hotel");
+  await expect(page.getByTestId("filter-summary")).toHaveText("1 of 4 prospects match the filters.");
+  await expect(page.locator(".map-cluster")).toHaveCount(0);
+  await page.getByTestId("filter-vertical").selectOption("");
+  await page.getByTestId("filter-score").fill("50");
+  await expect(page.getByTestId("filter-summary")).toHaveText("2 of 4 prospects match the filters."); // "not scored" never passes a threshold
+  await page.getByTestId("filter-clear").click();
+
+  await page.locator(".map-cluster").dispatchEvent("click");
+  await expect(page.getByTestId("map-mine-list")).toContainText("Cluster · 3 prospects");
+  await expect(page.getByTestId("map-mine-list")).toContainText("not scored");
+  await page.getByTestId("mine-row").nth(0).getByRole("checkbox").check();
+  await page.getByTestId("mine-row").nth(1).getByRole("checkbox").check();
+  await expect(page.getByTestId("start-campaign-note")).toContainText("not approved");
+  await page.getByTestId("start-campaign").click();
+  await expect(page).toHaveURL(/\/app\/campaigns/);
+  expect(assigned.lead_ids.length).toBe(1); // only the approved one is sent to the API
+  expect(polled).toBeGreaterThan(0);
+});

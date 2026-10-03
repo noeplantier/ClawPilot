@@ -196,3 +196,42 @@ export function Inbox({ items }) {
     </ul>
   );
 }
+
+const Bar = ({ label, n, max }) => (
+  <li className="text-sm">
+    <div className="flex justify-between gap-2"><span className="truncate">{label}</span><span className="font-mono text-xs">{n}</span></div>
+    <div className="h-1.5 bg-[#EDEBE0] rounded-full" aria-hidden="true"><div className="h-1.5 rounded-full bg-[#0F172A]" style={{ width: `${Math.max(4, Math.round((n / max) * 100))}%` }} /></div>
+  </li>
+);
+
+// How many prospects each signal is detected on now. A signal a reviewer dismissed, or that is unknown, is not counted.
+export function TopSignals({ items }) {
+  if (!items || items.length === 0) {
+    return <EmptyBlock title="No signal detected yet" testId="top-signals-empty"><p>Counts appear once a discovery has found a signal. An unknown signal is not a finding.</p></EmptyBlock>;
+  }
+  const max = Math.max(...items.map((t) => t.prospects));
+  return <ul className="space-y-2" data-testid="top-signals">{items.map((t) => <Bar key={t.key} label={t.label} n={t.prospects} max={max} />)}</ul>;
+}
+
+// Stored countries and cities only; what has none is counted apart, never assigned a guess.
+export function GeoDistribution({ geo }) {
+  if (!geo || geo.total === 0) {
+    return <EmptyBlock title="No prospect yet" testId="geo-empty"><p>The distribution appears once prospects are discovered or imported.</p></EmptyBlock>;
+  }
+  const max = Math.max(1, ...geo.countries.map((c) => c.prospects), ...geo.cities.map((c) => c.prospects));
+  return (
+    <div className="space-y-3" data-testid="geo">
+      <div>
+        <div className="mono-accent">// countries</div>
+        <ul className="space-y-2 mt-1" data-testid="geo-countries">{geo.countries.map((c) => <Bar key={c.name} label={c.name} n={c.prospects} max={max} />)}</ul>
+        {geo.unknown_country > 0 && <p className="text-xs text-[#5F5F5A] mt-1" data-testid="geo-unknown">{geo.unknown_country} without a country</p>}
+      </div>
+      <div>
+        <div className="mono-accent">// cities</div>
+        <ul className="space-y-2 mt-1" data-testid="geo-cities">{geo.cities.map((c) => <Bar key={c.name} label={c.name} n={c.prospects} max={max} />)}</ul>
+        {geo.unknown_city > 0 && <p className="text-xs text-[#5F5F5A] mt-1">{geo.unknown_city} without a city</p>}
+      </div>
+      <Link to="/app/map" className="btn-ghost inline-flex" data-testid="geo-open-map">OPEN THE MAP</Link>
+    </div>
+  );
+}

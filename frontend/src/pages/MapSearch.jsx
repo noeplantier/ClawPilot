@@ -1,17 +1,20 @@
 /* global ResizeObserver, AbortController */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { ArrowsOut, ArrowsIn, CaretDoubleRight, CaretDoubleLeft, MagnifyingGlass, MapPin } from "@phosphor-icons/react";
 import { useAuth } from "@/contexts/AuthContext";
-import { canDecide, importsApi, mapApi, prospectsApi, useAsync } from "@/lib/outreach";
+import { campaignsApi, canDecide, importsApi, mapApi, prospectsApi, useAsync } from "@/lib/outreach";
 import { describeApiError } from "@/lib/outreachFormat";
 import {
   CATEGORY_LABELS, IMPORT_ORIGIN, MAX_SITES_CHECKED, STATUS_COLOR, STATUS_LABEL, areaTooLarge, importRows, knownIds, markerColor,
   mineSummary, summaryText,
 } from "@/lib/mapSearch";
+import {
+  EMPTY_FILTER, POLL_MS, applyFilter, campaignPick, clusterPoints, clusterSize, facets, filterSummary, hasFilter, newIds, signalLabel,
+} from "@/lib/mapCluster";
 import { EmptyBlock, ErrorBlock, LoadingBlock } from "@/components/outreach/States";
 
 const START = { center: [45.764, 4.8357], zoom: 14 }; // Lyon; move the map anywhere in the world
@@ -22,10 +25,15 @@ const BASEMAPS = {
 };
 const GLASS = "bg-white/85 backdrop-blur-md border border-white/60 shadow-xl rounded-2xl";
 
-const minePin = (p) =>
+const clusterIcon = (n) => {
+  const size = clusterSize(n);
+  return L.divIcon({ className: "map-pin", html: `<span class="map-cluster" style="width:${size}px;height:${size}px">${n}</span>`, iconSize: [size, size], iconAnchor: [size / 2, size / 2] });
+};
+
+const minePin = (p, fresh) =>
   L.divIcon({
     className: "map-pin",
-    html: `<span style="--c:${STATUS_COLOR[p.review_status]}" class="map-pin-square"></span>`,
+    html: `<span style="--c:${STATUS_COLOR[p.review_status]}" class="map-pin-square${fresh ? " is-new" : ""}"></span>`,
     iconSize: [22, 22], iconAnchor: [11, 11], popupAnchor: [0, -10],
   });
 
@@ -120,6 +128,16 @@ function MapView({ canImport }) {
   const [mine, setMine] = useState([]);
   const [showMine, setShowMine] = useState(true);
   const mineLayer = useRef(null);
+  const [filter, setFilter] = useState(EMPTY_FILTER);
+  const [zoom, setZoom] = useState(START.zoom);
+  const [group, setGroup] = useState(null); // the prospects of the cluster the user clicked
+  const [picked, setPicked] = useState(new Set());
+  const [fresh, setFresh] = useState(new Set());
+  const [updatedAt, setUpdatedAt] = useState(null);
+  const [stale, setStale] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const previous = useRef(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     const m = L.map(el.current, { center: START.center, zoom: START.zoom, zoomControl: false });
@@ -128,6 +146,7 @@ function MapView({ canImport }) {
     layer.current = L.layerGroup().addTo(m);
     const check = () => setTooLarge(areaTooLarge(bounds(m)));
     m.on("moveend", check);
+    m.on("zoomend", () => setZoom(m.getZoom()));
     check();
     map.current = m;
     const watch = new ResizeObserver(() => m.invalidateSize());
@@ -167,16 +186,67 @@ function MapView({ canImport }) {
     return () => { clearTimeout(t); ctl.abort(); };
   }, [query]);
 
+  // Near real time without a WebSocket (none on the free plan): poll while the tab is visible, keep what is shown if a poll fails.
   useEffect(() => {
-    mapApi.prospects().then(setMine).catch(() => setMine([]));
+    let alive = true;
+    const pull = () =>
+      mapApi.prospects().then((rows) => {
+        if (!alive) return;
+        setFresh(newIds(previous.current, rows));
+        previous.current = rows;
+        setMine(rows);
+        setUpdatedAt(new Date());
+        setStale(false);
+      }).catch(() => { if (alive) setStale(true); });
+    pull();
+    const id = setInterval(() => { if (!document.hidden) pull(); }, POLL_MS);
+    return () => { alive = false; clearInterval(id); };
   }, []);
+
+  const shown = useMemo(() => applyFilter(mine, filter), [mine, filter]);
+  const options = useMemo(() => facets(mine), [mine]);
 
   useEffect(() => {
     if (!mineLayer.current) return;
     mineLayer.current.clearLayers();
     if (!showMine) return;
-    mine.forEach((p) => L.marker([p.lat, p.lon], { icon: minePin(p), title: p.name }).bindPopup(minePopup(p), { className: "map-popup" }).addTo(mineLayer.current));
-  }, [mine, showMine]);
+    clusterPoints(shown, zoom).forEach((c) => {
+      if (c.count === 1) {
+        const p = c.members[0];
+        L.marker([p.lat, p.lon], { icon: minePin(p, fresh.has(p.id)), title: p.name }).bindPopup(minePopup(p), { className: "map-popup" }).addTo(mineLayer.current);
+        return;
+      }
+      const marker = L.marker([c.lat, c.lon], { icon: clusterIcon(c.count), title: `${c.count} prospects` });
+      marker.on("click", () => {
+        setGroup(c.members);
+        setPanelOpen(true);
+        const lats = c.members.map((m) => m.lat);
+        const lons = c.members.map((m) => m.lon);
+        if (Math.min(...lats) !== Math.max(...lats) || Math.min(...lons) !== Math.max(...lons)) {
+          map.current.fitBounds([[Math.min(...lats), Math.min(...lons)], [Math.max(...lats), Math.max(...lons)]], { maxZoom: 17, padding: [60, 60] });
+        }
+      });
+      marker.addTo(mineLayer.current);
+    });
+  }, [shown, showMine, zoom, fresh]);
+
+  const startCampaign = async () => {
+    const { ids, excluded } = campaignPick(mine, picked);
+    setStarting(true);
+    try {
+      const c = await campaignsApi.create({ name: `Map selection ${new Date().toISOString().slice(0, 10)}`, goal: "Prospects chosen on the map" });
+      await campaignsApi.assign(c.id, ids);
+      toast.success(`Campaign created with ${ids.length} approved prospect${ids.length === 1 ? "" : "s"}${excluded ? ` (${excluded} not approved, left out)` : ""}. Nothing is sent: open it to add steps.`);
+      navigate("/app/campaigns");
+    } catch (e) {
+      toast.error(`${describeApiError(e)} The campaign was created empty: nothing was assigned.`);
+    } finally {
+      setStarting(false);
+    }
+  };
+  const togglePick = (id) => setPicked((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const list = group || shown.slice(0, 30);
+  const pickInfo = campaignPick(mine, picked);
 
   const known = useMemo(() => knownIds(mine), [mine]);
   // A place already in the prospects is shown by its prospect pin, not offered again.
@@ -258,6 +328,32 @@ function MapView({ canImport }) {
           <input type="checkbox" checked={showMine} onChange={(e) => setShowMine(e.target.checked)} />
           <span><b>My prospects</b> (squares) — {mineSummary(mine)}</span>
         </label>
+        {mine.length > 0 && showMine && (
+          <div className="space-y-2" data-testid="map-filters">
+            <div className="grid grid-cols-2 gap-2">
+              <select className="neo-input" aria-label="Filter by vertical" value={filter.vertical} onChange={(e) => setFilter({ ...filter, vertical: e.target.value })} data-testid="filter-vertical">
+                <option value="">All verticals</option>
+                {options.verticals.map((v) => <option key={v.value} value={v.value}>{v.value} ({v.count})</option>)}
+              </select>
+              <select className="neo-input" aria-label="Filter by review status" value={filter.status} onChange={(e) => setFilter({ ...filter, status: e.target.value })} data-testid="filter-status">
+                <option value="">Any status</option>
+                {Object.entries(STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+              <select className="neo-input" aria-label="Filter by detected signal" value={filter.signal} onChange={(e) => setFilter({ ...filter, signal: e.target.value })} data-testid="filter-signal">
+                <option value="">Any signal</option>
+                {options.signals.map((v) => <option key={v.value} value={v.value}>{signalLabel(v.value)} ({v.count})</option>)}
+              </select>
+              <input className="neo-input" type="number" min="0" max="100" placeholder="Min score" aria-label="Minimum score" value={filter.minScore} onChange={(e) => setFilter({ ...filter, minScore: e.target.value })} data-testid="filter-score" />
+            </div>
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <span data-testid="filter-summary">{filterSummary(shown.length, mine.length)}</span>
+              {hasFilter(filter) && <button className="underline" onClick={() => { setFilter(EMPTY_FILTER); setGroup(null); }} data-testid="filter-clear">Clear</button>}
+            </div>
+            <p className="text-[11px] text-[#5F5F5A]" data-testid="map-updated" aria-live="polite">
+              {stale ? "Update failed: showing the last data. " : ""}{updatedAt ? `Updated ${updatedAt.toLocaleTimeString()} · refreshes every ${POLL_MS / 1000} s` : "Loading…"}
+            </p>
+          </div>
+        )}
         <button className="btn-ink w-full justify-center" onClick={search} disabled={busy || tooLarge} data-testid="map-search">
           <MagnifyingGlass size={14} /> {busy ? "SEARCHING…" : "SEARCH THIS AREA"}
         </button>
@@ -276,6 +372,34 @@ function MapView({ canImport }) {
       {/* results drawer */}
       <aside className={`absolute z-[500] bottom-8 left-3 right-3 md:left-auto md:top-3 md:bottom-8 md:w-[24rem] flex flex-col ${panelOpen ? "" : "md:translate-x-[calc(100%+1rem)] translate-y-[calc(100%+1rem)] md:translate-y-0"} transition-transform duration-300 max-h-[45%] md:max-h-none`} aria-label="Results">
         <div className={`${GLASS} flex-1 min-h-0 flex flex-col overflow-hidden`}>
+          {mine.length > 0 && showMine && (
+            <section className="p-4 border-b border-[#D6D3C8] max-h-[50%] overflow-y-auto" data-testid="map-mine-list">
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="font-display text-lg font-bold">{group ? `Cluster · ${group.length} prospects` : "My prospects"}</h2>
+                {group && <button className="underline text-xs" onClick={() => setGroup(null)} data-testid="cluster-close">All</button>}
+              </div>
+              {list.length === 0 && <p className="text-sm text-[#5F5F5A] mt-1" data-testid="mine-none">No prospect matches the filters.</p>}
+              <ul className="divide-y divide-[#EDEBE0]">
+                {list.map((p) => (
+                  <li key={p.id} className="py-1.5 flex gap-2 items-start text-sm" data-testid="mine-row">
+                    <input type="checkbox" checked={picked.has(p.id)} onChange={() => togglePick(p.id)} aria-label={`Select ${p.name}`} className="mt-1" />
+                    <button className="text-left min-w-0 flex-1" onClick={() => map.current.setView([p.lat, p.lon], 17)}>
+                      <span className="font-medium block truncate">{p.name}</span>
+                      <span className="block text-xs text-[#5F5F5A] truncate">{STATUS_LABEL[p.review_status]} · {p.score === null || p.score === undefined ? "not scored" : `score ${p.score}`}{p.city ? ` · ${p.city}` : ""}</span>
+                    </button>
+                    <Link to={`/app/prospects/${p.id}`} className="text-xs underline shrink-0">open</Link>
+                  </li>
+                ))}
+              </ul>
+              {!group && shown.length > list.length && <p className="text-xs text-[#5F5F5A] mt-1">Showing the first {list.length} of {shown.length}: click a cluster or filter to narrow.</p>}
+              <button className="btn-ink w-full justify-center mt-2" disabled={starting || pickInfo.ids.length === 0} onClick={startCampaign} data-testid="start-campaign">
+                {starting ? "CREATING…" : `START CAMPAIGN (${pickInfo.ids.length})`}
+              </button>
+              <p className="text-[11px] text-[#5F5F5A] mt-1" data-testid="start-campaign-note">
+                {picked.size === 0 ? "Tick prospects to start a campaign. Only approved ones can join; nothing is sent until you add steps and launch." : pickInfo.excluded > 0 ? `${pickInfo.excluded} selected prospect${pickInfo.excluded === 1 ? " is" : "s are"} not approved and will be left out.` : "Creates a draft campaign: nothing is sent."}
+              </p>
+            </section>
+          )}
           {!result ? (
             <div className="p-4" data-testid="map-empty">
               <h2 className="font-display text-lg font-bold">Nothing searched yet</h2>
