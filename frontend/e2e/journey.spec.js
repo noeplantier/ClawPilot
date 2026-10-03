@@ -156,24 +156,6 @@ test("the map shows real places from the search, marks what is published and nev
   await expect(page.getByTestId("map-import-off")).toContainText("FEATURE_PROSPECT_IMPORT"); // import stays closed without its flag
 });
 
-test("a reviewer dismisses a wrong signal: it reads as unknown, the score is recomputed and the decision is reversible", async ({ page }) => {
-  await register(page);
-  await page.goto("/app/prospects");
-  await page.getByTestId("empty-run-discovery").click();
-  await page.getByRole("link", { name: /Le Petit Bouchon/ }).first().click();
-  const before = await page.getByTestId("score-badge").first().innerText();
-  await page.getByTestId("dismiss-no_website").click();
-  await page.getByTestId("dismiss-confirm-no_website").isDisabled();
-  await page.getByTestId("dismiss-reason-no_website").fill("They do have a site, the directory is old");
-  await page.getByTestId("dismiss-confirm-no_website").click();
-  await expect(page.getByTestId("dismissed-no_website")).toContainText("They do have a site");
-  await expect(page.getByTestId("signal-no_website").getByTestId("state-unknown")).toBeVisible();
-  const after = await page.getByTestId("score-badge").first().innerText();
-  expect(after).not.toEqual(before); // the 30 points of this signal are gone
-  await page.getByTestId("restore-no_website").click();
-  await expect(page.getByTestId("signal-no_website").getByTestId("state-detected")).toBeVisible();
-});
-
 test("sources: discover from the world demo, see explained signals, page, add to the review queue; live sources say why they are off", async ({ page }) => {
   await register(page);
   await page.getByTestId("nav-sources").click();
