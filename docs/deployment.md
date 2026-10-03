@@ -109,3 +109,21 @@ CORS restreint aux origines déclarées. Connu et accepté : le jeton de session
 faille XSS) ; `passlib` n'est plus maintenu ; limites de débit en mémoire. À faire : suivi IMAP/webhook des réponses et rebonds réels,
 pied de message et désinscription sur les anciens chemins d'envoi (Messages, lots, campagnes), enrichissement des sites derrière
 `FEATURE_EXTERNAL_SOURCES`.
+
+
+## Créer l'API à la main sur Render (sans Blueprint)
+
+Le Blueprint (`render.yaml`, *New → Blueprint*) est la voie recommandée : il relie la base et Redis tout seul. Si vous créez le service
+à la main :
+
+1. *New → Web Service*, dépôt du projet, **Language : Docker** (pas Node : `yarn`/`package.json` n'existent pas à la racine),
+   *Dockerfile Path* `./backend/Dockerfile`, *Docker Build Context Directory* `./backend`, **Docker Command : vide** (le `CMD` de l'image
+   lance `start.sh`, qui applique les migrations puis écoute sur `$PORT`). Une commande personnalisée mal citée provoque
+   `sh: 1: … not found` (code 127).
+2. Variables : `DATABASE_URL` = *Internal Database URL* de la base Render (région identique), `JWT_SECRET` (valeur aléatoire), `APP_ENV=production`,
+   `CORS_ORIGINS` = URL de l'interface Netlify, `PUBLIC_BASE_URL` = URL publique de l'API, puis les `OUTREACH_SENDER_*`. « Generate » n'est
+   pertinent que pour `JWT_SECRET` : jamais pour `DATABASE_URL`, `SMTP_*`, `SENDGRID_*`, `TWILIO_*`.
+3. `RUN_MIGRATIONS=0` désactive les migrations au démarrage si un *pre-deploy command* les exécute déjà (offres payantes).
+4. Netlify : `REACT_APP_BACKEND_URL` = URL publique de l'API, puis relancer le build.
+5. Offre gratuite : l'API se met en veille après inactivité et la base gratuite expire au bout de 30 jours ; pas de worker ni de beat
+   (planification et envois différés exigent les offres payantes du Blueprint).
