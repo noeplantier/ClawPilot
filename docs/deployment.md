@@ -19,7 +19,7 @@ Le détail général (Render, Netlify, CI) est dans le README. Cette page ajoute
 | `SMTP_HOST`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_SECURITY`, `SMTP_PORT` | Connexion à votre boîte (TLS vérifié obligatoire) | **Oui** : le mot de passe ne va que dans le tableau de bord |
 | `FEATURE_PROSPECT_IMPORT` | `true` autorise l'import d'une liste de prospects (CSV/JSON, origine et base légale obligatoires) | Non, laisser vide |
 | `AUTH_MAX_FAILURES`, `AUTH_WINDOW_SECONDS`, `REGISTER_MAX_PER_HOUR` | Limitation de débit (voir plus bas) ; défauts 10 / 900 s / 300 | Non |
-| `FEATURE_EXTERNAL_SOURCES` | Sources réseau (non implémenté) | Non, laisser vide |
+| `FEATURE_EXTERNAL_SOURCES` | Vérification des sites des entreprises importées (page d'accueil seulement, `robots.txt` respecté) | Non, laisser vide tant que vous n'en avez pas besoin |
 | `TWILIO_AUTH_TOKEN`, `TWILIO_WEBHOOK_URL`, `SENDGRID_WEBHOOK_PUBLIC_KEY` | Vérification des signatures de webhooks | Oui si les webhooks sont utilisés |
 
 3. Le lien de désinscription contient `JWT_SECRET` (clé dérivée) : **changer `JWT_SECRET` invalide tous les liens déjà envoyés**.
@@ -107,8 +107,7 @@ Fait : secrets hors dépôt et hors logs (scan GitGuardian en CI) ; webhooks sig
 verrous (`SMTP_*`, `FEATURE_LIVE_SENDING`, liste blanche, kill switch) ; import borné et attesté ; limitation de débit ; en-têtes ;
 CORS restreint aux origines déclarées. Connu et accepté : le jeton de session est dans le stockage local du navigateur (exposé en cas de
 faille XSS) ; `passlib` n'est plus maintenu ; limites de débit en mémoire. À faire : suivi IMAP/webhook des réponses et rebonds réels,
-pied de message et désinscription sur les anciens chemins d'envoi (Messages, lots, campagnes), enrichissement des sites derrière
-`FEATURE_EXTERNAL_SOURCES`.
+Lighthouse sur les pages connectées.
 
 
 ## Créer l'API à la main sur Render (sans Blueprint)

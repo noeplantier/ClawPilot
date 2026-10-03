@@ -1,7 +1,7 @@
 """Feature flags for dangerous capabilities. Every flag is OFF unless explicitly enabled in the environment.
 
     FEATURE_LIVE_SENDING=true      allow real e-mail dispatch (SMTP, see services/smtp_svc.py)
-    FEATURE_EXTERNAL_SOURCES=true  allow network-backed discovery sources (not implemented yet)
+    FEATURE_EXTERNAL_SOURCES=true  allow fetching each prospect's own public homepage (robots.txt, see site_fetcher_svc)
     FEATURE_PROSPECT_IMPORT=true   allow importing a prospect list (CSV/JSON) with its origin and legal basis
 
 `dry_run()` is the inverse of live sending: with no flag set, nothing leaves the system.

@@ -17,10 +17,10 @@ let container;
 let root;
 const byId = (id) => container.querySelector(`[data-testid="${id}"]`);
 
-function setup({ flag = true, batches = [], role = "owner" } = {}) {
+function setup({ flag = true, external = false, batches = [], role = "owner" } = {}) {
   mockUser = { role };
   api.get.mockImplementation((url) =>
-    Promise.resolve({ data: url === "/prospects/settings" ? { flags: { prospect_import: flag }, usage: {}, sender_configured: true } : batches })
+    Promise.resolve({ data: url === "/prospects/settings" ? { flags: { prospect_import: flag, external_sources: external }, usage: {}, sender_configured: true } : batches })
   );
 }
 
@@ -118,4 +118,39 @@ test("a server refusal is shown as a sentence", async () => {
   await type("import-basis", "consent");
   await click("import-preview");
   expect(byId("import-api-error").textContent).toContain("Prospect import is off");
+});
+
+async function previewOne() {
+  api.post.mockResolvedValueOnce({
+    data: { preview: true, rows_total: 1, rows_valid: 1, errors_count: 0, errors: [], ignored_columns: [], entities: 1, duplicates_merged: 0, suppressed: 0, created: 1, updated: 0, already_imported: false },
+  });
+  await show();
+  await chooseFile();
+  await type("import-origin", "Export of my own customer CRM");
+  await type("import-vertical", "artisans");
+  await type("import-basis", "legitimate_interest_b2b");
+  await click("import-preview");
+}
+
+test("checking websites is unavailable and never sent while external sources are off", async () => {
+  setup({ external: false });
+  await previewOne();
+  expect(byId("import-check-sites").disabled).toBe(true);
+  expect(byId("import-check-sites").parentElement.textContent).toContain("FEATURE_EXTERNAL_SOURCES is off");
+  api.post.mockResolvedValueOnce({ data: { preview: false, batch_id: "b1", rows_total: 1, rows_valid: 1, errors_count: 0, errors: [], ignored_columns: [], entities: 1, duplicates_merged: 0, suppressed: 0, created: 1, updated: 0, sites_checked: 0, already_imported: false } });
+  await act(async () => { byId("import-attest").click(); });
+  await click("import-commit");
+  expect(api.post.mock.calls[1][1].check_websites).toBe(false);
+});
+
+test("checking websites is opt-in, committed only, and the real count comes back from the API", async () => {
+  setup({ external: true });
+  await previewOne();
+  expect(api.post.mock.calls[0][1].check_websites).toBe(false); // a preview never fetches anything
+  expect(byId("import-check-sites").disabled).toBe(false);
+  api.post.mockResolvedValueOnce({ data: { preview: false, batch_id: "b1", rows_total: 1, rows_valid: 1, errors_count: 0, errors: [], ignored_columns: [], entities: 1, duplicates_merged: 0, suppressed: 0, created: 1, updated: 0, sites_checked: 1, already_imported: false } });
+  await act(async () => { byId("import-attest").click(); });
+  await act(async () => { byId("import-check-sites").click(); });
+  await click("import-commit");
+  expect(api.post.mock.calls[1][1]).toMatchObject({ preview: false, attestation: true, check_websites: true });
 });
