@@ -1,109 +1,90 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import {
-  LineChart, Line, BarChart, Bar, AreaChart, Area,
-  XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, RadialBarChart, RadialBar, Legend,
-} from "recharts";
+import { hasAnyValue } from "@/lib/chartMath";
+import { AreaLineChart, HBarChart, VBarChart } from "@/components/charts/SvgCharts";
+import { EmptyBlock, ErrorBlock, LoadingBlock } from "@/components/outreach/States";
+
+function Panel({ kicker, title, children }) {
+  return (
+    <section className="surface p-6" aria-label={title}>
+      <div className="mono-accent">{kicker}</div>
+      <h2 className="font-display font-bold text-lg mt-0.5 mb-4">{title}</h2>
+      {children}
+    </section>
+  );
+}
 
 export default function Analytics() {
   const [data, setData] = useState(null);
-  useEffect(() => { api.get("/analytics/overview").then((r) => setData(r.data)); }, []);
+  const [error, setError] = useState(null);
+  const load = () => {
+    setError(null);
+    api.get("/analytics/overview").then((r) => setData(r.data)).catch(() => setError("Could not load the analytics. Try again."));
+  };
+  useEffect(load, []);
 
-  if (!data) return <div className="p-10 text-[#5F5F5A] font-mono">loading telemetry...</div>;
+  if (error) return <div className="p-6 md:p-10"><ErrorBlock message={error} onRetry={load} /></div>;
+  if (!data) return <div className="p-6 md:p-10"><LoadingBlock label="Loading analytics…" /></div>;
 
   const totals = data.totals || {};
   const timeseries = data.timeseries || [];
   const pipeline = data.pipeline || {};
   const topCountries = data.top_countries || [];
-
   const funnel = [
-    { name: "Sent",      value: totals.sent || 0,      fill: "#DC2626" },
-    { name: "Opened",    value: totals.opened || 0,    fill: "#0F172A" },
-    { name: "Replied",   value: totals.replied || 0,   fill: "#475569" },
+    { name: "Sent", value: totals.sent || 0, fill: "#DC2626" },
+    { name: "Opened", value: totals.opened || 0, fill: "#0F172A" },
+    { name: "Replied", value: totals.replied || 0, fill: "#475569" },
     { name: "Converted", value: totals.converted || 0, fill: "#10B981" },
   ];
+  const pipelineMax = Math.max(...Object.values(pipeline), 1);
 
   return (
     <div className="p-6 md:p-10 space-y-6">
       <div>
         <div className="mono-accent">// deep.analytics</div>
         <h1 className="text-4xl font-black tracking-tighter">Analytics</h1>
-        <p className="text-[#5F5F5A] mt-1">Cross-channel performance breakdown.</p>
+        <p className="text-[#5F5F5A] mt-1">Cross-channel performance breakdown. Every figure comes from recorded events.</p>
       </div>
 
       <div className="grid lg:grid-cols-2 gap-4">
-        <div className="surface p-6">
-          <div className="mono-accent">/// funnel</div>
-          <div className="font-display font-bold text-lg mt-0.5 mb-4">Conversion Funnel</div>
-          <div className="h-[260px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={funnel} layout="vertical" margin={{ left: 20, right: 20 }}>
-                <CartesianGrid stroke="#F0F0EA" horizontal={false} />
-                <XAxis type="number" stroke="#6B6B66" fontSize={11} tickLine={false} axisLine={false} />
-                <YAxis dataKey="name" type="category" stroke="#1a1a1a" fontSize={12} tickLine={false} axisLine={false} width={80} />
-                <Tooltip contentStyle={{ background: "#FFFFFF", border: "1px solid #D6D3C8", borderRadius: 6 }} />
-                <Bar dataKey="value" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
+        <Panel kicker="/// funnel" title="Conversion Funnel">
+          {funnel.every((f) => f.value === 0)
+            ? <EmptyBlock title="Nothing sent yet" testId="funnel-empty"><p>The funnel fills as messages are sent and answered.</p></EmptyBlock>
+            : <HBarChart items={funnel} label="Conversion funnel" />}
+        </Panel>
 
-        <div className="surface p-6">
-          <div className="mono-accent">/// throughput</div>
-          <div className="font-display font-bold text-lg mt-0.5 mb-4">14-day Velocity</div>
-          <ResponsiveContainer width="100%" height={260}>
-            <AreaChart data={timeseries} margin={{ top: 10, right: 10, bottom: 0, left: -20 }}>
-              <defs>
-                <linearGradient id="an1" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#0F172A" stopOpacity={0.4} />
-                  <stop offset="100%" stopColor="#0F172A" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid stroke="#F0F0EA" vertical={false} />
-              <XAxis dataKey="date" stroke="#6B6B66" fontSize={11} tickLine={false} axisLine={false} />
-              <YAxis stroke="#6B6B66" fontSize={11} tickLine={false} axisLine={false} />
-              <Tooltip contentStyle={{ background: "#FFFFFF", border: "1px solid #D6D3C8", borderRadius: 6 }} />
-              <Area type="monotone" dataKey="replied" stroke="#0F172A" fill="url(#an1)" strokeWidth={2} />
-              <Line type="monotone" dataKey="opened" stroke="#DC2626" strokeWidth={2} dot={false} />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
+        <Panel kicker="/// throughput" title="14-day Velocity">
+          {!hasAnyValue(timeseries, ["replied", "opened"])
+            ? <EmptyBlock title="No activity in the last 14 days" testId="velocity-empty"><p>Opens and replies appear here once they are recorded.</p></EmptyBlock>
+            : <AreaLineChart rows={timeseries} areaKey="replied" lineKey="opened" label="Replies (area) and opens (line) per day" />}
+          <p className="mono-accent flex gap-4 mt-1"><span className="text-[#0F172A]">— replied</span><span className="text-[#B91C1C]">— opened</span></p>
+        </Panel>
       </div>
 
       <div className="grid lg:grid-cols-2 gap-4">
-        <div className="surface p-6">
-          <div className="mono-accent">/// pipeline.heatmap</div>
-          <div className="font-display font-bold text-lg mt-0.5 mb-4">Pipeline Density</div>
-          <div className="space-y-3">
-            {Object.entries(pipeline).map(([stage, count]) => {
-              const max = Math.max(...Object.values(pipeline), 1);
-              const pct = (count / max) * 100;
-              return (
-                <div key={stage} className="flex items-center gap-3">
-                  <div className="mono-accent w-24">{stage}</div>
-                  <div className="flex-1 h-6 bg-[#F0F0EA] rounded-sm overflow-hidden relative">
-                    <div className="h-full bg-gradient-to-r from-[#DC2626] to-[#0F172A]" style={{ width: `${pct}%` }} />
-                    <div className="absolute inset-0 flex items-center justify-end pr-2 font-mono text-xs text-[#0A0A0A]">{count}</div>
+        <Panel kicker="/// pipeline.heatmap" title="Pipeline Density">
+          {Object.keys(pipeline).length === 0
+            ? <EmptyBlock title="No lead in the pipeline" testId="pipeline-empty"><p>Add or import leads to see where they stand.</p></EmptyBlock>
+            : (
+              <div className="space-y-3">
+                {Object.entries(pipeline).map(([stage, count]) => (
+                  <div key={stage} className="flex items-center gap-3">
+                    <div className="mono-accent w-24">{stage}</div>
+                    <div className="flex-1 h-6 bg-[#F0F0EA] rounded-sm overflow-hidden relative">
+                      <div className="h-full bg-gradient-to-r from-[#DC2626] to-[#0F172A]" style={{ width: `${(count / pipelineMax) * 100}%` }} />
+                      <div className="absolute inset-0 flex items-center justify-end pr-2 font-mono text-xs text-[#0A0A0A]">{count}</div>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+                ))}
+              </div>
+            )}
+        </Panel>
 
-        <div className="surface p-6">
-          <div className="mono-accent">/// territories</div>
-          <div className="font-display font-bold text-lg mt-0.5 mb-4">Geographic Reach</div>
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={topCountries} margin={{ top: 10, right: 10, bottom: 0, left: -20 }}>
-              <CartesianGrid stroke="#F0F0EA" vertical={false} />
-              <XAxis dataKey="country" stroke="#6B6B66" fontSize={11} />
-              <YAxis stroke="#6B6B66" fontSize={11} tickLine={false} axisLine={false} />
-              <Tooltip contentStyle={{ background: "#FFFFFF", border: "1px solid #D6D3C8", borderRadius: 6 }} />
-              <Bar dataKey="leads" fill="#0F172A" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+        <Panel kicker="/// territories" title="Geographic Reach">
+          {topCountries.length === 0
+            ? <EmptyBlock title="No country recorded" testId="countries-empty"><p>Leads with a country appear here.</p></EmptyBlock>
+            : <VBarChart rows={topCountries} labelKey="country" valueKey="leads" label="Leads per country" />}
+        </Panel>
       </div>
     </div>
   );
