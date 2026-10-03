@@ -116,6 +116,7 @@ def test_flags_are_off_by_default_and_dry_run_is_on(monkeypatch):
     assert feature_flags.snapshot() == {
         "live_sending": False,
         "external_sources": False,
+        "prospect_import": False,
         "dry_run": True,
         "kill_switch": False,
         "sandbox": True,

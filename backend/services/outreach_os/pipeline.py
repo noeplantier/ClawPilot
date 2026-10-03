@@ -18,7 +18,7 @@ from services.outreach_os import signals as sig
 from services.outreach_os.dedupe import build_candidate, dedupe
 from services.outreach_os.scoring import ScoreConfig, compute_score
 from services.outreach_os.sources import SiteFetcher, SourceAdapter
-from services.outreach_os.types import Candidate
+from services.outreach_os.types import Candidate, RawListing
 
 if TYPE_CHECKING:
     from db.models import ScoreVersion
@@ -49,6 +49,9 @@ async def run_discovery(
     now: date,
     user_id: Optional[uuid.UUID] = None,
     vertical: str = VERTICAL,
+    country: str = "FR",
+    language: str = "fr",
+    trust_absence: bool = True,
 ) -> DiscoverySummary:
     summary = DiscoverySummary()
     listings = adapter.fetch()
@@ -68,7 +71,22 @@ async def run_discovery(
         ):
             summary.suppressed += 1
             continue
-        await _ingest(session, account_id, cand, adapter, fetcher, version, config, now, vertical, summary, user_id)
+        await _ingest(
+            session,
+            account_id,
+            cand,
+            adapter,
+            fetcher,
+            version,
+            config,
+            now,
+            vertical,
+            summary,
+            user_id,
+            country=country,
+            language=language,
+            trust_absence=trust_absence,
+        )
 
     await usage_repo.record(session, account_id, "discovery_run", 1, {"source": adapter.name})
     await usage_repo.record(session, account_id, "signals_analyzed", summary.entities - summary.suppressed)
@@ -84,6 +102,31 @@ async def run_discovery(
     return summary
 
 
+@dataclass
+class ImportPreview:
+    entities: int = 0
+    duplicates_merged: int = 0
+    suppressed: int = 0
+    would_create: int = 0
+    would_update: int = 0
+
+
+async def preview_listings(session: AsyncSession, account_id: uuid.UUID, listings: list[RawListing]) -> ImportPreview:
+    """What importing these listings would do, without writing anything (read-only)."""
+    candidates = dedupe([build_candidate(listing) for listing in listings])
+    out = ImportPreview(entities=len(candidates), duplicates_merged=len(listings) - len(candidates))
+    for cand in candidates:
+        if await suppression_repo.is_suppressed(
+            session, account_id, email=cand.email, phone=cand.phone, domain=cand.domain
+        ):
+            out.suppressed += 1
+        elif await prospect_repo.find_by_keys(session, account_id, cand.match_keys) is None:
+            out.would_create += 1
+        else:
+            out.would_update += 1
+    return out
+
+
 async def _ingest(
     session: AsyncSession,
     account_id: uuid.UUID,
@@ -96,11 +139,15 @@ async def _ingest(
     vertical: str,
     summary: DiscoverySummary,
     user_id: Optional[uuid.UUID],
+    *,
+    country: str = "FR",
+    language: str = "fr",
+    trust_absence: bool = True,
 ) -> None:
     lead = await prospect_repo.find_by_keys(session, account_id, cand.match_keys)
     if lead is None:
         lead = await prospect_repo.create_from_candidate(
-            session, account_id, cand, vertical=vertical, source_name=adapter.name
+            session, account_id, cand, vertical=vertical, source_name=adapter.name, country=country, language=language
         )
         summary.prospects_created += 1
         await audit_repo.log(
@@ -126,7 +173,7 @@ async def _ingest(
     snapshot = fetcher.fetch(cand.listing.website) if cand.domain and cand.listing.website else None
     if snapshot is not None:
         summary.sites_checked += 1
-    results = sig.analyze(cand.listing, snapshot, now=now, stale_days=config.stale_days)
+    results = sig.analyze(cand.listing, snapshot, now=now, stale_days=config.stale_days, trust_absence=trust_absence)
     summary.signals_recorded += await prospect_repo.append_signals(session, account_id, lead.id, results, source_ids[0])
     if await prospect_repo.append_score(session, account_id, lead.id, version, compute_score(results, config)):
         summary.scores_recorded += 1

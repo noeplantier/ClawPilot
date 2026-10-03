@@ -20,6 +20,7 @@ from routes.leads import router as leads_router
 from routes.messages import router as messages_router
 from routes.notes import router as notes_router
 from routes.outbound import router as outbound_router
+from routes.prospect_imports import router as prospect_imports_router
 from routes.prospects import router as prospects_router
 from routes.settings import router as settings_router
 from routes.tags import router as tags_router
@@ -58,6 +59,7 @@ api_router.include_router(notes_router)
 api_router.include_router(tasks_router)
 api_router.include_router(tags_router)
 api_router.include_router(prospects_router)
+api_router.include_router(prospect_imports_router)
 api_router.include_router(outbound_router)
 api_router.include_router(unsubscribe_router)
 

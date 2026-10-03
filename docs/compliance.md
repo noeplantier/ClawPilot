@@ -22,6 +22,7 @@ fournisseurs). Les points à valider avec un juriste sont marqués **[à valider
 | Rebond | Un rebond dur suspend l'adresse (raison `bounce`). |
 | Réponse STOP | Une réponse de type STOP/désinscription désinscrit immédiatement (même chemin que le lien). Les autres réponses sont seulement enregistrées (extrait de 500 caractères, effacé avec le prospect). |
 | Un brouillon, un message | La même clé d'idempotence, ou un autre identifiant pour le même brouillon, ne produit jamais un second message. |
+| Import d'une liste | `FEATURE_PROSPECT_IMPORT` (éteint par défaut), rôle owner/admin, aperçu sans écriture puis attestation explicite ; origine et base légale obligatoires, enregistrées avec l'empreinte SHA-256 du fichier (jamais le contenu dans l'audit ni les logs) ; liste de suppression respectée ; prospects `pending` jusqu'à validation humaine ; une cellule vide = `unknown`, jamais une affirmation ; aucun appel réseau. |
 | Aucun envoi par défaut | `dry_run` actif tant que `FEATURE_LIVE_SENDING` n'est pas explicitement à `true`. L'adaptateur SMTP exige `SMTP_*` complet (sinon 501) et TLS vérifié. |
 | Sandbox | Tant que `OUTREACH_SANDBOX` n'est pas mis à `false` explicitement, un envoi réel n'atteint que `OUTREACH_LIVE_ALLOWLIST` (liste vide = personne), vérifié au dispatch **et** dans l'adaptateur. |
 | Au plus un envoi | Le message est écrit `sending` et validé avant l'appel SMTP ; une issue inconnue n'est jamais renvoyée seule. |

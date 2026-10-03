@@ -49,6 +49,8 @@ services:
         sync: false
       - key: FEATURE_LIVE_SENDING
         sync: false # leave empty (dry-run). true = real e-mail over SMTP, see docs/go-live-email.md
+      - key: FEATURE_PROSPECT_IMPORT
+        sync: false # leave empty; true lets owners/admins import a CSV/JSON list (origin + legal basis recorded)
       - key: OUTREACH_SANDBOX
         value: "true" # real sending only reaches OUTREACH_LIVE_ALLOWLIST; set to false deliberately, never by default
       - key: OUTREACH_LIVE_ALLOWLIST

@@ -88,7 +88,7 @@ npm run lint && npm test -- --watchAll=false && npm run build
 ## Découverte (OutreachOS)
 
 - Logique pure dans `backend/services/outreach_os/` (sans I/O, `now` injecté) ; seul `pipeline.py` parle à la base, via les
-  repositories. Sources et analyseurs = `Protocol` ; seules des fixtures locales existent. Aucune source réseau sans
+  repositories. Sources et analyseurs = `Protocol` ; seules des fixtures locales et les listes importées par un humain (`importer.py`, derrière `FEATURE_PROSPECT_IMPORT`, origine et base légale obligatoires, cellule vide = `unknown`) existent. Aucune source réseau sans
   `FEATURE_EXTERNAL_SOURCES`, `robots.txt` et CGU vérifiés. `mypy --strict --follow-imports=silent services/outreach_os` doit
   rester propre. Voir `docs/architecture.md`.
 
