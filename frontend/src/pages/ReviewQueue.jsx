@@ -121,7 +121,7 @@ export default function ReviewQueue() {
                 <button className="btn-ghost" disabled={busy} onClick={() => setSkipped((s) => [...s, current.id])} data-testid="queue-skip">
                   <SkipForward size={14} /> SKIP
                 </button>
-                {!canDecide(user) && <span className="mono-accent self-center text-[#999995]">deciding requires owner or admin</span>}
+                {!canDecide(user) && <span className="mono-accent self-center text-[#6B6B66]">deciding requires owner or admin</span>}
               </div>
             </div>
           </section>

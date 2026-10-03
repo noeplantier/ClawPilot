@@ -170,7 +170,7 @@ export default function AIComposerModal({ open, onClose, defaults }) {
                   )}
                 </div>
                 {!result && !loading && !variants && !variantsLoading && (
-                  <div className="h-full flex flex-col items-center justify-center text-center text-[#999995] py-16">
+                  <div className="h-full flex flex-col items-center justify-center text-center text-[#6B6B66] py-16">
                     <Translate size={48} weight="duotone" className="text-[#D4D4C8] mb-3" />
                     <div className="mono-accent">awaiting.prompt</div>
                     <p className="text-xs mt-2 max-w-[220px]">Fill the form and hit generate — or request 3 tone variants.</p>
@@ -215,7 +215,7 @@ export default function AIComposerModal({ open, onClose, defaults }) {
                     </div>
                     <div className="pt-3 border-t border-[#D6D3C8] flex items-center justify-between">
                       <span className="chip chip-purple">{result.language}</span>
-                      <span className="mono-accent text-[#999995]">gemini-3-flash · {(result.body || "").length} chars</span>
+                      <span className="mono-accent text-[#6B6B66]">gemini-3-flash · {(result.body || "").length} chars</span>
                     </div>
                   </motion.div>
                 )}

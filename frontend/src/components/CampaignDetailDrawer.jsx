@@ -109,7 +109,7 @@ export default function CampaignDetailDrawer({ open, campaignId, onClose, onUpda
                 </button>
               </div>
               {leads.length === 0 ? (
-                <div className="text-sm text-[#999995] italic py-4 text-center">
+                <div className="text-sm text-[#6B6B66] italic py-4 text-center">
                   No leads assigned yet — assign some to enable step execution.
                 </div>
               ) : (
@@ -174,7 +174,7 @@ export default function CampaignDetailDrawer({ open, campaignId, onClose, onUpda
                   </div>
                 ))}
                 {(!c.steps || c.steps.length === 0) && (
-                  <div className="surface p-5 text-center text-sm text-[#999995] italic">
+                  <div className="surface p-5 text-center text-sm text-[#6B6B66] italic">
                     No steps configured. Edit the campaign to add automation steps.
                   </div>
                 )}
@@ -272,7 +272,7 @@ function AssignLeadsSheet({ campaign, allLeads, onClose, onSaved }) {
             );
           })}
           {candidates.length === 0 && (
-            <div className="py-6 text-center text-[#999995] italic text-sm">All leads already assigned or no matches.</div>
+            <div className="py-6 text-center text-[#6B6B66] italic text-sm">All leads already assigned or no matches.</div>
           )}
         </div>
         <div className="flex gap-3 mt-5">

@@ -5,10 +5,6 @@ import { MemoryRouter } from "react-router-dom";
 
 jest.mock("@/lib/api", () => ({ api: { get: jest.fn(), put: jest.fn() } }));
 jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
-jest.mock("recharts", () => {
-  const Stub = ({ children }) => <div>{children}</div>;
-  return { ResponsiveContainer: Stub, AreaChart: () => null, Area: () => null, CartesianGrid: () => null, XAxis: () => null, YAxis: () => null, Tooltip: () => null };
-});
 let mockUser = { role: "owner" };
 jest.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: mockUser }) }));
 
@@ -61,7 +57,7 @@ test("with data, the widgets show the real figures and link to the prospect", as
   expect(byId("kpi-prospects-value").textContent).toBe("3");
   expect(byId("kpi-avg_score-value").textContent).toBe("41.5");
   expect(byId("kpi-replies-hint").textContent).toBe("50% of 2 sent");
-  expect(byId("activity-chart").getAttribute("aria-label")).toContain("2 messages sent and 1 reply");
+  expect(byId("activity-chart").querySelector("svg").getAttribute("aria-label")).toContain("2 messages sent and 1 reply");
   expect(byId("latest-signals").textContent).toContain("No own website listed");
   expect(byId("campaign-open-rate").textContent).toBe("—"); // nothing sent: unknown, not 0%
   expect(byId("limits-quota").textContent).toBe("2 / 20");

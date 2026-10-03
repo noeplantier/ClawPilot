@@ -129,7 +129,7 @@ export default function ProspectDetail() {
             onClick={() => run("reject", () => prospectsApi.review(id, "reject", note), "Prospect rejected")} data-testid="detail-reject">
             <X size={14} /> REJECT
           </button>
-          {!decide && <span className="mono-accent text-[#999995]">deciding requires owner or admin</span>}
+          {!decide && <span className="mono-accent text-[#6B6B66]">deciding requires owner or admin</span>}
           {p.reviewed_at && <span className="mono-accent text-[#5F5F5A]">last decision {new Date(p.reviewed_at).toLocaleString()}</span>}
         </div>
       </Section>

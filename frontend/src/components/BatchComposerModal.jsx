@@ -195,7 +195,7 @@ export default function BatchComposerModal({ open, onClose, defaultChannel = "em
                     );
                   })}
                   {filtered.length === 0 && (
-                    <div className="py-8 text-center text-[#999995] text-sm italic">
+                    <div className="py-8 text-center text-[#6B6B66] text-sm italic">
                       No leads match{channel === "email" ? " (with email)" : " (with phone)"}.
                     </div>
                   )}

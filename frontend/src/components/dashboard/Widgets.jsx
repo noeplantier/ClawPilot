@@ -1,8 +1,7 @@
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ArrowRight, ChatCircleDots, Pause, Play, ShieldCheck } from "@phosphor-icons/react";
-import { DASH, ago, kpiCards, modeOf, pct, quotaShare, seriesHasData, seriesSummary, shortDay } from "@/lib/dashboardFormat";
+import { DASH, ago, chartGeometry, kpiCards, modeOf, pct, quotaShare, seriesHasData, seriesSummary, shortDay } from "@/lib/dashboardFormat";
 import { EmptyBlock } from "@/components/outreach/States";
 
 export function Widget({ title, kicker, testId, action, children }) {
@@ -51,23 +50,28 @@ export function ActivityChart({ series }) {
       </EmptyBlock>
     );
   }
-  const data = series.map((p) => ({ ...p, day: shortDay(p.date) }));
+  const g = chartGeometry(series);
   return (
-    <div role="img" aria-label={seriesSummary(series)} data-testid="activity-chart" className="h-56">
-      <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={data} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
-          <defs>
-            <linearGradient id="posSent" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#2563EB" stopOpacity={0.5} /><stop offset="100%" stopColor="#2563EB" stopOpacity={0} /></linearGradient>
-            <linearGradient id="posReplied" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#7C3AED" stopOpacity={0.5} /><stop offset="100%" stopColor="#7C3AED" stopOpacity={0} /></linearGradient>
-          </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="#E5E2D6" />
-          <XAxis dataKey="day" tick={{ fontSize: 11 }} />
-          <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-          <Tooltip />
-          <Area type="monotone" dataKey="sent" name="sent" stroke="#2563EB" fill="url(#posSent)" strokeWidth={2} />
-          <Area type="monotone" dataKey="replied" name="replies" stroke="#7C3AED" fill="url(#posReplied)" strokeWidth={2} />
-        </AreaChart>
-      </ResponsiveContainer>
+    <div data-testid="activity-chart" className="w-full">
+      <svg viewBox={`0 0 ${g.width} ${g.height}`} role="img" aria-label={seriesSummary(series)} className="w-full h-56">
+        {g.ticks.map((v) => (
+          <g key={v}>
+            <line x1="32" x2={g.width - 8} y1={g.y(v)} y2={g.y(v)} stroke="#E5E2D6" strokeDasharray="3 3" />
+            <text x="26" y={g.y(v) + 4} textAnchor="end" fontSize="11" fill="#5F5F5A">{v}</text>
+          </g>
+        ))}
+        <polygon points={g.area("sent")} fill="#2563EB" fillOpacity="0.15" />
+        <polygon points={g.area("replied")} fill="#7C3AED" fillOpacity="0.15" />
+        <polyline points={g.line("sent")} fill="none" stroke="#2563EB" strokeWidth="2" />
+        <polyline points={g.line("replied")} fill="none" stroke="#7C3AED" strokeWidth="2" />
+        {series.map((p, i) => (
+          <g key={p.date}>
+            <circle cx={g.x(i)} cy={g.y(p.sent)} r="3" fill="#2563EB"><title>{`${shortDay(p.date)}: ${p.sent} sent, ${p.replied} replies`}</title></circle>
+            {i % 3 === 0 && <text x={g.x(i)} y={g.height - 6} textAnchor="middle" fontSize="11" fill="#5F5F5A">{shortDay(p.date)}</text>}
+          </g>
+        ))}
+      </svg>
+      <p className="mono-accent flex gap-4 mt-1"><span className="text-[#1D4ED8]">— sent</span><span className="text-[#6D28D9]">— replies</span></p>
     </div>
   );
 }

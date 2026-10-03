@@ -72,7 +72,7 @@ export default function Messages() {
                   <div className="truncate">{m.body}</div>
                 </td>
                 <td className="p-3"><span className={`chip ${STATUS_CHIP[m.status]}`}>{m.status}</span></td>
-                <td className="p-3 font-mono text-xs text-[#999995]">{new Date(m.created_at).toLocaleString()}</td>
+                <td className="p-3 font-mono text-xs text-[#6B6B66]">{new Date(m.created_at).toLocaleString()}</td>
               </motion.tr>
             ))}
             {list.length === 0 && <tr><td colSpan="5" className="p-10 text-center text-[#5F5F5A]">No messages yet.</td></tr>}

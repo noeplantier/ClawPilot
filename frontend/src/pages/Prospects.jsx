@@ -197,7 +197,7 @@ export default function Prospects() {
                   <td className="p-3">
                     <span className={`chip ${REVIEW_META[p.review_status].chip}`}>{REVIEW_META[p.review_status].label}</span>
                   </td>
-                  <td className="p-3 hidden md:table-cell font-mono text-xs">{domainOf(p.website) || <span className="text-[#999995]">none listed</span>}</td>
+                  <td className="p-3 hidden md:table-cell font-mono text-xs">{domainOf(p.website) || <span className="text-[#6B6B66]">none listed</span>}</td>
                   <td className="p-3 hidden md:table-cell text-[#475569]">{p.city || "—"}</td>
                 </tr>
               ))}
