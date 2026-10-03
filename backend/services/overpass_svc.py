@@ -9,8 +9,11 @@ ever opened in tests.
 
 from __future__ import annotations
 
+import http.client
 import json
 import logging
+import socket
+import ssl
 import time
 import urllib.error
 import urllib.parse
@@ -35,6 +38,39 @@ CACHE_SECONDS = 600
 RETRY_STATUS = {429, 502, 503, 504}
 
 
+class _IPv4Connection(http.client.HTTPSConnection):
+    """The API's host has no IPv6 route ("Network is unreachable"): resolve and connect over IPv4 only."""
+
+    def connect(self) -> None:
+        last: OSError = OSError("no IPv4 address")
+        for family, kind, proto, _, address in socket.getaddrinfo(
+            self.host, self.port, socket.AF_INET, socket.SOCK_STREAM
+        ):
+            sock = socket.socket(family, kind, proto)
+            sock.settimeout(self.timeout)
+            try:
+                sock.connect(address)
+            except OSError as exc:
+                sock.close()
+                last = exc
+                continue
+            self.sock = ssl.create_default_context().wrap_socket(sock, server_hostname=self.host)
+            return
+        raise last
+
+
+class _IPv4Handler(urllib.request.HTTPSHandler):
+    def https_open(self, req):  # type: ignore[no-untyped-def]
+        return self.do_open(_IPv4Connection, req)
+
+
+_opener = urllib.request.build_opener(_IPv4Handler)
+
+
+def _open(request: urllib.request.Request, timeout: float):  # type: ignore[no-untyped-def]
+    return _opener.open(request, timeout=timeout)
+
+
 class Unavailable(Exception):
     """The public Overpass servers did not answer usefully (busy, down, bad answer)."""
 
@@ -52,9 +88,7 @@ def http_fetch(query: str) -> dict[str, Any]:
             endpoint, data=body, headers={"User-Agent": user_agent() or PRODUCT, "Accept": "application/json"}
         )
         try:
-            with urllib.request.urlopen(
-                request, timeout=TIMEOUT_SECONDS
-            ) as response:  # noqa: S310 (https, fixed hosts)
+            with _open(request, TIMEOUT_SECONDS) as response:  # noqa: S310 (https, fixed hosts)
                 raw = response.read(MAX_BYTES + 1)
             if len(raw) > MAX_BYTES:
                 raise Unavailable("answer too large: zoom in")
