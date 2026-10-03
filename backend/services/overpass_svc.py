@@ -1,7 +1,8 @@
 """Overpass API client (OpenStreetMap data). Network I/O, only behind FEATURE_EXTERNAL_SOURCES.
 
-Polite by construction: identified User-Agent, one request per search, 30 s timeout, 5 MB cap, a small in-memory cache
-(10 min) so panning back and forth does not hit the public servers again, and a fallback to a second public instance
+Polite by construction: identified User-Agent, one request per search (several public servers tried in turn,
+15 s each), 5 MB cap, a small in-memory cache
+(10 min) so panning back and forth does not hit the public servers again, and a fallback to the next public instance
 only on 429/502/503/504. No key, no account, nothing paid. Implements `Fetcher` so tests inject a fake: no socket is
 ever opened in tests.
 """
@@ -20,8 +21,15 @@ from services.site_fetcher_svc import PRODUCT, user_agent
 
 logger = logging.getLogger(__name__)
 
-ENDPOINTS = ("https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter")
-TIMEOUT_SECONDS = 30.0
+# Public, free instances. A shared cloud IP is sometimes throttled by one of them (the connection just hangs), so
+# several are tried in turn; each gets a short timeout so that all fit under the host request limit (4 x 15 s).
+ENDPOINTS = (
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.private.coffee/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+    "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+)
+TIMEOUT_SECONDS = 15.0
 MAX_BYTES = 5_000_000
 CACHE_SECONDS = 600
 RETRY_STATUS = {429, 502, 503, 504}
@@ -37,8 +45,9 @@ class Fetcher(Protocol):
 
 def http_fetch(query: str) -> dict[str, Any]:
     body = urllib.parse.urlencode({"data": query}).encode()
-    last = "no endpoint"
+    failures: list[str] = []
     for endpoint in ENDPOINTS:
+        host = urllib.parse.urlparse(endpoint).hostname or endpoint
         request = urllib.request.Request(
             endpoint, data=body, headers={"User-Agent": user_agent() or PRODUCT, "Accept": "application/json"}
         )
@@ -54,11 +63,12 @@ def http_fetch(query: str) -> dict[str, Any]:
                 raise Unavailable("unexpected answer")
             return payload
         except urllib.error.HTTPError as exc:
-            last = f"HTTP {exc.code}"
+            failures.append(f"{host}: HTTP {exc.code}")
             if exc.code not in RETRY_STATUS:
                 break
         except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError) as exc:
-            last = type(exc).__name__
+            failures.append(f"{host}: {type(exc).__name__}")
+    last = "; ".join(failures) or "no endpoint"
     logger.warning("overpass unavailable (%s)", last)
     raise Unavailable(f"OpenStreetMap servers are busy or unreachable ({last}); try again in a minute")
 
