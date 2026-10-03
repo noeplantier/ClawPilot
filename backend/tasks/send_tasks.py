@@ -17,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 
 from celery_app import celery_app
 from repositories import campaign_repo, consent_repo, lead_repo, outreach_repo, send_policy_repo
-from services import send_gate
+from services import legacy_email, send_gate
 from services.sendgrid_svc import send_email
 from services.templating import render as _render
 from services.timezones import resolve_timezone
@@ -93,8 +93,19 @@ async def _send_email_impl(
         raise task.retry(**_retry_args(blocked))
 
     subject = _render(step.subject or "", lead)
-    body = _render(step.body or "", lead)
-    result = send_email(lead["email"], subject, body)
+    try:
+        prepared = await legacy_email.prepare(
+            session,
+            account_id,
+            to_email=lead["email"],
+            body=_render(step.body or "", lead),
+            lead_id=lead_id,
+            source=lead.get("source"),
+        )
+    except legacy_email.EmailNotCompliant as exc:
+        return {"status": "failed", "reason": exc.code}
+    body = prepared.body
+    result = send_email(lead["email"], subject, body, headers=prepared.headers)
 
     contact_id = uuid.UUID(lead["contact_id"]) if lead.get("contact_id") else None
     await outreach_repo.create_email_send(

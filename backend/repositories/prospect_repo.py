@@ -295,6 +295,17 @@ async def get(session: AsyncSession, account_id: uuid.UUID, lead_id: str) -> Opt
     ).scalar_one_or_none()
 
 
+async def get_any(session: AsyncSession, account_id: uuid.UUID, lead_id: str) -> Optional[Lead]:
+    """A lead of this organisation, discovery or not (an unsubscribe link must work for every lead we e-mailed)."""
+    try:
+        lid = uuid.UUID(lead_id)
+    except ValueError:
+        return None
+    return (
+        await session.execute(select(Lead).where(Lead.id == lid, Lead.account_id == account_id, ACTIVE))
+    ).scalar_one_or_none()
+
+
 async def sources_of(session: AsyncSession, lead_id: uuid.UUID) -> list[ProspectSource]:
     rows = await session.execute(
         select(ProspectSource).where(ProspectSource.lead_id == lead_id).order_by(ProspectSource.created_at)
