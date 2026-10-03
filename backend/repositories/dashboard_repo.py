@@ -11,7 +11,7 @@ from sqlalchemy import cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import Campaign, Lead, OutboundEvent, OutboundMessage, ProspectSignal, SuppressionEntry
-from repositories.prospect_repo import ACTIVE, IN_DISCOVERY, _latest_scores_subquery
+from repositories.prospect_repo import ACTIVE, IN_DISCOVERY, _latest_scores_subquery, detected_by_lead
 
 
 def _pairs(result) -> dict:
@@ -214,3 +214,46 @@ async def inbox(session: AsyncSession, account_id: uuid.UUID, limit: int) -> lis
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+async def top_signals(session: AsyncSession, account_id: uuid.UUID, limit: int) -> list[dict]:
+    """How many prospects each signal is currently detected on (a dismissed or unknown signal never counts)."""
+    counts: dict[str, int] = {}
+    for keys in (await detected_by_lead(session, account_id)).values():
+        for key in keys:
+            counts[key] = counts.get(key, 0) + 1
+    ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[:limit]
+    return [{"key": key, "prospects": n} for key, n in ranked]
+
+
+async def geography(session: AsyncSession, account_id: uuid.UUID, limit: int) -> dict:
+    """Prospects by country and by city, counted as stored. Missing country/city stay in `unknown`, not guessed."""
+    rows = await session.execute(
+        select(Lead.country, Lead.city, func.count())
+        .where(Lead.account_id == account_id, ACTIVE, IN_DISCOVERY)
+        .group_by(Lead.country, Lead.city)
+    )
+    countries: dict[str, int] = {}
+    cities: dict[str, int] = {}
+    unknown_country = unknown_city = total = 0
+    for country, city, n in rows.all():
+        total += n
+        if country:
+            countries[country] = countries.get(country, 0) + n
+        else:
+            unknown_country += n
+        if city:
+            cities[city] = cities.get(city, 0) + n
+        else:
+            unknown_city += n
+
+    def top(d: dict[str, int]) -> list[dict]:
+        return [{"name": k, "prospects": v} for k, v in sorted(d.items(), key=lambda kv: (-kv[1], kv[0]))[:limit]]
+
+    return {
+        "total": total,
+        "countries": top(countries),
+        "cities": top(cities),
+        "unknown_country": unknown_country,
+        "unknown_city": unknown_city,
+    }

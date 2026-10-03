@@ -17,7 +17,7 @@ const LIMITS = { dry_run: true, kill_switch: false, paused: false, blocked_by: n
 const EMPTY = {
   generated_at: "2026-10-03T10:00:00Z",
   kpis: { prospects: 0, pending_review: 0, approved: 0, scored: 0, avg_score: null, sent_today: 0, messages: 0, replies: 0, reply_rate: null, bounces: 0, bounce_rate: null, unsubscribed: 0 },
-  series: [{ date: "2026-10-03", sent: 0, replied: 0 }], latest_prospects: [], latest_signals: [], campaigns: [], limits: LIMITS, inbox: [],
+  series: [{ date: "2026-10-03", sent: 0, replied: 0 }], latest_prospects: [], latest_signals: [], campaigns: [], limits: LIMITS, inbox: [], top_signals: [], geography: { total: 0, countries: [], cities: [], unknown_country: 0, unknown_city: 0 },
 };
 const FULL = {
   ...EMPTY,
@@ -28,6 +28,8 @@ const FULL = {
   campaigns: [{ id: "c1", name: "Spring", status: "running", sent: 0, opened: 0, replied: 0, open_rate: null, reply_rate: null }],
   inbox: [{ message_id: "m1", lead_id: "p1", name: "La Table d'Alice", excerpt: "Intéressé", simulated: true, at: "2026-10-03T09:30:00Z" }],
   limits: { ...LIMITS, sent_today: 2, remaining_today: 18 },
+  top_signals: [{ key: "no_website", label: "No own website listed", prospects: 2 }],
+  geography: { total: 3, countries: [{ name: "FR", prospects: 2 }], cities: [{ name: "Lyon", prospects: 2 }], unknown_country: 1, unknown_city: 1 },
 };
 
 let container;
@@ -48,7 +50,7 @@ test("with no data, every widget shows an explicit empty state and no invented n
   await show(EMPTY);
   expect(byId("kpi-avg_score-value").textContent).toBe("—");
   expect(byId("kpi-replies-hint").textContent).toBe("no message sent yet");
-  for (const id of ["chart-empty", "signals-empty", "campaigns-empty", "inbox-empty"]) expect(byId(id)).not.toBeNull();
+  for (const id of ["chart-empty", "signals-empty", "campaigns-empty", "inbox-empty", "top-signals-empty", "geo-empty"]) expect(byId(id)).not.toBeNull();
   expect(byId("limits-mode").textContent).toBe("DRY-RUN");
 });
 
@@ -62,6 +64,10 @@ test("with data, the widgets show the real figures and link to the prospect", as
   expect(byId("campaign-open-rate").textContent).toBe("—"); // nothing sent: unknown, not 0%
   expect(byId("limits-quota").textContent).toBe("2 / 20");
   expect(byId("inbox-item").textContent).toContain("simulated");
+  expect(byId("top-signals").textContent).toContain("No own website listed");
+  expect(byId("geo-countries").textContent).toContain("FR");
+  expect(byId("geo-unknown").textContent).toBe("1 without a country"); // not guessed, not hidden
+  expect(byId("geo-open-map").getAttribute("href")).toBe("/app/map");
   expect(byId("inbox-follow-up").getAttribute("href")).toBe("/app/prospects/p1");
 });
 

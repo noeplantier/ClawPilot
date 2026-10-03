@@ -511,6 +511,8 @@ class DashboardOut(BaseModel):
     campaigns: List[dict]
     limits: dict
     inbox: List[dict]
+    top_signals: List[dict] = Field(default_factory=list)
+    geography: dict = Field(default_factory=dict)
 
 
 # ------------------------ Prospect list import ------------------------
@@ -725,6 +727,11 @@ class MapProspectOut(BaseModel):
     review_status: Literal["pending", "approved", "rejected"]
     has_email: bool
     external_id: Optional[str] = None  # the source's id (e.g. OpenStreetMap node/123): lets the map hide duplicates
+    vertical: Optional[str] = None
+    country: Optional[str] = None
+    score: Optional[int] = None  # None = not scored (never 0)
+    signals: List[str] = Field(default_factory=list)  # keys detected now; a dismissed signal does not count
+    created_at: Optional[datetime] = None
 
 
 class SourceInfo(BaseModel):

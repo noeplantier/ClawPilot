@@ -141,6 +141,9 @@ def test_my_prospects_layer_lists_only_this_organisations_positioned_prospects()
         True,
     )
     assert items[0]["external_id"] == f"node/{uid}"
+    assert items[0]["signals"] == ["public_contact_present"]  # the imported e-mail; nothing else is claimed
+    assert items[0]["score"] is not None and items[0]["created_at"]
+    assert items[0]["country"] == "FR" and items[0]["vertical"]
     other = requests.post(
         f"{API}/auth/register",
         json={
