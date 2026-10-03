@@ -42,7 +42,7 @@ export default function Dashboard() {
         <div>
           <div className="mono-accent inline-flex items-center gap-2"><span className="pos-live-dot" aria-hidden="true" /> // plantiers.outreachos · live</div>
           <h1 className="text-4xl font-black tracking-tighter">Dashboard</h1>
-          <p className="text-[#6B6B66] mt-1 max-w-2xl">Every figure comes from your own data. A dash means nothing is known yet, not zero.</p>
+          <p className="text-[#5F5F5A] mt-1 max-w-2xl">Every figure comes from your own data. A dash means nothing is known yet, not zero.</p>
         </div>
         <button className="btn-ghost" onClick={reload} disabled={page.loading} data-testid="dashboard-refresh"><ArrowsClockwise size={14} /> REFRESH</button>
       </div>

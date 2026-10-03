@@ -29,7 +29,7 @@ export default function Messages() {
         <div>
           <div className="mono-accent">// transmission.log</div>
           <h1 className="text-4xl font-black tracking-tighter">Messages</h1>
-          <p className="text-[#6B6B66] mt-1">{list.length} transmissions recorded</p>
+          <p className="text-[#5F5F5A] mt-1">{list.length} transmissions recorded</p>
         </div>
         <div className="flex gap-2 flex-wrap">
           <button onClick={() => setBatchChannel("email")} className="btn-ink" data-testid="batch-email-button"><Users size={14} /> BATCH EMAIL</button>
@@ -67,7 +67,7 @@ export default function Messages() {
                   }
                 </td>
                 <td className="p-3 font-mono text-xs text-[#1a1a1a]">{m.to}</td>
-                <td className="p-3 text-[#6B6B66] truncate max-w-sm">
+                <td className="p-3 text-[#5F5F5A] truncate max-w-sm">
                   {m.subject && <div className="text-[#0A0A0A]">{m.subject}</div>}
                   <div className="truncate">{m.body}</div>
                 </td>
@@ -75,7 +75,7 @@ export default function Messages() {
                 <td className="p-3 font-mono text-xs text-[#999995]">{new Date(m.created_at).toLocaleString()}</td>
               </motion.tr>
             ))}
-            {list.length === 0 && <tr><td colSpan="5" className="p-10 text-center text-[#6B6B66]">No messages yet.</td></tr>}
+            {list.length === 0 && <tr><td colSpan="5" className="p-10 text-center text-[#5F5F5A]">No messages yet.</td></tr>}
           </tbody>
         </table>
       </div>

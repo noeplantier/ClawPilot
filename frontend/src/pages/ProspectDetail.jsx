@@ -23,7 +23,7 @@ function Section({ title, hint, actions, children, testId }) {
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h2 className="font-display text-xl font-bold">{title}</h2>
-          {hint && <p className="text-sm text-[#6B6B66]">{hint}</p>}
+          {hint && <p className="text-sm text-[#5F5F5A]">{hint}</p>}
         </div>
         {actions}
       </div>
@@ -130,7 +130,7 @@ export default function ProspectDetail() {
             <X size={14} /> REJECT
           </button>
           {!decide && <span className="mono-accent text-[#999995]">deciding requires owner or admin</span>}
-          {p.reviewed_at && <span className="mono-accent text-[#6B6B66]">last decision {new Date(p.reviewed_at).toLocaleString()}</span>}
+          {p.reviewed_at && <span className="mono-accent text-[#5F5F5A]">last decision {new Date(p.reviewed_at).toLocaleString()}</span>}
         </div>
       </Section>
 

@@ -3,7 +3,7 @@ import { formatDateTime } from "@/lib/outreachFormat";
 
 export default function SignalList({ signals }) {
   if (!signals || signals.length === 0) {
-    return <p className="text-sm text-[#6B6B66]">No signal has been recorded for this prospect.</p>;
+    return <p className="text-sm text-[#5F5F5A]">No signal has been recorded for this prospect.</p>;
   }
   return (
     <ul className="grid md:grid-cols-2 gap-3" data-testid="signal-list">

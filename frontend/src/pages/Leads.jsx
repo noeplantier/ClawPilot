@@ -74,7 +74,7 @@ export default function Leads() {
         <div>
           <div className="mono-accent">// crm.pipeline</div>
           <h1 className="text-4xl font-black tracking-tighter">Leads</h1>
-          <p className="text-[#6B6B66] mt-1">{leads.length} contacts across the pipeline.</p>
+          <p className="text-[#5F5F5A] mt-1">{leads.length} contacts across the pipeline.</p>
         </div>
         <div className="flex gap-2 items-center">
           <div className="flex items-center gap-2 px-3 py-1.5 border border-[#D6D3C8] rounded-md bg-[#FFFFFF]">
@@ -145,8 +145,8 @@ export default function Leads() {
                       </div>
                     </div>
                   </td>
-                  <td className="p-3 text-[#6B6B66]">{l.company}</td>
-                  <td className="p-3 font-mono text-xs text-[#6B6B66]">{l.email}</td>
+                  <td className="p-3 text-[#5F5F5A]">{l.company}</td>
+                  <td className="p-3 font-mono text-xs text-[#5F5F5A]">{l.email}</td>
                   <td className="p-3 font-mono text-xs">{l.country}</td>
                   <td className="p-3" onClick={(e) => e.stopPropagation()}>
                     <select
@@ -178,7 +178,7 @@ export default function Leads() {
                 </motion.tr>
               ))}
               {leads.length === 0 && (
-                <tr><td colSpan="7" className="p-10 text-center text-[#6B6B66]">No leads. Add your first or import.</td></tr>
+                <tr><td colSpan="7" className="p-10 text-center text-[#5F5F5A]">No leads. Add your first or import.</td></tr>
               )}
             </tbody>
           </table>
@@ -191,7 +191,7 @@ export default function Leads() {
               <div key={s} className="kanban-column p-3 min-h-[400px]" data-testid={`kanban-${s}`}>
                 <div className="flex items-center justify-between mb-3 pb-2 border-b border-[#D6D3C8]">
                   <span className="mono-accent" style={{ color: STAGE_COLORS[s] }}>{s}</span>
-                  <span className="font-mono text-xs text-[#6B6B66]">{items.length}</span>
+                  <span className="font-mono text-xs text-[#5F5F5A]">{items.length}</span>
                 </div>
                 <div className="space-y-2">
                   {items.map((l) => (
@@ -204,7 +204,7 @@ export default function Leads() {
                       data-testid={`kanban-card-${l.id}`}
                     >
                       <div className="font-semibold text-sm text-[#0A0A0A]">{l.full_name}</div>
-                      <div className="text-[#6B6B66] mt-0.5">{l.company}</div>
+                      <div className="text-[#5F5F5A] mt-0.5">{l.company}</div>
                       <div className="mono-accent text-[#999995] mt-2 flex items-center justify-between">
                         <span>{l.country}</span>
                         <span>score · {l.score}</span>
@@ -252,7 +252,7 @@ function CreateLead({ onClose, onSaved }) {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-50 bg-[#0F172A]/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
       <motion.div initial={{ y: 10 }} animate={{ y: 0 }} className="surface w-full max-w-xl p-8 relative" onClick={(e) => e.stopPropagation()}>
-        <button onClick={onClose} className="absolute top-4 right-4 text-[#6B6B66] hover:text-[#0A0A0A]" data-testid="close-create-lead"><X size={20} /></button>
+        <button onClick={onClose} className="absolute top-4 right-4 text-[#5F5F5A] hover:text-[#0A0A0A]" data-testid="close-create-lead"><X size={20} /></button>
         <div className="mono-accent">/// new.lead</div>
         <h2 className="text-2xl font-black tracking-tighter mt-1">Add Lead</h2>
 

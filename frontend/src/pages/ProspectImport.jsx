@@ -78,7 +78,7 @@ function ImportForm({ onImported }) {
 
       <Field label="file (.csv or .json)" error={errors.content || errors.format} testId="file">
         <input type="file" accept=".csv,.json,text/csv,application/json" onChange={pick} className="neo-input" data-testid="import-file" />
-        {values.filename && <span className="text-xs text-[#6B6B66] mt-1 block" data-testid="import-filename">{values.filename} · {values.format}</span>}
+        {values.filename && <span className="text-xs text-[#5F5F5A] mt-1 block" data-testid="import-filename">{values.filename} · {values.format}</span>}
       </Field>
 
       <div className="grid md:grid-cols-2 gap-4">
@@ -115,7 +115,7 @@ function ImportForm({ onImported }) {
         <div className="border border-[#D6D3C8] rounded-md p-4 bg-white space-y-3" data-testid="import-result" role="status">
           <p className="text-sm" data-testid="import-summary">{describeImport(result)}</p>
           {result.already_imported && <p className="text-sm text-[#92400E]" data-testid="import-already">A file with exactly this content was imported before.</p>}
-          {result.ignored_columns.length > 0 && <p className="text-xs text-[#6B6B66]">Ignored columns: {result.ignored_columns.join(", ")}</p>}
+          {result.ignored_columns.length > 0 && <p className="text-xs text-[#5F5F5A]">Ignored columns: {result.ignored_columns.join(", ")}</p>}
           {result.errors.length > 0 && (
             <ul className="text-xs text-[#991B1B] list-disc pl-5" data-testid="import-errors">
               {result.errors.map((e) => <li key={e.row}>row {e.row}: {e.message}</li>)}
@@ -150,7 +150,7 @@ export default function ProspectImport() {
   return (
     <div className="p-6 md:p-10 space-y-6 max-w-4xl" data-testid="import-page">
       <div>
-        <Link to="/app/prospects" className="text-sm text-[#6B6B66] inline-flex items-center gap-1"><ArrowLeft size={14} /> Prospects</Link>
+        <Link to="/app/prospects" className="text-sm text-[#5F5F5A] inline-flex items-center gap-1"><ArrowLeft size={14} /> Prospects</Link>
         <div className="mono-accent mt-2">// prospects.import</div>
         <h1 className="text-4xl font-black tracking-tighter">Import a list</h1>
       </div>

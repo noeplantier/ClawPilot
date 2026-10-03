@@ -83,6 +83,7 @@ celery -A celery_app beat -l info
 # frontend/
 npm ci --legacy-peer-deps      # conflit de peer deps date-fns / react-day-picker, connu
 npm run lint && npm test -- --watchAll=false && npm run build
+npm run e2e                    # Playwright, API réelle démarrée + build avec REACT_APP_BACKEND_URL (voir README « Tests »)
 ```
 
 ## Découverte (OutreachOS)

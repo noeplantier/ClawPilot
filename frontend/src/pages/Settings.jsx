@@ -23,7 +23,7 @@ export default function Settings() {
       <div>
         <div className="mono-accent">// control.panel</div>
         <h1 className="text-4xl font-black tracking-tighter">Settings</h1>
-        <p className="text-[#6B6B66] mt-1">Organization profile and the live status of this server&apos;s integrations.</p>
+        <p className="text-[#5F5F5A] mt-1">Organization profile and the live status of this server&apos;s integrations.</p>
       </div>
 
       <section className="surface p-6 space-y-4">
@@ -184,7 +184,7 @@ function IntegrationRow({ icon: Icon, name, description, tone, statusLabel, deta
               <StatusIcon size={10} weight="fill" /> {statusLabel}
             </span>
           </div>
-          <p className="text-sm text-[#6B6B66] mt-1">{description}</p>
+          <p className="text-sm text-[#5F5F5A] mt-1">{description}</p>
           {details.length > 0 && (
             <div className="mt-3 grid md:grid-cols-2 gap-2 text-xs">
               {details.map(([k, v]) => (
