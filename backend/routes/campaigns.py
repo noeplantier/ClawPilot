@@ -9,10 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.session import get_db_session
 from deps import get_current_user
-from models import Campaign, CampaignCreate, CampaignStep, CampaignUpdate
-from repositories import activity_repo, audit_repo, campaign_repo, consent_repo, lead_repo, outreach_repo
+from models import Campaign, CampaignCreate, CampaignRescoreOut, CampaignStep, CampaignUpdate
+from repositories import activity_repo, audit_repo, campaign_repo, consent_repo, lead_repo, outreach_repo, prospect_repo
 from routes._refusal import block_detail
 from services import legacy_email, scheduler, send_gate
+from services.rate_limit import AttemptLimiter
 from services.sendgrid_svc import send_email
 from services.templating import render as _render
 from services.twilio_svc import send_whatsapp
@@ -378,3 +379,57 @@ async def cancel_schedule(
         session, user["org_id"], "campaign.schedule_cancel", f"Cancelled {cancelled} pending jobs"
     )
     return {"cancelled": cancelled}
+
+
+# ---------------------------------------------------------------- rescoring
+RESCORE_MAX_LEADS = 500
+_rescore_limiter = AttemptLimiter(3, 60.0)  # per organisation: a batch touches up to RESCORE_MAX_LEADS leads
+
+
+@router.post("/{campaign_id}/rescore", response_model=CampaignRescoreOut)
+async def rescore_campaign(
+    campaign_id: str,
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Recompute the score of every lead in the campaign: discovery prospects from their stored signals (reviewer
+    dismissals applied) with the active configuration, CRM leads with the CRM score. No new observation is made, nothing
+    is sent. At most 3 batches a minute per organisation and 500 leads per batch; audited."""
+    account_id = uuid.UUID(user["org_id"])
+    campaign = await campaign_repo.get_campaign(session, account_id, campaign_id)
+    if campaign is None:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    wait = _rescore_limiter.retry_after(str(account_id))
+    if wait:
+        raise HTTPException(
+            status_code=429, detail="Too many rescoring batches: wait a minute", headers={"Retry-After": str(wait)}
+        )
+    lead_ids = [str(cl.lead_id) for cl in campaign.leads]
+    if len(lead_ids) > RESCORE_MAX_LEADS:
+        raise HTTPException(
+            status_code=422, detail=f"A campaign of more than {RESCORE_MAX_LEADS} leads cannot be rescored in one call"
+        )
+    _rescore_limiter.record(str(account_id))
+    prospects = crm = skipped = 0
+    for lead_id in lead_ids:
+        lead = await lead_repo.get_lead(session, account_id, lead_id)
+        if lead is None:
+            skipped += 1
+        elif lead.review_status is not None:
+            await prospect_repo.rescore_lead(session, account_id, lead, uuid.UUID(user["id"]))
+            prospects += 1
+        else:
+            await lead_repo.rescore_lead(session, account_id, lead, computed_by="manual")
+            crm += 1
+    await audit_repo.log(
+        session,
+        account_id,
+        action="campaign.rescored",
+        resource_type="campaign",
+        resource_id=campaign.id,
+        actor_user_id=uuid.UUID(user["id"]),
+        diff={"total": len(lead_ids), "prospects": prospects, "crm": crm, "skipped": skipped},
+    )
+    return CampaignRescoreOut(
+        total=len(lead_ids), prospects_rescored=prospects, crm_leads_rescored=crm, skipped=skipped
+    )

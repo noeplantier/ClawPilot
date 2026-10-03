@@ -191,7 +191,13 @@ async def _ingest(
                 diff={"origin": "mailto link on the business's own homepage", "site": cand.domain},
             )
     results = sig.analyze(cand.listing, snapshot, now=now, stale_days=config.stale_days, trust_absence=trust_absence)
-    summary.signals_recorded += await prospect_repo.append_signals(session, account_id, lead.id, results, source_ids[0])
+    observed = results
+    results = sig.apply_dismissals(
+        results, await prospect_repo.dismissals_in_force(session, lead.id)
+    )  # reviewer decisions
+    summary.signals_recorded += await prospect_repo.append_signals(
+        session, account_id, lead.id, observed, source_ids[0]
+    )
     if await prospect_repo.append_score(session, account_id, lead.id, version, compute_score(results, config)):
         summary.scores_recorded += 1
 

@@ -148,8 +148,8 @@ export default function ProspectDetail() {
         <ScoreBreakdown detail={p.score_detail} />
       </Section>
 
-      <Section title="Signals" hint="What was observed, with the evidence and when." testId="section-signals">
-        <SignalList signals={p.signals} />
+      <Section title="Signals" hint="What was observed, with the evidence and when. A signal you know to be wrong can be dismissed: it then counts as unknown." testId="section-signals">
+        <SignalList signals={p.signals} prospectId={id} canReview={decide} onChanged={page.reload} />
       </Section>
 
       <Section title="Drafts" hint="Messages prepared for a human to approve." testId="section-drafts">

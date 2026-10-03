@@ -400,6 +400,25 @@ class SignalOut(BaseModel):
     state: str  # unknown | detected | not_detected (enforced by a CHECK constraint)
     evidence: str
     observed_at: datetime
+    dismissed: bool = False  # a reviewer marked this signal as wrong: it reads as unknown in the score and the drafts
+    dismissed_reason: Optional[str] = None
+    observed_state: Optional[str] = None  # the state as observed, when it differs from `state` because of a dismissal
+
+
+class DismissIn(BaseModel):
+    reason: str = Field(min_length=5, max_length=500)
+
+
+class DismissOut(BaseModel):
+    signal: "SignalOut"
+    score: "ScoreOut"
+
+
+class CampaignRescoreOut(BaseModel):
+    total: int
+    prospects_rescored: int
+    crm_leads_rescored: int
+    skipped: int
 
 
 class SourceOut(BaseModel):

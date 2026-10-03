@@ -31,7 +31,7 @@ def snapshot(status=200, html=OK_HTML, error=None):
 
 # ---- every signal returns a result, in a stable order -------------------------------------------
 def test_analyze_returns_all_signals_in_order():
-    assert tuple(sig.analyze(listing(), None, now=NOW)[i].key for i in range(7)) == sig.ALL_SIGNALS
+    assert tuple(sig.analyze(listing(), None, now=NOW)[i].key for i in range(len(sig.ALL_SIGNALS))) == sig.ALL_SIGNALS
 
 
 # ---- no_website ---------------------------------------------------------------------------------
@@ -128,7 +128,7 @@ def test_score_all_unknown_is_zero_with_zero_coverage():
 
 def test_score_unknown_and_not_detected_never_contribute():
     s = compute_score(results(**{sig.NO_WEBSITE: "not_detected"}), ScoreConfig())
-    assert s.score == 0 and s.coverage == round(1 / 7, 2)
+    assert s.score == 0 and s.coverage == round(1 / len(sig.ALL_SIGNALS), 2)
 
 
 def test_score_counts_only_detected_with_points_per_signal():

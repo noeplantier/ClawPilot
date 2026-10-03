@@ -22,6 +22,8 @@ from deps import JWT_SECRET, get_current_user, require_roles
 from models import (
     DiscoveryRunIn,
     DiscoveryRunOut,
+    DismissIn,
+    DismissOut,
     DraftOut,
     OutreachSettingsOut,
     ProspectDetail,
@@ -53,7 +55,6 @@ from services.outreach_os import signals as sig
 from services.outreach_os.normalize import normalize_domain, normalize_email, normalize_phone
 from services.outreach_os.scoring import ScoreConfig
 from services.outreach_os.sources import DEMO_SOURCE_NAME, FixtureDirectoryAdapter, FixtureSiteFetcher
-from services.outreach_os.types import SignalResult, SignalState
 from services.outreach_os.unsubscribe import make_token
 
 router = APIRouter(prefix="/prospects", tags=["prospects"])
@@ -80,6 +81,21 @@ def _summary(lead: Lead, score: Optional[int], coverage: Optional[float]) -> dic
         "coverage": coverage,
         "created_at": lead.created_at,
     }
+
+
+def _signal_out(s, dismissed: dict[str, str]) -> SignalOut:
+    """A dismissed signal is shown as unknown (as the score and drafts see it); what was observed stays visible."""
+    is_dismissed = s.signal_key in dismissed and s.state != "unknown"
+    return SignalOut(
+        key=s.signal_key,
+        label=sig.SIGNAL_LABELS.get(s.signal_key, s.signal_key),
+        state="unknown" if is_dismissed else s.state,
+        evidence=s.evidence,
+        observed_at=s.created_at,
+        dismissed=is_dismissed,
+        dismissed_reason=dismissed.get(s.signal_key) if is_dismissed else None,
+        observed_state=s.state if is_dismissed else None,
+    )
 
 
 async def _require_prospect(session: AsyncSession, user: dict, lead_id: str) -> Lead:
@@ -257,6 +273,7 @@ async def get_prospect(
             breakdown=score_row.breakdown,
         )
     stored = await prospect_repo.current_signals(session, lead.id)
+    dismissed = await prospect_repo.dismissals_in_force(session, lead.id)
     sources = await prospect_repo.sources_of(session, lead.id)
     drafts = await draft_repo.list_for_lead(session, _account(user), lead.id)
     base = _summary(lead, score_row.score if score_row else None, score_row.coverage if score_row else None)
@@ -277,16 +294,7 @@ async def get_prospect(
             )
             for s in sources
         ],
-        signals=[
-            SignalOut(
-                key=s.signal_key,
-                label=sig.SIGNAL_LABELS.get(s.signal_key, s.signal_key),
-                state=s.state,
-                evidence=s.evidence,
-                observed_at=s.created_at,
-            )
-            for s in stored
-        ],
+        signals=[_signal_out(s, dismissed) for s in stored],
         score_detail=score_out,
         drafts=[_draft_out(d) for d in drafts],
     )
@@ -329,19 +337,8 @@ async def rescore_prospect(
     lead_id: str, user: dict = Depends(decider), session: AsyncSession = Depends(get_db_session)
 ):
     """Recompute from the stored signals with the active configuration (no new observation is made)."""
-    from services.outreach_os.scoring import compute_score
-
     lead = await _require_prospect(session, user, lead_id)
-    account_id = _account(user)
-    version = await prospect_repo.active_score_version(session, account_id)
-    if version is None:
-        version = await prospect_repo.create_score_version(session, account_id, ScoreConfig(), _uid(user))
-    stored = await prospect_repo.current_signals(session, lead.id)
-    results = [SignalResult(s.signal_key, SignalState(s.state), s.evidence) for s in stored]
-    result = compute_score(results, prospect_repo.config_of(version))
-    await prospect_repo.append_score(session, account_id, lead.id, version, result)
-    row = await prospect_repo.latest_score(session, lead.id)
-    assert row is not None
+    row, version = await prospect_repo.rescore_lead(session, _account(user), lead, _uid(user))
     return ScoreOut(
         score=row.score,
         coverage=row.coverage,
@@ -351,6 +348,68 @@ async def rescore_prospect(
         computed_at=row.created_at,
         breakdown=row.breakdown,
     )
+
+
+# ---------------------------------------------------------------- signal review
+async def _change_signal(
+    session: AsyncSession, user: dict, lead_id: str, key: str, action: str, reason: Optional[str]
+) -> DismissOut:
+    lead = await _require_prospect(session, user, lead_id)
+    if key not in sig.ALL_SIGNALS:
+        raise HTTPException(status_code=404, detail="Unknown signal")
+    stored = {s.signal_key: s for s in await prospect_repo.current_signals(session, lead.id)}
+    if key not in stored:
+        raise HTTPException(status_code=409, detail="This signal has not been observed for this prospect")
+    in_force = key in await prospect_repo.dismissals_in_force(session, lead.id)
+    if action == "dismiss" and in_force:
+        raise HTTPException(status_code=409, detail="This signal is already dismissed")
+    if action == "restore" and not in_force:
+        raise HTTPException(status_code=409, detail="This signal is not dismissed")
+    account_id = _account(user)
+    await prospect_repo.add_dismissal(session, account_id, lead.id, key, action, reason, _uid(user))
+    row, version = await prospect_repo.rescore_lead(session, account_id, lead, _uid(user))
+    await audit_repo.log(
+        session,
+        account_id,
+        action=f"signal.{action}ed" if action == "dismiss" else "signal.restored",
+        resource_type="prospect",
+        resource_id=lead.id,
+        actor_user_id=_uid(user),
+        diff={"signal": key, "score_after": row.score, "reason_length": len(reason or "")},  # never the reason text
+    )
+    dismissed = await prospect_repo.dismissals_in_force(session, lead.id)
+    current = {s.signal_key: s for s in await prospect_repo.current_signals(session, lead.id)}[key]
+    return DismissOut(
+        signal=_signal_out(current, dismissed),
+        score=ScoreOut(
+            score=row.score,
+            coverage=row.coverage,
+            version=version.version,
+            config_label=version.label,
+            config_hash=version.config_hash,
+            computed_at=row.created_at,
+            breakdown=row.breakdown,
+        ),
+    )
+
+
+@router.post("/{lead_id}/signals/{key}/dismiss", response_model=DismissOut)
+async def dismiss_signal(
+    lead_id: str,
+    key: str,
+    payload: DismissIn,
+    user: dict = Depends(decider),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """The reviewer says this signal is wrong: it reads as unknown from now on (rescored, never stated in a draft)."""
+    return await _change_signal(session, user, lead_id, key, "dismiss", payload.reason.strip())
+
+
+@router.post("/{lead_id}/signals/{key}/restore", response_model=DismissOut)
+async def restore_signal(
+    lead_id: str, key: str, user: dict = Depends(decider), session: AsyncSession = Depends(get_db_session)
+):
+    return await _change_signal(session, user, lead_id, key, "restore", None)
 
 
 # ---------------------------------------------------------------- drafts
@@ -397,8 +456,7 @@ async def create_draft(
     if not sources:
         raise HTTPException(status_code=409, detail="Prospect has no recorded source")
     source = max(sources, key=lambda s: s.fields.get("last_updated") or "")
-    stored = await prospect_repo.current_signals(session, lead.id)
-    results = [SignalResult(s.signal_key, SignalState(s.state), s.evidence) for s in stored]
+    results = await prospect_repo.effective_results(session, lead.id)  # a dismissed signal is never stated in a draft
     last_updated = date.fromisoformat(source.fields["last_updated"]) if source.fields.get("last_updated") else None
     token = make_token(JWT_SECRET, account_id, lead.id)
     content = drafts_svc.render_email_draft(
