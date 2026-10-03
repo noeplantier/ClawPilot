@@ -211,6 +211,15 @@ curl -s -X POST localhost:8000/api/outbound/<message_id>/simulate -H "$H" -H 'co
 Endpoints (`/api/outbound`): `dispatch`, list, detail (with events), `simulate` (dry-run only), `limits` (GET/PUT), `status`,
 `test-send`.
 
+### Dashboard
+
+`GET /api/dashboard/overview` (any member) feeds the home page: KPIs (prospects, average score, sent today, replies, bounces,
+unsubscribed), a 14-day sends/replies series (UTC), latest prospects and detected signals, campaign health, limits & compliance
+(quota left, kill switch, pause, sandbox allowlist, SMTP) and the latest replies. Every figure is computed from stored rows; `null`
+means "nothing known yet" and is shown as an em dash, never as 0 (an average score, or a rate with nothing sent). The page refreshes
+every 30 s while visible; an owner/admin can pause or resume sending from it. Replies and bounces only exist for dry-run
+(simulated) messages or what you record by hand: real mailbox/webhook tracking is not wired, and the Inbox says so.
+
 ### Import your own prospect list (opt-in)
 
 `FEATURE_PROSPECT_IMPORT=true`, then *Prospects → Import a list* (or `POST /api/prospect-imports`, owner/admin). CSV (`,` or `;`) or JSON,

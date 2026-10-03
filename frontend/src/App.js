@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "sonner";
 
@@ -5,21 +6,21 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
 import Layout from "@/components/Layout";
-import Dashboard from "@/pages/Dashboard";
-import Campaigns from "@/pages/Campaigns";
-import Leads from "@/pages/Leads";
-import Agents from "@/pages/Agents";
-import Messages from "@/pages/Messages";
-import Analytics from "@/pages/Analytics";
-import Settings from "@/pages/Settings";
-import Prospects from "@/pages/Prospects";
-import ProspectDetail from "@/pages/ProspectDetail";
-import ReviewQueue from "@/pages/ReviewQueue";
-import Sending from "@/pages/Sending";
-import ProspectImport from "@/pages/ProspectImport";
-import Legal from "@/pages/legal/Legal";
-import Privacy from "@/pages/legal/Privacy";
-import Terms from "@/pages/legal/Terms";
+const Dashboard = lazy(() => import("@/pages/Dashboard"));
+const Campaigns = lazy(() => import("@/pages/Campaigns"));
+const Leads = lazy(() => import("@/pages/Leads"));
+const Agents = lazy(() => import("@/pages/Agents"));
+const Messages = lazy(() => import("@/pages/Messages"));
+const Analytics = lazy(() => import("@/pages/Analytics"));
+const Settings = lazy(() => import("@/pages/Settings"));
+const Prospects = lazy(() => import("@/pages/Prospects"));
+const ProspectDetail = lazy(() => import("@/pages/ProspectDetail"));
+const ReviewQueue = lazy(() => import("@/pages/ReviewQueue"));
+const Sending = lazy(() => import("@/pages/Sending"));
+const ProspectImport = lazy(() => import("@/pages/ProspectImport"));
+const Legal = lazy(() => import("@/pages/legal/Legal"));
+const Privacy = lazy(() => import("@/pages/legal/Privacy"));
+const Terms = lazy(() => import("@/pages/legal/Terms"));
 
 function Protected({ children }) {
   const { user, loading } = useAuth();
@@ -41,6 +42,7 @@ function App() {
       <BrowserRouter>
         <AuthProvider>
           <Toaster theme="light" position="top-right" toastOptions={{ style: { background: "#FFFFFF", border: "1px solid #D6D3C8", color: "#0A0A0A", fontFamily: "IBM Plex Sans" } }} />
+          <Suspense fallback={<div className="p-10 font-mono mono-accent" role="status">// loading</div>}>
           <Routes>
             <Route path="/" element={<Navigate to="/app/dashboard" replace />} />
             <Route path="/legal" element={<Legal />} />
@@ -65,6 +67,7 @@ function App() {
             </Route>
             <Route path="*" element={<Navigate to="/app/dashboard" replace />} />
           </Routes>
+          </Suspense>
         </AuthProvider>
       </BrowserRouter>
     </div>

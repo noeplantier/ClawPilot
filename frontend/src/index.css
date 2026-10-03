@@ -290,3 +290,32 @@
 /* Spinner */
 @keyframes spin-slow { to { transform: rotate(360deg); } }
 .spin-slow { animation: spin-slow 1.4s linear infinite; }
+
+/* ---- Plantiers - OutreachOS dashboard: electric blue / violet / cyan on black, fine glowing borders ---- */
+:root {
+  --pos-blue: #2563EB;
+  --pos-violet: #7C3AED;
+  --pos-cyan: #22D3EE;
+  --pos-ink: #0A0A0A;
+}
+.pos-kpi {
+  position: relative;
+  border-radius: 10px;
+  padding: 1px; /* the gradient border */
+  background: linear-gradient(135deg, var(--pos-edge-a, var(--pos-blue)), var(--pos-edge-b, var(--pos-violet)));
+  box-shadow: 0 0 24px -10px var(--pos-edge-a, var(--pos-blue));
+  transition: box-shadow 0.25s ease, transform 0.25s ease;
+}
+.pos-kpi:hover { box-shadow: 0 0 34px -6px var(--pos-edge-a, var(--pos-blue)); transform: translateY(-2px); }
+.pos-kpi > .pos-kpi-body { background: var(--pos-ink); color: #fff; border-radius: 9px; padding: 14px 16px; height: 100%; }
+.pos-kpi-blue   { --pos-edge-a: var(--pos-blue);   --pos-edge-b: var(--pos-violet); }
+.pos-kpi-violet { --pos-edge-a: var(--pos-violet); --pos-edge-b: var(--pos-cyan); }
+.pos-kpi-cyan   { --pos-edge-a: var(--pos-cyan);   --pos-edge-b: var(--pos-blue); }
+.pos-signal-chip { animation: pos-chip-in 0.4s ease both; }
+@keyframes pos-chip-in { from { opacity: 0; transform: translateY(4px) scale(0.98); } to { opacity: 1; transform: none; } }
+.pos-live-dot { width: 8px; height: 8px; border-radius: 9999px; background: var(--pos-cyan); box-shadow: 0 0 0 0 rgba(34, 211, 238, 0.6); animation: pos-pulse 2s infinite; }
+@keyframes pos-pulse { 70% { box-shadow: 0 0 0 8px rgba(34, 211, 238, 0); } 100% { box-shadow: 0 0 0 0 rgba(34, 211, 238, 0); } }
+@media (prefers-reduced-motion: reduce) {
+  .pos-kpi, .pos-kpi:hover { transition: none; transform: none; }
+  .pos-signal-chip, .pos-live-dot { animation: none; }
+}

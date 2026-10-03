@@ -6,6 +6,10 @@ import { describeApiError } from "@/lib/outreachFormat";
 // The API enforces roles; the UI only hides what would be refused anyway.
 export const canDecide = (user) => ["owner", "admin"].includes(user && user.role);
 
+export const dashboardApi = {
+  overview: () => api.get("/dashboard/overview").then((r) => r.data),
+};
+
 export const importsApi = {
   list: () => api.get("/prospect-imports").then((r) => r.data),
   submit: (body) => api.post("/prospect-imports", body).then((r) => r.data),
