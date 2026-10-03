@@ -480,6 +480,18 @@ class ScoreConfigOut(ScoreConfigIO):
     rescored: int = 0
 
 
+# ------------------------ Dashboard ------------------------
+class DashboardOut(BaseModel):
+    generated_at: datetime
+    kpis: dict
+    series: List[dict]
+    latest_prospects: List[dict]
+    latest_signals: List[dict]
+    campaigns: List[dict]
+    limits: dict
+    inbox: List[dict]
+
+
 # ------------------------ Prospect list import ------------------------
 LegalBasis = Literal["legitimate_interest_b2b", "consent", "contract", "other"]
 

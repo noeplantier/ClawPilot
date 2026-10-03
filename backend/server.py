@@ -16,6 +16,7 @@ from routes.ai import router as ai_router
 from routes.analytics import router as analytics_router
 from routes.auth import router as auth_router
 from routes.campaigns import router as campaigns_router
+from routes.dashboard import router as dashboard_router
 from routes.leads import router as leads_router
 from routes.messages import router as messages_router
 from routes.notes import router as notes_router
@@ -60,6 +61,7 @@ api_router.include_router(tasks_router)
 api_router.include_router(tags_router)
 api_router.include_router(prospects_router)
 api_router.include_router(prospect_imports_router)
+api_router.include_router(dashboard_router)
 api_router.include_router(outbound_router)
 api_router.include_router(unsubscribe_router)
 

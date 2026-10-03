@@ -1,281 +1,75 @@
 import { useEffect, useState } from "react";
-import { motion } from "framer-motion";
-import { api } from "@/lib/api";
-import {
-  LineChart, Line, AreaChart, Area, BarChart, Bar,
-  XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell,
-} from "recharts";
-import {
-  PaperPlaneTilt, Eye, ChatCircleDots, Target, Robot, Users, TrendUp, Lightning, ArrowUpRight,
-} from "@phosphor-icons/react";
+import { toast } from "sonner";
+import { ArrowsClockwise } from "@phosphor-icons/react";
+import { useAuth } from "@/contexts/AuthContext";
+import { canDecide, dashboardApi, outboundApi, useAsync } from "@/lib/outreach";
+import { describeApiError } from "@/lib/outreachFormat";
+import { ErrorBlock, LoadingBlock } from "@/components/outreach/States";
+import { ActivityChart, CampaignHealth, Inbox, KpiStrip, LimitsCompliance, LiveSignals, Widget } from "@/components/dashboard/Widgets";
 
-const METRICS = [
-  { key: "sent",      label: "MESSAGES DISPATCHED", icon: PaperPlaneTilt, color: "#DC2626" },
-  { key: "opened",    label: "OPENED",              icon: Eye,            color: "#0F172A" },
-  { key: "replied",   label: "REPLIED",             icon: ChatCircleDots, color: "#475569" },
-  { key: "converted", label: "CONVERTED",           icon: Target,         color: "#10B981" },
-];
-
-const CHANNEL_COLORS = ["#DC2626", "#0F172A"];
+const REFRESH_MS = 30000;
 
 export default function Dashboard() {
-  const [data, setData] = useState(null);
-  const [activity, setActivity] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
+  const page = useAsync(() => dashboardApi.overview(), []);
+  const [busy, setBusy] = useState(false);
+  const { reload } = page;
 
+  // "Live": refresh every 30 s while the tab is visible, keeping what is on screen until the new data arrives.
   useEffect(() => {
-    let isMounted = true;
-    
-    const fetchData = async () => {
-      try {
-        const [overviewRes, activityRes] = await Promise.all([
-          api.get("/analytics/overview"),
-          api.get("/analytics/activity")
-        ]);
-        if (isMounted) {
-          setData(overviewRes.data);
-          setActivity(activityRes.data || []);
-        }
-      } catch (error) {
-        console.error("Erreur lors de la récupération des données:", error);
-      } finally {
-        if (isMounted) setLoading(false);
-      }
-    };
+    const id = setInterval(() => { if (!document.hidden) reload(); }, REFRESH_MS);
+    return () => clearInterval(id);
+  }, [reload]);
 
-    fetchData();
-    return () => { isMounted = false; };
-  }, []);
+  const togglePause = async () => {
+    setBusy(true);
+    try {
+      const paused = !page.data.limits.paused;
+      await outboundApi.putLimits({ sending_paused: paused });
+      toast.success(paused ? "Sending paused for this organisation" : "Sending resumed");
+      await reload();
+    } catch (err) {
+      toast.error(describeApiError(err));
+    } finally {
+      setBusy(false);
+    }
+  };
 
-  if (loading || !data) {
-    return <div className="flex h-screen items-center justify-center font-mono">Chargement...</div>;
-  }
-
-  // Sécurisation globale des objets de données
-  const totals = data.totals || {};
-  const channelSplit = data.channel_split || [];
-  const pipeline = data.pipeline || {};
-  const timeseries = data.timeseries || [];
-  const topCountries = data.top_countries || [];
-
-  const openRate = totals.sent ? ((totals.opened / totals.sent) * 100).toFixed(1) : "0.0";
-  const replyRate = totals.sent ? ((totals.replied / totals.sent) * 100).toFixed(1) : "0.0";
-
+  const d = page.data;
   return (
-    <div className="p-6 md:p-10 space-y-8">
-      {/* Header */}
-      <div className="flex items-start justify-between flex-wrap gap-4">
+    <div className="p-6 md:p-10 space-y-6" data-testid="dashboard-page">
+      <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
-          <div className="mono-accent mb-2">// operations.overview</div>
-          <h1 className="text-4xl sm:text-5xl font-black tracking-tighter">Command Dashboard</h1>
-          <p className="text-[#6B6B66] mt-2">Real-time telemetry across all active outreach operations.</p>
+          <div className="mono-accent inline-flex items-center gap-2"><span className="pos-live-dot" aria-hidden="true" /> // plantiers.outreachos · live</div>
+          <h1 className="text-4xl font-black tracking-tighter">Dashboard</h1>
+          <p className="text-[#6B6B66] mt-1 max-w-2xl">Every figure comes from your own data. A dash means nothing is known yet, not zero.</p>
         </div>
-        <div className="flex items-center gap-3">
-          <span className="chip chip-success"><span className="w-1.5 h-1.5 rounded-full bg-[#10B981] pulse-dot" /> LIVE</span>
-          <span className="chip chip-cyan font-mono">{data.agents_running || 0}/{data.agents_total || 0} agents online</span>
-        </div>
+        <button className="btn-ghost" onClick={reload} disabled={page.loading} data-testid="dashboard-refresh"><ArrowsClockwise size={14} /> REFRESH</button>
       </div>
 
-      {/* Metric cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {METRICS.map((m, i) => {
-          const val = totals[m.key] || 0;
-          return (
-            <motion.div
-              key={m.key}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.05 }}
-              className="surface surface-hover p-5"
-              data-testid={`metric-${m.key}`}
-            >
-              <div className="flex items-start justify-between">
-                <m.icon size={22} weight="duotone" style={{ color: m.color }} />
-                <ArrowUpRight size={14} className="text-[#999995]" />
-              </div>
-              <div className="mt-6">
-                <div className="mono-accent" style={{ color: m.color }}>{m.label}</div>
-                <div className="font-mono text-4xl font-bold mt-1 text-[#0A0A0A]">{val.toLocaleString()}</div>
-              </div>
-            </motion.div>
-          );
-        })}
-      </div>
+      {page.loading && !d && <LoadingBlock label="Reading your data…" />}
+      {page.error && <ErrorBlock message={page.error} onRetry={reload} />}
 
-      {/* Main charts grid */}
-      <div className="grid lg:grid-cols-3 gap-4">
-        {/* Timeseries */}
-        <div className="surface p-6 lg:col-span-2">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <div className="mono-accent">/// outreach.throughput · 14d</div>
-              <div className="font-display font-bold text-lg mt-0.5">Campaign Performance</div>
+      {d && (
+        <>
+          <KpiStrip kpis={d.kpis} limits={d.limits} />
+          <div className="grid xl:grid-cols-3 gap-4">
+            <div className="xl:col-span-2 space-y-4">
+              <Widget title="Sends and replies" kicker="// last 14 days" testId="widget-activity"><ActivityChart series={d.series} /></Widget>
+              <Widget title="Live signals" kicker="// latest prospects and detected signals" testId="widget-signals">
+                <LiveSignals prospects={d.latest_prospects} signals={d.latest_signals} />
+              </Widget>
+              <Widget title="Campaign health" kicker="// per campaign" testId="widget-campaigns"><CampaignHealth campaigns={d.campaigns} /></Widget>
             </div>
-            <div className="flex gap-3 text-xs font-mono">
-              <span className="flex items-center gap-1.5"><span className="w-2 h-0.5 bg-[#DC2626]" /> sent</span>
-              <span className="flex items-center gap-1.5"><span className="w-2 h-0.5 bg-[#0F172A]" /> opened</span>
-              <span className="flex items-center gap-1.5"><span className="w-2 h-0.5 bg-[#10B981]" /> replied</span>
+            <div className="space-y-4">
+              <Widget title="Limits & compliance" kicker="// quotas · kill switch · pause · allowlist" testId="widget-limits">
+                <LimitsCompliance limits={d.limits} canEdit={canDecide(user)} busy={busy} onTogglePause={togglePause} />
+              </Widget>
+              <Widget title="Inbox" kicker="// latest replies" testId="widget-inbox"><Inbox items={d.inbox} /></Widget>
             </div>
           </div>
-          <ResponsiveContainer width="100%" height={260}>
-            <AreaChart data={timeseries} margin={{ top: 10, right: 10, bottom: 0, left: -20 }}>
-              <defs>
-                <linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#DC2626" stopOpacity={0.35} />
-                  <stop offset="100%" stopColor="#DC2626" stopOpacity={0} />
-                </linearGradient>
-                <linearGradient id="g2" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#0F172A" stopOpacity={0.3} />
-                  <stop offset="100%" stopColor="#0F172A" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid stroke="#E5E5DC" strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="date" stroke="#999995" fontSize={11} tickLine={false} axisLine={false} />
-              <YAxis stroke="#999995" fontSize={11} tickLine={false} axisLine={false} />
-              <Tooltip contentStyle={{ background: "#FFFFFF", border: "1px solid #D6D3C8", borderRadius: 6 }} labelStyle={{ color: "#6B6B66", fontFamily: "JetBrains Mono" }} />
-              <Area type="monotone" dataKey="sent" stroke="#DC2626" strokeWidth={2} fill="url(#g1)" />
-              <Area type="monotone" dataKey="opened" stroke="#0F172A" strokeWidth={2} fill="url(#g2)" />
-              <Line type="monotone" dataKey="replied" stroke="#10B981" strokeWidth={2} dot={false} />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-
-        {/* Channel Split */}
-        <div className="surface p-6 flex flex-col">
-          <div className="mono-accent">/// channel.split</div>
-          <div className="font-display font-bold text-lg mt-0.5">Messaging Mix</div>
-
-          <div className="flex-1 flex items-center justify-center min-h-[200px]">
-            <ResponsiveContainer width="100%" height={200}>
-              <PieChart>
-                <Pie data={channelSplit} dataKey="value" nameKey="channel" cx="50%" cy="50%" innerRadius={50} outerRadius={78} strokeWidth={0}>
-                  {channelSplit.map((_, idx) => (
-                    <Cell key={idx} fill={CHANNEL_COLORS[idx % CHANNEL_COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip contentStyle={{ background: "#FFFFFF", border: "1px solid #D6D3C8", borderRadius: 6 }} />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 text-xs font-mono">
-            {channelSplit.map((c, i) => (
-              <div key={c.channel} className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-sm" style={{ background: CHANNEL_COLORS[i % CHANNEL_COLORS.length] }} />
-                <span className="text-[#6B6B66] uppercase">{c.channel}</span>
-                <span className="text-[#0A0A0A] ml-auto">{c.value}%</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Pipeline + rates + Activity */}
-      <div className="grid lg:grid-cols-3 gap-4">
-        <div className="surface p-6">
-          <div className="mono-accent">/// rates</div>
-          <div className="font-display font-bold text-lg mt-0.5 mb-4">Performance Index</div>
-          <div className="space-y-5">
-            <RateBar label="OPEN RATE" value={parseFloat(openRate)} color="#DC2626" />
-            <RateBar label="REPLY RATE" value={parseFloat(replyRate)} color="#0F172A" />
-            <div className="flex items-center justify-between pt-3 border-t border-[#D6D3C8]">
-              <div>
-                <div className="mono-accent">total.leads</div>
-                <div className="font-mono text-2xl font-bold text-[#0A0A0A] mt-1">{data.leads_total || 0}</div>
-              </div>
-              <Users size={36} weight="duotone" className="text-[#DC2626]/40" />
-            </div>
-          </div>
-        </div>
-
-        <div className="surface p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <div className="mono-accent">/// pipeline</div>
-              <div className="font-display font-bold text-lg mt-0.5">Lead Funnel</div>
-            </div>
-            <TrendUp size={18} className="text-[#10B981]" />
-          </div>
-          <div className="space-y-2">
-            {Object.entries(pipeline).map(([stage, count]) => {
-              const max = Math.max(...Object.values(pipeline), 1);
-              const pct = (count / max) * 100;
-              return (
-                <div key={stage}>
-                  <div className="flex justify-between text-xs font-mono mb-1">
-                    <span className="uppercase text-[#6B6B66]">{stage}</span>
-                    <span className="text-[#0A0A0A]">{count}</span>
-                  </div>
-                  <div className="h-1.5 bg-[#F0F0EA] rounded-sm overflow-hidden">
-                    <motion.div initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.6 }} className="h-full bg-gradient-to-r from-[#DC2626] to-[#0F172A]" />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Activity */}
-        <div className="surface p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <div className="mono-accent">/// live.feed</div>
-              <div className="font-display font-bold text-lg mt-0.5">Activity Stream</div>
-            </div>
-            <Lightning size={18} className="text-[#F59E0B]" />
-          </div>
-          <div className="space-y-3 max-h-[280px] overflow-y-auto pr-1">
-            {activity.length > 0 ? (
-              activity.slice(0, 10).map((a) => (
-                <div key={a.id} className="flex items-start gap-3 text-sm">
-                  <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-[#DC2626]" />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[#1a1a1a] truncate">{a.title}</div>
-                    <div className="mono-accent text-[#999995] mt-0.5">{a.kind}</div>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="text-[#999995] text-sm italic">No activity yet</div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Top countries */}
-      <div className="surface p-6">
-        <div className="mono-accent">/// global.reach</div>
-        <div className="font-display font-bold text-lg mt-0.5 mb-4">Territories</div>
-        <ResponsiveContainer width="100%" height={200}>
-          <BarChart data={topCountries} margin={{ top: 10, right: 10, bottom: 0, left: -20 }}>
-            <CartesianGrid stroke="#E5E5DC" vertical={false} />
-            <XAxis dataKey="country" stroke="#999995" fontSize={11} tickLine={false} />
-            <YAxis stroke="#999995" fontSize={11} tickLine={false} axisLine={false} />
-            <Tooltip contentStyle={{ background: "#FFFFFF", border: "1px solid #D6D3C8", borderRadius: 6 }} />
-            <Bar dataKey="leads" fill="#DC2626" radius={[4, 4, 0, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-    </div>
-  );
-}
-
-function RateBar({ label, value, color }) {
-  return (
-    <div>
-      <div className="flex justify-between items-baseline mb-1.5">
-        <span className="mono-accent" style={{ color }}>{label}</span>
-        <span className="font-mono text-2xl font-bold text-[#0A0A0A]">{value.toFixed(1)}<span className="text-[#999995] text-sm">%</span></span>
-      </div>
-      <div className="h-2 bg-[#F0F0EA] rounded-sm overflow-hidden">
-        <motion.div
-          initial={{ width: 0 }}
-          animate={{ width: `${Math.min(value, 100)}%` }}
-          transition={{ duration: 0.8 }}
-          className="h-full"
-          style={{ background: color, boxShadow: `0 0 10px ${color}` }}
-        />
-      </div>
+        </>
+      )}
     </div>
   );
 }
