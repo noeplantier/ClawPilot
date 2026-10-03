@@ -1,0 +1,56 @@
+"""Overpass client: no socket is opened, urlopen is replaced."""
+
+import io
+import json
+import urllib.error
+
+import pytest
+
+from services import overpass_svc
+
+
+class _Answer(io.BytesIO):
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def test_every_public_server_is_tried_and_the_failures_are_named(monkeypatch):
+    seen = []
+
+    def fake(request, timeout):
+        seen.append((request.full_url, timeout))
+        raise TimeoutError()
+
+    monkeypatch.setattr(overpass_svc.urllib.request, "urlopen", fake)
+    with pytest.raises(overpass_svc.Unavailable) as err:
+        overpass_svc.http_fetch("[out:json];")
+    assert [u for u, _ in seen] == list(overpass_svc.ENDPOINTS)
+    assert all(t == overpass_svc.TIMEOUT_SECONDS for _, t in seen)
+    assert len(overpass_svc.ENDPOINTS) * overpass_svc.TIMEOUT_SECONDS <= 70  # fits under the host's request limit
+    assert "overpass-api.de: TimeoutError" in str(err.value) and "private.coffee: TimeoutError" in str(err.value)
+
+
+def test_a_later_server_answers_when_the_first_hangs(monkeypatch):
+    def fake(request, timeout):
+        if "overpass-api.de" in request.full_url:
+            raise TimeoutError()
+        return _Answer(json.dumps({"elements": []}).encode())
+
+    monkeypatch.setattr(overpass_svc.urllib.request, "urlopen", fake)
+    assert overpass_svc.http_fetch("[out:json];") == {"elements": []}
+
+
+def test_a_client_error_is_not_retried_on_other_servers(monkeypatch):
+    calls = []
+
+    def fake(request, timeout):
+        calls.append(request.full_url)
+        raise urllib.error.HTTPError(request.full_url, 400, "bad", {}, None)
+
+    monkeypatch.setattr(overpass_svc.urllib.request, "urlopen", fake)
+    with pytest.raises(overpass_svc.Unavailable):
+        overpass_svc.http_fetch("bad query")
+    assert len(calls) == 1
