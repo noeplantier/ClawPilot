@@ -327,6 +327,12 @@ async def get_leads_by_ids(session: AsyncSession, account_id: uuid.UUID, lead_id
     email_consents = await consent_repo.get_status_map(session, contact_ids, "email")
     whatsapp_consents = await consent_repo.get_status_map(session, contact_ids, "whatsapp")
 
+    source_ids = {lead.source_id for lead in leads if lead.source_id is not None}
+    source_names: dict[uuid.UUID, str] = {}
+    if source_ids:
+        rows = await session.execute(select(LeadSource.id, LeadSource.name).where(LeadSource.id.in_(source_ids)))
+        source_names = {sid: name for sid, name in rows.all()}
+
     out = []
     for lead in leads:
         contact_id = contact_by_lead.get(lead.id)
@@ -339,6 +345,7 @@ async def get_leads_by_ids(session: AsyncSession, account_id: uuid.UUID, lead_id
                 "company": lead.company,
                 "title": lead.title,
                 "country": lead.country,
+                "source": source_names.get(lead.source_id) if lead.source_id else None,
                 "contact_id": str(contact_id) if contact_id else None,
                 "email_consent": email_consents.get(contact_id, "unknown") if contact_id else "unknown",
                 "whatsapp_consent": whatsapp_consents.get(contact_id, "unknown") if contact_id else "unknown",

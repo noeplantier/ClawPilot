@@ -12,7 +12,7 @@ from deps import get_current_user
 from models import Campaign, CampaignCreate, CampaignStep, CampaignUpdate
 from repositories import activity_repo, audit_repo, campaign_repo, consent_repo, lead_repo, outreach_repo
 from routes._refusal import block_detail
-from services import scheduler, send_gate
+from services import legacy_email, scheduler, send_gate
 from services.sendgrid_svc import send_email
 from services.templating import render as _render
 from services.twilio_svc import send_whatsapp
@@ -193,7 +193,20 @@ async def _execute_step(session: AsyncSession, account_id: uuid.UUID, c, step, l
 
         if channel == "email":
             subj = _render(step.subject or "", lead)
-            result = send_email(lead["email"], subj, body)
+            try:
+                prepared = await legacy_email.prepare(
+                    session,
+                    account_id,
+                    to_email=lead["email"],
+                    body=body,
+                    lead_id=lead["id"],
+                    source=lead.get("source"),
+                )
+            except legacy_email.EmailNotCompliant:
+                skipped += 1
+                continue
+            body = prepared.body
+            result = send_email(lead["email"], subj, body, headers=prepared.headers)
             await outreach_repo.create_email_send(
                 session,
                 account_id,

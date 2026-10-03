@@ -4,6 +4,7 @@ import logging
 import os
 
 from services import feature_flags
+from services.outreach_os import channels
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +39,9 @@ def is_configured() -> bool:
     return bool(API_KEY and FROM_EMAIL and "@" in FROM_EMAIL)
 
 
-def send_email(to_email: str, subject: str, body: str, from_email: str | None = None) -> dict:
+def send_email(
+    to_email: str, subject: str, body: str, from_email: str | None = None, headers: dict[str, str] | None = None
+) -> dict:
     """Send email. Returns {status, provider_id, error}.
 
     If SendGrid isn't fully configured (no API key or no `SENDGRID_FROM_EMAIL`), returns mocked dispatch.
@@ -51,15 +54,22 @@ def send_email(to_email: str, subject: str, body: str, from_email: str | None = 
 
     try:
         from sendgrid import SendGridAPIClient
-        from sendgrid.helpers.mail import ClickTracking, Mail, OpenTracking, TrackingSettings
+        from sendgrid.helpers.mail import ClickTracking, Header, Mail, OpenTracking, TrackingSettings
 
         html = (
             '<div style="font-family:system-ui,-apple-system,sans-serif;line-height:1.6;color:#111">'
             + body.replace("\n", "<br/>")
             + "</div>"
         )
+        unsubscribe_url = channels.find_unsubscribe_url(body)
+        if unsubscribe_url:  # the opt-out link must reach us directly: never rewritten by click tracking
+            html = html.replace(
+                unsubscribe_url, f'<a clicktracking="off" href="{unsubscribe_url}">{unsubscribe_url}</a>'
+            )
 
         message = Mail(from_email=sender, to_emails=to_email, subject=subject, html_content=html)
+        for name, value in (headers or {}).items():  # List-Unsubscribe / List-Unsubscribe-Post (RFC 8058)
+            message.add_header(Header(name, value))
         ts = TrackingSettings()
         ts.click_tracking = ClickTracking(True, True)
         ts.open_tracking = OpenTracking(True)

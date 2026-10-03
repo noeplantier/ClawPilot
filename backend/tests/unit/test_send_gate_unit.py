@@ -169,6 +169,10 @@ def _wire_impl(monkeypatch, blocked, provider_calls):
 
         return fake
 
+    async def prepare(*a, body, **k):  # the compliance envelope has its own tests (test_legacy_footer.py)
+        return send_tasks.legacy_email.PreparedEmail(body)
+
+    monkeypatch.setattr(send_tasks.legacy_email, "prepare", prepare)
     monkeypatch.setattr(send_tasks, "send_email", record("email"))
     monkeypatch.setattr("services.twilio_svc.send_whatsapp", record("whatsapp"))
 

@@ -23,7 +23,7 @@ from repositories import (
     outreach_repo,
 )
 from routes._refusal import block_detail, refusal
-from services import send_gate
+from services import legacy_email, send_gate
 from services.sendgrid_svc import send_email
 from services.templating import render as _render
 from services.twilio_svc import send_whatsapp
@@ -127,7 +127,26 @@ async def send_email_route(
         await send_gate.check(session, account_id, "email")
     except send_gate.SendBlocked as blocked:
         raise await refusal(session, user, blocked, resource_type="send", action="send.blocked_limits", channel="email")
-    result = send_email(payload.to, payload.subject, payload.body)
+    source = None
+    if payload.lead_id:
+        known = await lead_repo.get_leads_by_ids(session, account_id, [payload.lead_id])
+        source = known[0].get("source") if known else None
+    try:
+        prepared = await legacy_email.prepare(
+            session, account_id, to_email=payload.to, body=payload.body, lead_id=payload.lead_id, source=source
+        )
+    except legacy_email.EmailNotCompliant as exc:
+        await audit_repo.log(
+            session,
+            account_id,
+            action="send.blocked_compliance",
+            resource_type="send",
+            actor_user_id=uuid.UUID(user["id"]),
+            diff={"code": exc.code, "channel": "email"},
+        )
+        await session.commit()  # get_db_session rolls back on HTTPException: persist the evidence first
+        raise HTTPException(status_code=409 if exc.code != "recipient_unknown" else 400, detail=exc.message)
+    result = send_email(payload.to, payload.subject, prepared.body, headers=prepared.headers)
 
     send = await outreach_repo.create_email_send(
         session,
@@ -136,7 +155,7 @@ async def send_email_route(
         contact_id=contact_id,
         to_email=payload.to,
         subject=payload.subject,
-        body=payload.body,
+        body=prepared.body,
         status=result["status"],
         provider_message_id=result.get("provider_id"),
         error=result.get("error"),
@@ -247,8 +266,21 @@ async def batch_send_email(
             await _audit_batch_block(session, user, blocked, "email")
             break
         subj = _render(payload.subject, lead)
-        body = _render(payload.body, lead)
-        result = send_email(lead["email"], subj, body)
+        try:
+            prepared = await legacy_email.prepare(
+                session,
+                account_id,
+                to_email=lead["email"],
+                body=_render(payload.body, lead),
+                lead_id=lead["id"],
+                source=lead.get("source"),
+            )
+        except legacy_email.EmailNotCompliant as exc:
+            skipped += 1
+            results.append({"lead_id": lead["id"], "status": "skipped", "reason": exc.code})
+            continue
+        body = prepared.body
+        result = send_email(lead["email"], subj, body, headers=prepared.headers)
 
         contact_id = uuid.UUID(lead["contact_id"]) if lead.get("contact_id") else None
         await outreach_repo.create_email_send(

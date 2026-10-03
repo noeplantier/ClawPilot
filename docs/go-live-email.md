@@ -74,10 +74,13 @@ journaux, ni dans une réponse d'API, ni dans la page Settings (qui n'affiche qu
 2. **Pas de suivi des rebonds ni des réponses en SMTP.** `simulate` ne marche que pour le dry-run. Un rebond (message d'erreur dans la
    boîte) ou une réponse « STOP » se traite à la main : `POST /api/prospects/suppressions` avec l'adresse. Lire la boîte par IMAP serait une
    autre intégration, à décider séparément.
-3. **Les anciens chemins (page Messages, lots, campagnes) n'utilisent pas SMTP.** Ils passent par SendGrid (ou mock). Depuis cette
-   tranche, ils n'ont plus d'expéditeur par défaut : sans `SENDGRID_FROM_EMAIL` ils restent en mock. Ils n'ajoutent pas non plus
-   l'identité, l'origine des données ni le lien de désinscription ; **ne les utilisez pas pour de la prospection réelle** tant que ce
-   n'est pas fait (la désinscription ne fonctionne aujourd'hui que pour les prospects de la découverte).
+3. **Les anciens chemins (page Messages, lots, campagnes) n'utilisent pas SMTP.** Ils passent par SendGrid (ou mock). Sans
+   `SENDGRID_FROM_EMAIL` ils restent en mock. Depuis cette tranche, chaque e-mail qu'ils envoient porte le même pied de page que
+   les brouillons (identité de l'expéditeur, origine des données lue dans la source du prospect — « source non renseignée » si
+   elle est vide, jamais inventée — et lien de désinscription signé) ainsi que les en-têtes `List-Unsubscribe` / one-click. Un
+   destinataire sur la liste de suppression est refusé. Avec SendGrid configuré, ces chemins échouent fermé : sans identité
+   `OUTREACH_SENDER_*` ou sans `lead_id` (pas de lien de désinscription possible), rien ne part. Le lien fonctionne pour tous les
+   prospects, découverte ou non. WhatsApp n'est pas concerné (opt-in explicite).
 4. **Base légale et registre de traitement** : à valider par un juriste (prospection B2B, droit d'opposition, information sur l'origine
    des données). Ce document n'est pas un avis juridique.
 5. **Réception non vérifiée par OutreachOS** : « sent » signifie « accepté par votre serveur SMTP », pas « arrivé en boîte ».

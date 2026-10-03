@@ -31,7 +31,7 @@ async def _opt_out(token: str, session: AsyncSession) -> HTMLResponse:
     if parsed is None:
         raise HTTPException(status_code=404, detail="Invalid unsubscribe link")
     account_id, lead_id = parsed
-    lead = await prospect_repo.get(session, account_id, str(lead_id))
+    lead = await prospect_repo.get_any(session, account_id, str(lead_id))
     if lead is not None:  # already erased or unknown: nothing left to suppress, still answer success
         added = await prospect_repo.opt_out(session, account_id, lead, source="unsubscribe_link")
         await audit_repo.log(
