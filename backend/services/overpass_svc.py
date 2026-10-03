@@ -22,7 +22,7 @@ from services.site_fetcher_svc import PRODUCT, user_agent
 logger = logging.getLogger(__name__)
 
 # Public, free instances. A shared cloud IP is sometimes throttled by one of them (the connection just hangs), so
-# several are tried in turn; each gets a short timeout so that all of them fit under the host's request limit (4 x 15 s).
+# several are tried in turn; each gets a short timeout so that all fit under the host request limit (4 x 15 s).
 ENDPOINTS = (
     "https://overpass-api.de/api/interpreter",
     "https://overpass.private.coffee/api/interpreter",
