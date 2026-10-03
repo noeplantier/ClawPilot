@@ -480,6 +480,58 @@ class ScoreConfigOut(ScoreConfigIO):
     rescored: int = 0
 
 
+# ------------------------ Prospect list import ------------------------
+LegalBasis = Literal["legitimate_interest_b2b", "consent", "contract", "other"]
+
+
+class ImportIn(BaseModel):
+    format: Literal["csv", "json"]
+    content: str = Field(min_length=1, max_length=2_100_000)
+    filename: Optional[str] = Field(default=None, max_length=200)
+    origin: str = Field(min_length=10, max_length=1000, description="Where the list comes from, in words")
+    legal_basis: LegalBasis
+    legal_basis_note: Optional[str] = Field(default=None, max_length=1000)
+    country: str = Field(default="FR", pattern="^[A-Z]{2}$")
+    language: str = Field(default="fr", pattern="^[a-z]{2}$")
+    vertical: str = Field(default="unspecified", min_length=1, max_length=60)
+    preview: bool = True  # nothing is written until `preview` is false AND `attestation` is true
+    attestation: bool = False  # "I have the right to use this list for B2B prospecting on the stated basis"
+
+
+class ImportRowError(BaseModel):
+    row: int
+    message: str
+
+
+class ImportOut(BaseModel):
+    preview: bool
+    batch_id: Optional[str] = None
+    rows_total: int
+    rows_valid: int
+    errors_count: int
+    errors: List[ImportRowError] = Field(default_factory=list)  # first 50 only
+    ignored_columns: List[str] = Field(default_factory=list)
+    entities: int
+    duplicates_merged: int
+    suppressed: int
+    created: int  # preview: would create
+    updated: int  # preview: would update (already known prospects)
+    already_imported: bool = False  # a file with the same content was imported before
+
+
+class ImportBatchOut(BaseModel):
+    id: str
+    created_at: datetime
+    filename: Optional[str] = None
+    format: str
+    origin: str
+    legal_basis: str
+    legal_basis_note: Optional[str] = None
+    rows_total: int
+    source_name: str
+    summary: dict
+
+
 class SuppressionIn(BaseModel):
     email: Optional[EmailStr] = None
     phone: Optional[str] = None

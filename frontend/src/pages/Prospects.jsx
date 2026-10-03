@@ -90,6 +90,9 @@ export default function Prospects() {
           </p>
         </div>
         <div className="flex gap-2 items-center flex-wrap">
+          <Link to="/app/prospects/import" className="btn-ghost" data-testid="open-import">
+            IMPORT A LIST
+          </Link>
           <Link to="/app/prospects/review" className="btn-ghost" data-testid="open-review-queue">
             <ListChecks size={14} /> REVIEW QUEUE{counts.data ? ` (${counts.data.pending})` : ""}
           </Link>

@@ -88,7 +88,14 @@ async def find_by_keys(session: AsyncSession, account_id: uuid.UUID, keys: list[
 
 
 async def create_from_candidate(
-    session: AsyncSession, account_id: uuid.UUID, cand: Candidate, *, vertical: str, source_name: str
+    session: AsyncSession,
+    account_id: uuid.UUID,
+    cand: Candidate,
+    *,
+    vertical: str,
+    source_name: str,
+    country: str = "FR",
+    language: str = "fr",
 ) -> Lead:
     listing = cand.listing
     lead, _extra = await lead_repo.create_lead(
@@ -99,8 +106,8 @@ async def create_from_candidate(
             "company": listing.name,
             "email": cand.email,
             "phone": cand.phone or listing.phone,
-            "country": "FR",
-            "language": "fr",
+            "country": country,
+            "language": language,
             "vertical": vertical,
             "city": listing.city,
             "website": listing.website,

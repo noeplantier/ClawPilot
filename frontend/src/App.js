@@ -16,6 +16,7 @@ import Prospects from "@/pages/Prospects";
 import ProspectDetail from "@/pages/ProspectDetail";
 import ReviewQueue from "@/pages/ReviewQueue";
 import Sending from "@/pages/Sending";
+import ProspectImport from "@/pages/ProspectImport";
 import Legal from "@/pages/legal/Legal";
 import Privacy from "@/pages/legal/Privacy";
 import Terms from "@/pages/legal/Terms";
@@ -53,6 +54,7 @@ function App() {
               <Route path="campaigns" element={<Campaigns />} />
               <Route path="leads" element={<Leads />} />
               <Route path="prospects" element={<Prospects />} />
+              <Route path="prospects/import" element={<ProspectImport />} />
               <Route path="prospects/review" element={<ReviewQueue />} />
               <Route path="prospects/:id" element={<ProspectDetail />} />
               <Route path="sending" element={<Sending />} />

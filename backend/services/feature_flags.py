@@ -2,6 +2,7 @@
 
     FEATURE_LIVE_SENDING=true      allow real e-mail dispatch (SMTP, see services/smtp_svc.py)
     FEATURE_EXTERNAL_SOURCES=true  allow network-backed discovery sources (not implemented yet)
+    FEATURE_PROSPECT_IMPORT=true   allow importing a prospect list (CSV/JSON) with its origin and legal basis
 
 `dry_run()` is the inverse of live sending: with no flag set, nothing leaves the system.
 `SEND_KILL_SWITCH=true` (see `kill_switch()`) halts every send regardless of the flags above.
@@ -14,7 +15,7 @@ import os
 
 from services.outreach_os import sandbox as sandbox_rules
 
-KNOWN_FLAGS = ("live_sending", "external_sources")
+KNOWN_FLAGS = ("live_sending", "external_sources", "prospect_import")
 
 
 def is_enabled(name: str) -> bool:

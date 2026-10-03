@@ -197,3 +197,35 @@ class UsageRecord(Base, UUIDPKMixin, CreatedAtMixin):
     kind: Mapped[str] = mapped_column(String, nullable=False)
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     meta: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+
+
+class ProspectImportBatch(Base, UUIDPKMixin, CreatedAtMixin):
+    """One imported list: what it was, where it came from and on what legal basis it was used. Append-only.
+
+    The rows of the list are NOT stored here (their provenance lives in `ProspectSource`, whose `source_name` is this
+    batch's `source_name`); only the file's hash, so a given file can be recognised without keeping its content.
+    """
+
+    __tablename__ = "prospect_import_batches"
+    __table_args__ = (
+        CheckConstraint("format IN ('csv','json')", name="format"),
+        CheckConstraint("legal_basis IN ('legitimate_interest_b2b','consent','contract','other')", name="legal_basis"),
+        Index("uq_prospect_import_batches_source", "account_id", "source_name", unique=True),
+        Index("ix_prospect_import_batches_account_created", "account_id", text("created_at DESC")),
+    )
+
+    account_id: Mapped[uuid.UUID] = _account_fk()
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    source_name: Mapped[str] = mapped_column(String, nullable=False)
+    filename: Mapped[str | None] = mapped_column(String, nullable=True)
+    format: Mapped[str] = mapped_column(String, nullable=False)
+    content_sha256: Mapped[str] = mapped_column(String, nullable=False)
+    origin: Mapped[str] = mapped_column(Text, nullable=False)
+    legal_basis: Mapped[str] = mapped_column(String, nullable=False)
+    legal_basis_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    country: Mapped[str] = mapped_column(String, nullable=False, server_default="FR")
+    language: Mapped[str] = mapped_column(String, nullable=False, server_default="fr")
+    rows_total: Mapped[int] = mapped_column(Integer, nullable=False)
+    summary: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))

@@ -119,6 +119,7 @@ SendGrid/Twilio/AI all fall back to graceful mocks when unconfigured.
 | `SENDGRID_WEBHOOK_PUBLIC_KEY` | Verification key for `X-Twilio-Email-Event-Webhook-Signature` on `POST /api/webhooks/sendgrid` |
 | `OUTREACH_SENDER_NAME`, `_COMPANY`, `_ADDRESS`, `_EMAIL` | Sender identity printed in drafts; all four required, no default |
 | `PUBLIC_BASE_URL` | Public API URL (https in production), used in unsubscribe links |
+| `FEATURE_PROSPECT_IMPORT` | `true` lets owners/admins import a prospect list (CSV/JSON); off by default |
 | `FEATURE_LIVE_SENDING`, `FEATURE_EXTERNAL_SOURCES` | Dangerous capabilities, off unless `true`. Live sending = real e-mail over SMTP (below); no network source exists yet |
 | `SMTP_HOST`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_SECURITY`, `SMTP_PORT` | The real e-mail channel. The first three are required; `SMTP_SECURITY` is `starttls` (587, default) or `ssl` (465); TLS is verified and mandatory |
 | `OUTREACH_SANDBOX`, `OUTREACH_LIVE_ALLOWLIST` | While live sending is on, only the allowlisted addresses/`@domains` receive mail. The sandbox is on unless set to `false`; an empty allowlist allows nobody |
@@ -209,6 +210,18 @@ curl -s -X POST localhost:8000/api/outbound/<message_id>/simulate -H "$H" -H 'co
 
 Endpoints (`/api/outbound`): `dispatch`, list, detail (with events), `simulate` (dry-run only), `limits` (GET/PUT), `status`,
 `test-send`.
+
+### Import your own prospect list (opt-in)
+
+`FEATURE_PROSPECT_IMPORT=true`, then *Prospects → Import a list* (or `POST /api/prospect-imports`, owner/admin). CSV (`,` or `;`) or JSON,
+up to 1000 rows / 2 MB; columns `name` (required), `email`, `phone`, `website`, `address`, `postcode`, `city`, `category`,
+`description`, `hours`, `last_updated`, `external_id`, `source_url` (French aliases accepted). Two steps: **preview** (default, writes
+nothing: valid rows, errors by row number, duplicates merged, addresses on the do-not-contact list, what would be created/updated)
+then the import, which needs `attestation: true`, a free-text **origin** and a **legal basis**, recorded with the file's SHA-256 in
+`prospect_import_batches` (the rows themselves are not kept in the batch; each prospect's provenance is its `prospect_sources` row, whose
+`source_name` is `import:<batch>`). Imported prospects are deduplicated against existing ones, skip suppressed identities, and enter as
+`pending` human review. **An empty cell is UNKNOWN, never a finding** (no "no website" claim from a blank column), and nothing is
+fetched from the web, so site signals stay UNKNOWN until a sanctioned enrichment exists. Nothing is sent by importing.
 
 ### Real e-mail over SMTP (opt-in)
 

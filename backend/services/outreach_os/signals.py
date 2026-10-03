@@ -66,13 +66,19 @@ def _own_website(listing: RawListing) -> tuple[str | None, str | None]:
     return (None, domain) if is_third_party_profile(domain) else (domain, None)
 
 
-def _no_website(listing: RawListing) -> SignalResult:
+def _no_website(listing: RawListing, trust_absence: bool = True) -> SignalResult:
     own, third = _own_website(listing)
     if own:
         return SignalResult(NO_WEBSITE, SignalState.NOT_DETECTED, f"Website listed in {listing.source_name}: {own}")
     if third:
         return SignalResult(
             NO_WEBSITE, SignalState.DETECTED, f"Only a third-party page is listed ({third}); no own website"
+        )
+    if not trust_absence:
+        return SignalResult(
+            NO_WEBSITE,
+            SignalState.UNKNOWN,
+            f"No website in {listing.source_name}; an empty cell in a supplied list is not evidence that none exists",
         )
     return SignalResult(NO_WEBSITE, SignalState.DETECTED, f"No website listed in {listing.source_name}")
 
@@ -151,7 +157,7 @@ def _stale(listing: RawListing, now: date, stale_days: int) -> SignalResult:
     )
 
 
-def _incomplete(listing: RawListing) -> SignalResult:
+def _incomplete(listing: RawListing, trust_absence: bool = True) -> SignalResult:
     checks = {
         "phone": listing.phone,
         "address": listing.address,
@@ -160,6 +166,12 @@ def _incomplete(listing: RawListing) -> SignalResult:
         "website or e-mail": listing.website or listing.email,
     }
     missing = [name for name, value in checks.items() if not value]
+    if len(missing) >= INCOMPLETE_THRESHOLD and not trust_absence:
+        return SignalResult(
+            INCOMPLETE_LISTING,
+            SignalState.UNKNOWN,
+            f"Columns empty in {listing.source_name}: {', '.join(missing)} (a supplied list may simply not carry them)",
+        )
     if len(missing) >= INCOMPLETE_THRESHOLD:
         return SignalResult(
             INCOMPLETE_LISTING,
@@ -180,17 +192,20 @@ def analyze(
     now: date,
     stale_days: int = 365,
     mobile_analyzer: MobileAnalyzer | None = None,
+    trust_absence: bool = True,
 ) -> list[SignalResult]:
-    """Run every signal for one listing. Always returns one result per signal, in `ALL_SIGNALS` order."""
+    """Run every signal for one listing. Always returns one result per signal, in `ALL_SIGNALS` order.
+
+    `trust_absence=False` is for lists a human supplied: a missing website or column is UNKNOWN, not a finding."""
     analyzer = mobile_analyzer or ViewportMobileAnalyzer()
     results = [
-        _no_website(listing),
+        _no_website(listing, trust_absence),
         _unreachable(listing, snapshot),
         _booking(snapshot),
         _mobile(snapshot, analyzer),
         _contact(listing),
         _stale(listing, now, stale_days),
-        _incomplete(listing),
+        _incomplete(listing, trust_absence),
     ]
     assert tuple(r.key for r in results) == ALL_SIGNALS
     return results

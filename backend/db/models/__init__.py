@@ -10,6 +10,7 @@ from db.models.outbound import OutboundEvent, OutboundMessage
 from db.models.outreach import EmailSend, OutreachEvent, WhatsappSend
 from db.models.prospect import (
     MessageDraft,
+    ProspectImportBatch,
     ProspectScore,
     ProspectSignal,
     ProspectSource,
@@ -48,6 +49,7 @@ __all__ = [
     "MessageDraft",
     "ProspectScore",
     "ProspectSignal",
+    "ProspectImportBatch",
     "ProspectSource",
     "ScoreVersion",
     "SuppressionEntry",
