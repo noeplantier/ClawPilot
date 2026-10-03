@@ -38,12 +38,26 @@ ALIASES: dict[str, str] = {
     "description": "description",
     "hours": "hours", "horaires": "hours",
     "last_updated": "last_updated", "date_maj": "last_updated", "updated": "last_updated",
+    "lat": "lat", "latitude": "lat", "lon": "lon", "lng": "lon", "longitude": "lon",
     "external_id": "external_id", "id": "external_id",
     "source_url": "source_url",
 }  # fmt: skip
 LONG_FIELDS = {"description", "hours"}
 _SCHEME = re.compile(r"^[a-z][a-z0-9+.\-]*:(?!\d)", re.IGNORECASE)  # `javascript:`, `data:`, `ftp://`; not `host:8080`
 _CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
+
+
+def _position(raw_lat: object, raw_lon: object) -> tuple[float | None, float | None, str | None]:
+    """(lat, lon, error). Both or neither; a position outside the globe is a mistake in the file, not a position."""
+    if raw_lat in (None, "") and raw_lon in (None, ""):
+        return None, None, None
+    try:
+        lat, lon = float(str(raw_lat).replace(",", ".")), float(str(raw_lon).replace(",", "."))
+    except ValueError:
+        return None, None, "lat and lon must be numbers"
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        return None, None, "lat/lon out of range"
+    return lat, lon, None
 
 
 @dataclass(frozen=True)
@@ -169,6 +183,8 @@ def parse_import(content: str, fmt: str, *, source_name: str, default_source_url
                 updated = date.fromisoformat(str(fields["last_updated"]))
             except ValueError:
                 problem = problem or "last_updated must be YYYY-MM-DD"
+        lat, lon, geo_error = _position(fields.get("lat"), fields.get("lon"))
+        problem = problem or geo_error
         if problem:
             out.errors.append(RowError(number, problem))
             continue
@@ -188,6 +204,8 @@ def parse_import(content: str, fmt: str, *, source_name: str, default_source_url
                 hours=fields.get("hours"),
                 description=fields.get("description"),
                 last_updated=updated,
+                lat=lat,
+                lon=lon,
             )
         )
     return out

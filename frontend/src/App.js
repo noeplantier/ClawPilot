@@ -14,6 +14,7 @@ const Messages = lazy(() => import("@/pages/Messages"));
 const Analytics = lazy(() => import("@/pages/Analytics"));
 const Settings = lazy(() => import("@/pages/Settings"));
 const Prospects = lazy(() => import("@/pages/Prospects"));
+const MapSearch = lazy(() => import("@/pages/MapSearch"));
 const ProspectDetail = lazy(() => import("@/pages/ProspectDetail"));
 const ReviewQueue = lazy(() => import("@/pages/ReviewQueue"));
 const Sending = lazy(() => import("@/pages/Sending"));
@@ -56,6 +57,7 @@ function App() {
               <Route path="campaigns" element={<Campaigns />} />
               <Route path="leads" element={<Leads />} />
               <Route path="prospects" element={<Prospects />} />
+              <Route path="map" element={<MapSearch />} />
               <Route path="prospects/import" element={<ProspectImport />} />
               <Route path="prospects/review" element={<ReviewQueue />} />
               <Route path="prospects/:id" element={<ProspectDetail />} />

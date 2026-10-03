@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from repositories import audit_repo, prospect_repo, suppression_repo, usage_repo
+from services.outreach_os import contact
 from services.outreach_os import signals as sig
 from services.outreach_os.dedupe import build_candidate, dedupe
 from services.outreach_os.scoring import ScoreConfig, compute_score
@@ -177,6 +178,18 @@ async def _ingest(
     )
     if snapshot is not None:
         summary.sites_checked += 1
+        found = contact.extract_contact_email(snapshot.html, cand.listing.website) if not lead.email else None
+        if found and await prospect_repo.fill_email(session, account_id, lead, found):
+            await audit_repo.log(
+                session,
+                account_id,
+                action="prospect.email_found",
+                resource_type="prospect",
+                resource_id=lead.id,
+                actor_type="user" if user_id else "system",
+                actor_user_id=user_id,
+                diff={"origin": "mailto link on the business's own homepage", "site": cand.domain},
+            )
     results = sig.analyze(cand.listing, snapshot, now=now, stale_days=config.stale_days, trust_absence=trust_absence)
     summary.signals_recorded += await prospect_repo.append_signals(session, account_id, lead.id, results, source_ids[0])
     if await prospect_repo.append_score(session, account_id, lead.id, version, compute_score(results, config)):

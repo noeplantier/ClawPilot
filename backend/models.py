@@ -665,3 +665,33 @@ class SendStatusOut(BaseModel):
     last_dispatched_at: Optional[datetime] = None
     next_allowed_at: Optional[datetime] = None
     blocked_by: Optional[str] = None
+
+
+class MapSearchIn(BaseModel):
+    south: float = Field(ge=-90, le=90)
+    west: float = Field(ge=-180, le=180)
+    north: float = Field(ge=-90, le=90)
+    east: float = Field(ge=-180, le=180)
+    category: str = Field(min_length=1, max_length=40)
+
+
+class MapPlaceOut(BaseModel):
+    external_id: str  # OpenStreetMap node/way/relation id
+    name: str
+    category: Optional[str] = None
+    lat: float
+    lon: float
+    address: Optional[str] = None
+    postcode: Optional[str] = None
+    city: Optional[str] = None
+    phone: Optional[str] = None  # only what the contributors published
+    email: Optional[str] = None  # idem; null means "not published", not "none exists"
+    website: Optional[str] = None
+    source_url: str
+
+
+class MapSearchOut(BaseModel):
+    attribution: str
+    license_note: str
+    truncated: bool = False  # the area held more places than the cap: zoom in to see the rest
+    places: List[MapPlaceOut]

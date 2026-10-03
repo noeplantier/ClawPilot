@@ -111,3 +111,38 @@ test("a visitor without a session is sent to the login page", async ({ page }) =
   await page.goto("/app/dashboard");
   await expect(page).toHaveURL(/\/login/);
 });
+
+test("the map shows real places from the search, marks what is published and never invents a contact", async ({ page }) => {
+  // The server runs with the flags off (the safe default): the page says so. Then the flag and OpenStreetMap are faked
+  // at the network edge so the interactive map can be exercised without any outside access.
+  await register(page);
+  await page.goto("/app/map");
+  await expect(page.getByTestId("map-disabled")).toContainText("FEATURE_EXTERNAL_SOURCES");
+
+  await page.route("**/api/prospects/settings", async (route) => {
+    const real = await (await route.fetch()).json();
+    await route.fulfill({ json: { ...real, flags: { ...real.flags, external_sources: true, prospect_import: false } } });
+  });
+  await page.route("https://tile.openstreetmap.org/**", (route) =>
+    route.fulfill({ contentType: "image/png", body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64") }));
+  await page.route("**/api/map/search", (route) =>
+    route.fulfill({
+      json: {
+        attribution: "© OpenStreetMap contributors (ODbL)", license_note: "ODbL", truncated: false,
+        places: [
+          { external_id: "node/1", name: "Chez Marcel", category: "restaurant", lat: 45.7641, lon: 4.8358, address: "12 Rue Merciere", postcode: "69002", city: "Lyon", phone: "+33 4 78 12 34 56", email: "contact@chez-marcel.example", website: "https://chez-marcel.example", source_url: "https://www.openstreetmap.org/node/1" },
+          { external_id: "way/2", name: "Boulangerie Martin", category: "bakery", lat: 45.7601, lon: 4.8401, address: null, postcode: null, city: null, phone: null, email: null, website: null, source_url: "https://www.openstreetmap.org/way/2" },
+        ],
+      },
+    }));
+  await page.goto("/app/map");
+  await expect(page.getByTestId("map")).toBeVisible();
+  await expect(page.getByTestId("map-empty")).toBeVisible();
+  await page.getByTestId("map-search").click();
+  await expect(page.getByTestId("map-summary")).toHaveText("2 places: 1 with a published e-mail, 1 with a phone, 1 with a website.");
+  await expect(page.locator("path.leaflet-interactive")).toHaveCount(2); // one dot per real place
+  await page.locator("path.leaflet-interactive").first().dispatchEvent("click");
+  await expect(page.locator(".leaflet-popup-content")).toContainText("source on OpenStreetMap");
+  await page.getByTestId("map-select-email").click();
+  await expect(page.getByTestId("map-import-off")).toContainText("FEATURE_PROSPECT_IMPORT"); // import stays closed without its flag
+});

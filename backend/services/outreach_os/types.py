@@ -33,6 +33,8 @@ class RawListing:
     hours: str | None = None
     description: str | None = None
     last_updated: date | None = None
+    lat: float | None = None  # WGS84, only when the source gives a position (e.g. OpenStreetMap)
+    lon: float | None = None
 
 
 @dataclass(frozen=True)
