@@ -123,7 +123,7 @@ test("the map shows real places from the search, marks what is published and nev
     const real = await (await route.fetch()).json();
     await route.fulfill({ json: { ...real, flags: { ...real.flags, external_sources: true, prospect_import: false } } });
   });
-  await page.route("https://tile.openstreetmap.org/**", (route) =>
+  await page.route(/(tile\.openstreetmap\.org|basemaps\.cartocdn\.com)/, (route) =>
     route.fulfill({ contentType: "image/png", body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64") }));
   await page.route("**/api/map/search", (route) =>
     route.fulfill({
@@ -140,8 +140,8 @@ test("the map shows real places from the search, marks what is published and nev
   await expect(page.getByTestId("map-empty")).toBeVisible();
   await page.getByTestId("map-search").click();
   await expect(page.getByTestId("map-summary")).toHaveText("2 places: 1 with a published e-mail, 1 with a phone, 1 with a website.");
-  await expect(page.locator("path.leaflet-interactive")).toHaveCount(2); // one dot per real place
-  await page.locator("path.leaflet-interactive").first().dispatchEvent("click");
+  await expect(page.locator(".map-pin")).toHaveCount(2); // one pin per real place
+  await page.locator(".map-pin").first().dispatchEvent("click");
   await expect(page.locator(".leaflet-popup-content")).toContainText("source on OpenStreetMap");
   await page.getByTestId("map-select-email").click();
   await expect(page.getByTestId("map-import-off")).toContainText("FEATURE_PROSPECT_IMPORT"); // import stays closed without its flag

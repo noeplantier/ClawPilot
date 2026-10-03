@@ -318,3 +318,12 @@
   .pos-kpi, .pos-kpi:hover { transition: none; transform: none; }
   .pos-signal-chip, .pos-live-dot { animation: none; }
 }
+
+/* Map search: pins and popups */
+.map-pin { background: transparent; border: 0; }
+.map-pin-dot { display:block; width:18px; height:18px; margin:2px; border-radius:50%; background:var(--c); border:3px solid #fff; box-shadow:0 2px 8px rgba(15,23,42,.45); transition:transform .15s; }
+.map-pin:hover .map-pin-dot { transform: scale(1.25); }
+.map-pin-dot.is-active { box-shadow:0 0 0 4px rgba(15,23,42,.9), 0 2px 10px rgba(15,23,42,.5); transform: scale(1.2); }
+.map-popup .leaflet-popup-content-wrapper { border-radius:14px; box-shadow:0 12px 30px rgba(15,23,42,.25); }
+.map-popup .leaflet-popup-content { margin:14px 16px; font-size:13px; line-height:1.5; }
+.leaflet-container { font-family: inherit; }
