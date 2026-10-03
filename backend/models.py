@@ -706,3 +706,79 @@ class MapProspectOut(BaseModel):
     review_status: Literal["pending", "approved", "rejected"]
     has_email: bool
     external_id: Optional[str] = None  # the source's id (e.g. OpenStreetMap node/123): lets the map hide duplicates
+
+
+class SourceInfo(BaseModel):
+    name: str
+    label: str
+    kind: Literal["local", "network"]
+    available: bool  # network providers need FEATURE_EXTERNAL_SOURCES
+    unavailable_reason: Optional[str] = None
+    verticals: List[str]
+    needs_position: bool
+    max_radius_m: int
+    rate_limit_per_minute: int
+    rate_limit_note: str
+    license_note: str
+    cost: str = "free, no key"
+
+
+class DiscoverIn(BaseModel):
+    provider: str = Field(min_length=1, max_length=40)
+    vertical: str = Field(min_length=1, max_length=40)
+    limit: int = Field(default=25, ge=1, le=100)
+    country: Optional[str] = Field(default=None, pattern="^[A-Z]{2}$")
+    city: Optional[str] = Field(default=None, min_length=1, max_length=80)
+    lat: Optional[float] = Field(default=None, ge=-90, le=90)
+    lon: Optional[float] = Field(default=None, ge=-180, le=180)
+    radius_m: int = Field(default=5000, ge=100, le=20_000_000)
+
+
+class DiscoveredSignal(BaseModel):
+    key: str
+    state: Literal["unknown", "detected", "not_detected"]
+    evidence: str
+
+
+class DiscoveredPlace(BaseModel):
+    external_id: str
+    name: str
+    category: Optional[str] = None
+    address: Optional[str] = None
+    postcode: Optional[str] = None
+    city: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    website: Optional[str] = None
+    lat: Optional[float] = None
+    lon: Optional[float] = None
+    source_name: str
+    source_url: str
+    last_updated: Optional[str] = None
+    signals: List[DiscoveredSignal]
+
+
+class DiscoverOut(BaseModel):
+    run_id: str
+    provider: str
+    license_note: str
+    total: int
+    duplicates_merged: int
+    truncated: bool
+    offset: int
+    limit: int
+    places: List[DiscoveredPlace]
+
+
+class AddFromRunIn(BaseModel):
+    external_ids: List[str] = Field(min_length=1, max_length=100)
+    attestation: bool = False  # "I may use these professional details for B2B prospecting (legitimate interest)"
+    check_websites: bool = False
+
+
+class AddFromRunOut(BaseModel):
+    created: int
+    updated: int
+    duplicates_merged: int
+    suppressed: int
+    sites_checked: int

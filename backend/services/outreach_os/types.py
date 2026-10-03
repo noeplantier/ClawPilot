@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date
 from enum import Enum
+from typing import Any
 
 
 class SignalState(str, Enum):
@@ -35,6 +36,7 @@ class RawListing:
     last_updated: date | None = None
     lat: float | None = None  # WGS84, only when the source gives a position (e.g. OpenStreetMap)
     lon: float | None = None
+    raw: dict[str, Any] | None = None  # the source's own record (capped), kept for audit and provenance
 
 
 @dataclass(frozen=True)

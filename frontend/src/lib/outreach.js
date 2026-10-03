@@ -15,6 +15,13 @@ export const importsApi = {
   submit: (body) => api.post("/prospect-imports", body).then((r) => r.data),
 };
 
+export const sourcesApi = {
+  list: () => api.get("/sources").then((r) => r.data),
+  discover: (body) => api.post("/sources/discover", body).then((r) => r.data),
+  page: (runId, offset, limit) => api.get(`/sources/runs/${runId}`, { params: { offset, limit } }).then((r) => r.data),
+  add: (runId, body) => api.post(`/sources/runs/${runId}/add`, body).then((r) => r.data),
+};
+
 export const mapApi = {
   search: (area) => api.post("/map/search", area).then((r) => r.data),
   prospects: () => api.get("/map/prospects").then((r) => r.data),
