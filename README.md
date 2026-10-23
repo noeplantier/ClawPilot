@@ -135,7 +135,8 @@ Fixture directory → normalisation → deduplication → signals → explainabl
 Nothing is sent by default: `FEATURE_LIVE_SENDING` is off and the channel adapter is a dry-run one that never opens a socket
 (real SMTP sending is opt-in, see below). Design: [`docs/architecture.md`](docs/architecture.md);
 rules: [`docs/compliance.md`](docs/compliance.md), [`docs/threat-model.md`](docs/threat-model.md),
-[`docs/cost-control.md`](docs/cost-control.md), [`docs/deployment.md`](docs/deployment.md).
+[`docs/cost-control.md`](docs/cost-control.md), [`docs/deployment.md`](docs/deployment.md),
+[`docs/integrations.md`](docs/integrations.md) (the real status of every integration shown in Settings, the variables to set, read-only live tests).
 
 ```bash
 cd backend

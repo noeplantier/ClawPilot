@@ -25,11 +25,13 @@ from models import (
     DismissIn,
     DismissOut,
     DraftOut,
+    HeatOut,
     OutreachSettingsOut,
     ProspectDetail,
     ProspectEventOut,
     ProspectList,
     ProspectSummary,
+    QueueCountsOut,
     ReviewIn,
     ScoreConfigIO,
     ScoreConfigOut,
@@ -50,6 +52,7 @@ from repositories import (
 )
 from services import feature_flags
 from services.outreach_os import drafts as drafts_svc
+from services.outreach_os import heat as heat_rules
 from services.outreach_os import pipeline
 from services.outreach_os import signals as sig
 from services.outreach_os.normalize import normalize_domain, normalize_email, normalize_phone
@@ -69,6 +72,31 @@ def _account(user: dict) -> uuid.UUID:
     return uuid.UUID(user["org_id"])
 
 
+def heat_out(lead: Lead, score: Optional[int]) -> HeatOut:
+    h = heat_rules.heat_of(
+        {
+            "email": lead.email,
+            "phone": lead.phone,
+            "website": lead.website,
+            "city": lead.city,
+            "company": lead.company,
+            "vertical": lead.vertical,
+            "country": lead.country,
+            "title": lead.title,
+        },
+        score,
+    )
+    return HeatOut(
+        value=h.value,
+        tier=h.tier,
+        info_pct=h.info_pct,
+        known=list(h.known),
+        missing=list(h.missing),
+        scored=h.scored,
+        score=h.score,
+    )
+
+
 def _summary(lead: Lead, score: Optional[int], coverage: Optional[float]) -> dict:
     return {
         "id": str(lead.id),
@@ -80,6 +108,7 @@ def _summary(lead: Lead, score: Optional[int], coverage: Optional[float]) -> dic
         "score": score,
         "coverage": coverage,
         "created_at": lead.created_at,
+        "heat": heat_out(lead, score),
     }
 
 
@@ -242,15 +271,33 @@ async def add_suppression(
 async def list_prospects(
     review_status: Optional[str] = Query(default=None, pattern="^(pending|approved|rejected)$"),
     min_score: Optional[int] = Query(default=None, ge=0, le=100),
+    order: str = Query(default="heat", pattern="^(heat|score|recent)$"),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     user: dict = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
+    """Hottest first by default: real information and score (see services/outreach_os/heat.py)."""
     rows, total = await prospect_repo.list_prospects(
-        session, _account(user), review_status=review_status, min_score=min_score, limit=limit, offset=offset
+        session,
+        _account(user),
+        review_status=review_status,
+        min_score=min_score,
+        order=order,
+        limit=limit,
+        offset=offset,
     )
     return ProspectList(items=[ProspectSummary(**_summary(*row)) for row in rows], total=total)
+
+
+@router.get("/queues", response_model=QueueCountsOut)
+async def queue_counts(
+    review_status: Optional[str] = Query(default="pending", pattern="^(pending|approved|rejected)$"),
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """The queues of the review page: how many prospects are hot, warm and cold (counted, never estimated)."""
+    return QueueCountsOut(**await prospect_repo.tier_counts(session, _account(user), review_status))
 
 
 @router.get("/{lead_id}", response_model=ProspectDetail)
