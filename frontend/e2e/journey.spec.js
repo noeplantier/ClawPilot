@@ -484,8 +484,12 @@ test("campaign suggestions come from the real data, update on their own, and cre
   await expect(page.getByTestId("suggestions-basis")).toContainText("Computed from 0 prospects and 2 CRM leads");
 
   await apiPost(page, "/leads", { full_name: "Cleo New", email: "cleo@new.example", company: "Cleo SAS" });
-  await page.clock.fastForward(16000);
-  await expect(page.getByTestId("suggestion").first().getByTestId("suggestion-ready")).toHaveText("3 of 3 can join a campaign today");
+  // Playwright's clock can apply a jump late, which leaves the next poll further away than one more jump (seen in ~10% of
+  // runs): retry the jump until the page has polled, instead of assuming one jump equals one poll.
+  await expect(async () => {
+    await page.clock.fastForward(16000);
+    await expect(page.getByTestId("suggestion").first().getByTestId("suggestion-ready")).toHaveText("3 of 3 can join a campaign today", { timeout: 3000 });
+  }).toPass({ timeout: 30000 });
 
   await page.getByTestId("suggestion-create").first().click();
   await expect(page.locator('[data-testid^="campaign-card-"]').first()).toContainText("New leads still waiting for a first message");
