@@ -45,6 +45,7 @@ export const systemApi = {
 
 export const prospectsApi = {
   list: (params) => api.get("/prospects", { params }).then((r) => r.data),
+  queues: (status = "pending") => api.get("/prospects/queues", { params: { review_status: status } }).then((r) => r.data),
   get: (id) => api.get(`/prospects/${id}`).then((r) => r.data),
   events: (id) => api.get(`/prospects/${id}/events`).then((r) => r.data),
   review: (id, decision, note) => api.post(`/prospects/${id}/review`, { decision, note: note || null }).then((r) => r.data),

@@ -76,9 +76,10 @@ def test_discovery_dedupes_and_is_idempotent(org):
     assert _by_name(org)[1]["total"] == 7
 
 
-def test_list_is_sorted_by_score_and_filterable(org):
+def test_list_can_be_sorted_by_score_and_is_filterable(org):
+    """The default order is heat (see test_heat_ranking.py); `order=score` keeps the plain score order."""
     _run(org)
-    _, body = _by_name(org)
+    body = requests.get(f"{API}/prospects", headers=org, params={"order": "score", "limit": 200}).json()
     scores = [p["score"] for p in body["items"]]
     assert all(isinstance(s, int) and 0 <= s <= 100 for s in scores)
     assert scores == sorted(scores, reverse=True)

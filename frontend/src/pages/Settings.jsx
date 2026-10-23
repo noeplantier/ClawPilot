@@ -1,29 +1,39 @@
-import { CheckCircle, Envelope, Key, PaperPlaneTilt, Prohibit, Shield, ShieldCheck, Sparkle, Warning, WhatsappLogo, XCircle } from "@phosphor-icons/react";
+import { useState } from "react";
+import { toast } from "sonner";
+import {
+  ArrowsClockwise, Buildings, Copy, Database, EnvelopeOpen, Envelope, IdentificationCard, Link as LinkIcon, MapPin, MapTrifold,
+  PaperPlaneTilt, Play, Plugs, Shield, ShieldCheck, Sparkle, Warning, WhatsappLogo,
+} from "@phosphor-icons/react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
-import { useAsync } from "@/lib/outreach";
+import { useLive } from "@/lib/live";
+import { describeApiError } from "@/lib/outreachFormat";
+import { TONE, effective, groupItems, needsList, summarize, testGeocoder, testable } from "@/lib/integrations";
 import { ErrorBlock, LoadingBlock } from "@/components/outreach/States";
 
-// Every status on this page is computed by the server from its real configuration (GET /settings/integrations).
-// Nothing here is a hard-coded "ACTIVE": a missing key or package shows up as such, with the reason.
+// Every status on this page is computed by the server from its real configuration (GET /settings/integrations), refreshed every
+// 30 s while the tab is visible. A "Test" only refines it for this session. Secrets are never typed, shown or stored here: the
+// page names the variables to set in the hosting dashboard.
 
-const TONES = {
-  ok: { chip: "chip-success", Icon: CheckCircle },
-  info: { chip: "chip-ink", Icon: ShieldCheck },
-  warn: { chip: "chip-warn", Icon: XCircle },
-  danger: { chip: "chip-danger", Icon: Prohibit },
+const SETTINGS_LIVE_MS = 30000;
+const ICONS = {
+  database: Database, public_url: LinkIcon, osm: MapTrifold, geocoder: MapPin, registry: Buildings, sender: IdentificationCard,
+  sending_mode: PaperPlaneTilt, smtp: Envelope, imap: EnvelopeOpen, sendgrid: Envelope, twilio: WhatsappLogo,
+  twilio_webhook: ShieldCheck, sendgrid_webhook: ShieldCheck, ai: Sparkle,
 };
 
 export default function Settings() {
   const { user, org } = useAuth();
-  const { data: s, error, loading, reload } = useAsync(() => api.get("/settings/integrations").then((r) => r.data), []);
+  const live = useLive(() => api.get("/settings/integrations").then((r) => r.data), [], { intervalMs: SETTINGS_LIVE_MS, itemsOf: (d) => d.items });
+  const s = live.data;
+  const canTest = user?.role === "owner" || user?.role === "admin";
 
   return (
-    <div className="p-6 md:p-10 max-w-4xl space-y-8" data-testid="settings-page">
+    <div className="p-6 md:p-10 max-w-6xl space-y-8" data-testid="settings-page">
       <div>
         <div className="mono-accent">// control.panel</div>
         <h1 className="text-4xl font-black tracking-tighter">Settings</h1>
-        <p className="text-[#5F5F5A] mt-1">Organization profile and the live status of this server&apos;s integrations.</p>
+        <p className="text-[#5F5F5A] mt-1">Organization profile and the live status of every integration of this server.</p>
       </div>
 
       <section className="surface p-6 space-y-4">
@@ -31,7 +41,7 @@ export default function Settings() {
           <Shield size={18} className="text-[#4F46E5]" />
           <h2 className="font-display text-xl font-bold">Profile</h2>
         </div>
-        <div className="grid md:grid-cols-2 gap-4">
+        <div className="grid md:grid-cols-3 gap-4">
           <Row label="operator.name" value={user?.full_name} />
           <Row label="email" value={user?.email} mono />
           <Row label="role" value={user?.role} mono />
@@ -41,123 +51,157 @@ export default function Settings() {
         </div>
       </section>
 
-      <section className="surface p-6 space-y-4" data-testid="integrations">
+      <section className="space-y-5" data-testid="integrations">
         <div className="flex items-center gap-2">
-          <Key size={18} className="text-[#0F172A]" />
+          <Plugs size={18} className="text-[#4F46E5]" />
           <h2 className="font-display text-xl font-bold">Integrations</h2>
         </div>
-        {loading && !s && <LoadingBlock label="Reading the server configuration…" />}
-        {error && <ErrorBlock message={error} onRetry={reload} />}
-        {s && <Integrations s={s} />}
+        {live.loading && !s && <LoadingBlock label="Reading the server configuration…" />}
+        {live.error && <ErrorBlock message={live.error} onRetry={live.reload} />}
+        {s && <Integrations s={s} live={live} canTest={canTest} />}
       </section>
     </div>
   );
 }
 
-function Integrations({ s }) {
-  const ai = s.ai;
-  const out = s.outreach;
-  const hooks = s.webhooks;
-  const missing = [];
-  if (!s.sendgrid_configured) missing.push("SENDGRID_API_KEY and SENDGRID_FROM_EMAIL");
-  if (!s.twilio_account_sid_configured) missing.push("TWILIO_ACCOUNT_SID (starts with AC) and TWILIO_AUTH_TOKEN");
-  if (!out.sender_configured) missing.push("OUTREACH_SENDER_NAME, _COMPANY, _ADDRESS and _EMAIL");
-  if (!out.smtp_configured) missing.push("SMTP_HOST, SMTP_USERNAME and SMTP_PASSWORD (real prospect e-mail)");
-  if (!hooks.twilio_signature_ready) missing.push("TWILIO_AUTH_TOKEN (webhook signature)");
-  if (!hooks.sendgrid_signature_ready) missing.push("SENDGRID_WEBHOOK_PUBLIC_KEY");
+function Integrations({ s, live, canTest }) {
+  const [results, setResults] = useState({});
+  const [running, setRunning] = useState(() => new Set());
+  const items = s.items || [];
+  const sum = summarize(items, results);
 
-  let outreachTone = "info";
-  let outreachLabel = "DRY-RUN: NOTHING LEAVES THE SYSTEM";
-  if (out.kill_switch) {
-    outreachTone = "danger";
-    outreachLabel = "HALTED BY THE KILL SWITCH";
-  } else if (!out.dry_run && !out.smtp_configured) {
-    outreachTone = "danger";
-    outreachLabel = "LIVE FLAG ON BUT SMTP INCOMPLETE: SENDS ARE REFUSED";
-  } else if (!out.dry_run && out.sandbox) {
-    outreachTone = "warn";
-    outreachLabel = "LIVE · SANDBOX: ALLOWLISTED RECIPIENTS ONLY";
-  } else if (!out.dry_run) {
-    outreachTone = "warn";
-    outreachLabel = "LIVE · REAL E-MAIL TO APPROVED PROSPECTS";
-  }
+  const mark = (id, on) => setRunning((prev) => { const next = new Set(prev); if (on) next.add(id); else next.delete(id); return next; });
+
+  const run = async (item) => {
+    mark(item.id, true);
+    try {
+      const out = item.test === "browser"
+        ? await testGeocoder()
+        : (await api.post(`/settings/integrations/${item.id}/test`)).data;
+      setResults((prev) => ({ ...prev, [item.id]: { ...out, at: new Date() } }));
+    } catch (e) {
+      setResults((prev) => ({ ...prev, [item.id]: { ok: false, outcome: "error", detail: describeApiError(e), at: new Date() } }));
+    } finally {
+      mark(item.id, false);
+    }
+  };
+
+  // Only what is configured: an unconfigured service would answer "skipped" and spend the rate limit (10 tests a minute).
+  const runAll = async () => {
+    for (const item of testable(items).filter((i) => ["unchecked", "ready", "partial"].includes(i.status))) {
+      if (item.test === "server" && !canTest) continue;
+      await run(item);
+    }
+  };
 
   return (
     <>
-      <IntegrationRow
-        icon={Sparkle}
-        name="AI composer"
-        description={
-          ai.active
-            ? "Messages are generated by the model."
-            : `No model is called: the composer returns a fixed template. Reason: ${ai.reason}.`
-        }
-        tone={ai.active ? "ok" : "warn"}
-        statusLabel={ai.active ? "LIVE · MODEL CALLED" : "TEMPLATE ONLY"}
-        details={[
-          ["api.key", ai.key_configured ? "configured" : "not set"],
-          ["emergentintegrations", ai.library_available ? "installed" : "not installed"],
-        ]}
-        testId="row-ai"
-      />
-      <IntegrationRow
-        icon={Envelope}
-        name="SendGrid e-mail"
-        description="E-mail sent by campaigns and the message composer, with open and click tracking."
-        tone={s.sendgrid_configured ? "ok" : "warn"}
-        statusLabel={s.sendgrid_configured ? "CONFIGURED" : "NOT CONFIGURED (MOCK DISPATCH)"}
-        details={[["from.email", s.sendgrid_from_email || "not set"]]}
-        testId="row-sendgrid"
-      />
-      <IntegrationRow
-        icon={WhatsappLogo}
-        name="Twilio WhatsApp"
-        description="Outbound WhatsApp, only to contacts who opted in. Falls back to mock dispatch when not configured."
-        tone={s.twilio_account_sid_configured ? "ok" : "warn"}
-        statusLabel={s.twilio_account_sid_configured ? "CONFIGURED" : "NOT CONFIGURED (MOCK DISPATCH)"}
-        details={[["from.number", s.twilio_whatsapp_from || "not set"]]}
-        testId="row-twilio"
-      />
-      <IntegrationRow
-        icon={PaperPlaneTilt}
-        name="Prospect outreach"
-        description="Drafts and dispatch for approved prospects. Limits and the pause apply to every send path."
-        tone={outreachTone}
-        statusLabel={outreachLabel}
-        details={[
-          ["sender.identity", out.sender_configured ? "configured" : "not configured"],
-          ["sender.email", out.sender_email || "not set"],
-          ["FEATURE_LIVE_SENDING", out.live_sending_flag ? "on" : "off"],
-          ["smtp.host", out.smtp_configured ? out.smtp_host : "not configured"],
-          ["imap.host (replies, bounces)", out.imap_configured ? out.imap_host : "not configured"],
-          ["OUTREACH_SANDBOX", out.sandbox ? `on (${out.allowlist_size} allowed)` : "off"],
-        ]}
-        testId="row-outreach"
-      />
-      <IntegrationRow
-        icon={ShieldCheck}
-        name="Webhook signatures"
-        description={`Inbound provider events must be signed. ${
-          hooks.production ? "In production an unsigned or unverifiable call is rejected." : "Outside production, unsigned calls are accepted (local mock mode)."
-        }`}
-        tone={hooks.twilio_signature_ready && hooks.sendgrid_signature_ready ? "ok" : "warn"}
-        statusLabel={hooks.twilio_signature_ready && hooks.sendgrid_signature_ready ? "BOTH VERIFIED" : "INCOMPLETE"}
-        details={[
-          ["twilio.signature", hooks.twilio_signature_ready ? "ready" : "no auth token"],
-          ["twilio.webhook_url", hooks.twilio_webhook_url_set ? "set" : "not set"],
-          ["sendgrid.signature", hooks.sendgrid_signature_ready ? "ready" : "no public key"],
-        ]}
-        testId="row-webhooks"
-      />
-      {missing.length > 0 ? (
-        <p className="text-sm text-[#92400E] bg-[#FFFBEB] border border-[#F59E0B]/40 rounded-md p-3 flex gap-2" data-testid="missing-config">
-          <Warning size={16} className="shrink-0 mt-0.5" />
-          <span>Not configured on this server: {missing.join("; ")}. Set them in the server environment (see backend/.env.example).</span>
-        </p>
-      ) : (
-        <p className="mono-accent text-[#6B6B66]">// every integration above is configured on this server.</p>
-      )}
+      <div className="surface p-4 flex flex-wrap items-center gap-3" data-testid="int-summary">
+        <Chip tone="ready" testId="sum-ready">{sum.ready} READY</Chip>
+        <Chip tone="unchecked" testId="sum-unchecked">{sum.unchecked} NOT TESTED</Chip>
+        <Chip tone={sum.attention ? "missing" : "off"} testId="sum-attention">{sum.attention} NEED ATTENTION</Chip>
+        <Chip tone="off" testId="sum-off">{sum.off} OFF</Chip>
+        <span className="text-xs inline-flex items-center gap-2 text-[#4338CA] ml-auto" role="status" aria-live="polite" data-testid="int-live">
+          <span className="pos-live-dot" aria-hidden="true" />
+          {live.stale ? "Refresh failed: showing the last data. " : ""}
+          {live.updatedAt ? `Live · updated ${live.updatedAt.toLocaleTimeString()} · every ${SETTINGS_LIVE_MS / 1000} s` : "Loading…"}
+        </span>
+        <button onClick={live.reload} className="btn-ghost" data-testid="int-refresh"><ArrowsClockwise size={14} /> REFRESH</button>
+        <button onClick={runAll} disabled={running.size > 0} className="btn-primary" data-testid="int-run-all"><Play size={14} weight="fill" /> RUN CHECKS</button>
+      </div>
+
+      <p className="text-sm text-[#5F5F5A] flex gap-2" data-testid="int-secrets-note">
+        <ShieldCheck size={16} className="shrink-0 mt-0.5 text-[#4F46E5]" />
+        <span>
+          Keys and passwords are never typed or shown here. Add the variable names listed under an integration in your hosting dashboard
+          (Render → your API service → Environment), then redeploy; this page re-reads the server and updates by itself.
+        </span>
+      </p>
+
+      {groupItems(items).map(([key, label, list]) => (
+        <div key={key} className="space-y-3" data-testid={`group-${key}`}>
+          <div className="mono-accent">// {label.toLowerCase()}</div>
+          <div className="grid lg:grid-cols-2 gap-4">
+            {[...list].sort((a, b) => TONE[effective(a, results[a.id]).status].rank - TONE[effective(b, results[b.id]).status].rank).map((item) => (
+              <Card key={item.id} item={item} result={results[item.id]} busy={running.has(item.id)} canTest={canTest} onTest={() => run(item)} />
+            ))}
+          </div>
+        </div>
+      ))}
     </>
+  );
+}
+
+function Chip({ tone, children, testId }) {
+  return <span className={`chip ${TONE[tone].chip}`} data-testid={testId}>{children}</span>;
+}
+
+function copyNames(item) {
+  try {
+    navigator.clipboard.writeText(needsList(item)).then(() => toast.success("Variable names copied"), () => toast.error("Copy is blocked by the browser"));
+  } catch {
+    toast.error("Copy is blocked by the browser");
+  }
+}
+
+function Card({ item, result, busy, canTest, onTest }) {
+  const Icon = ICONS[item.id] || Plugs;
+  const shown = effective(item, result);
+  const server = item.test === "server";
+  const disabled = busy || (server && !canTest);
+  return (
+    <div className="surface p-5 space-y-3" data-testid={`int-${item.id}`} data-status={shown.status}>
+      <div className="flex items-start gap-3">
+        <Icon size={24} weight="duotone" className="text-[#4F46E5] mt-0.5 shrink-0" />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="font-display font-semibold">{item.name}</h3>
+            <Chip tone={shown.status} testId={`int-${item.id}-status`}>{shown.label}</Chip>
+          </div>
+          <p className="text-sm text-[#5F5F5A] mt-1">{item.summary}</p>
+        </div>
+      </div>
+
+      {item.facts.length > 0 && (
+        <div className="grid sm:grid-cols-2 gap-x-4 gap-y-1 text-xs font-mono" data-testid={`int-${item.id}-facts`}>
+          {item.facts.map(([k, v]) => (
+            <div key={k} className="flex gap-2 min-w-0"><span className="text-[#6B7690]">{k}:</span><span className="truncate" title={v}>{v}</span></div>
+          ))}
+        </div>
+      )}
+
+      {item.needs.length > 0 && (
+        <div className="rounded-md border border-[#F59E0B]/40 bg-[#FFFBEB] p-3 text-xs space-y-2" data-testid={`int-${item.id}-needs`}>
+          <div className="font-semibold text-[#92400E] flex items-center gap-2"><Warning size={14} /> Set in your hosting environment:</div>
+          <div className="flex flex-wrap gap-1.5">
+            {item.needs.map((n) => <code key={n} className="px-1.5 py-0.5 rounded bg-white border border-[#F59E0B]/40 font-mono">{n}</code>)}
+          </div>
+          <button onClick={() => copyNames(item)} className="inline-flex items-center gap-1 text-[#92400E] underline" data-testid={`int-${item.id}-copy`}>
+            <Copy size={12} /> copy the names
+          </button>
+        </div>
+      )}
+
+      {item.hint && <p className="text-xs text-[#6B7690]" data-testid={`int-${item.id}-hint`}>{item.hint}</p>}
+
+      <div className="flex items-center gap-3 flex-wrap">
+        {item.test && (
+          <button onClick={onTest} disabled={disabled} className="btn-ghost" data-testid={`int-${item.id}-test`}
+            title={server && !canTest ? "Only an owner or an admin can run server checks" : undefined}>
+            <Play size={12} weight="fill" /> {busy ? "TESTING…" : item.test === "browser" ? "TEST FROM THIS BROWSER" : "TEST NOW"}
+          </button>
+        )}
+        <span className="mono-accent">{item.docs}</span>
+      </div>
+
+      {result && (
+        <p className={`text-xs ${result.outcome === "passed" ? "text-[#065F46]" : result.outcome === "skipped" ? "text-[#6B7690]" : "text-[#991B1B]"}`}
+          role="status" data-testid={`int-${item.id}-result`}>
+          {result.outcome === "passed" ? "✔ " : result.outcome === "skipped" ? "– " : "✖ "}
+          {result.detail} <span className="text-[#6B7690]">({result.at.toLocaleTimeString()})</span>
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -167,36 +211,6 @@ function Row({ label, value, mono, truncate }) {
       <div className="mono-accent">{label}</div>
       <div className={`mt-1 ${mono ? "font-mono text-sm" : "font-display font-semibold"} ${truncate ? "truncate" : ""}`}>
         {value || "—"}
-      </div>
-    </div>
-  );
-}
-
-function IntegrationRow({ icon: Icon, name, description, tone, statusLabel, details = [], testId }) {
-  const { chip, Icon: StatusIcon } = TONES[tone] || TONES.warn;
-  return (
-    <div className="surface p-5 bg-[#F6F8FC]" data-testid={testId}>
-      <div className="flex items-start gap-4">
-        <Icon size={24} weight="duotone" className="text-[#4F46E5] mt-1" />
-        <div className="flex-1">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="font-display font-semibold">{name}</h3>
-            <span className={`chip ${chip}`} data-testid={`${testId}-status`}>
-              <StatusIcon size={10} weight="fill" /> {statusLabel}
-            </span>
-          </div>
-          <p className="text-sm text-[#5F5F5A] mt-1">{description}</p>
-          {details.length > 0 && (
-            <div className="mt-3 grid md:grid-cols-2 gap-2 text-xs">
-              {details.map(([k, v]) => (
-                <div key={k} className="flex gap-2 font-mono">
-                  <span className="text-[#6B6B66]">{k}:</span>
-                  <span className="text-[#1a1a1a] truncate">{v}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
       </div>
     </div>
   );

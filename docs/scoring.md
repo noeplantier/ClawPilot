@@ -56,3 +56,18 @@ Dans la fiche prospect, « This is wrong » (owner/admin) sur un signal `detecte
 2. Un poids par défaut dans `services/outreach_os/scoring.py::DEFAULT_WEIGHTS` (le validateur refuse une clé inconnue).
 3. Tests unitaires sur fixtures HTML/JSON (`backend/tests/fixtures/`), y compris le cas « non observable → `unknown` ».
 4. Aucune migration : les signaux sont des lignes de `prospect_signals` identifiées par leur clé.
+
+## Chaleur d'un lead (heat) : le classement « chaud d'abord »
+Un lead est d'autant plus **chaud** qu'il porte d'informations **réelles** et qu'il a un bon score. Rien n'est inventé :
+- `information` = part des 8 champs suivis réellement connus (e-mail, téléphone, site, ville, société, catégorie, pays, poste). Un champ vide,
+  « unknown » ou la valeur par défaut d'un import (« unspecified ») est **inconnu**, jamais compté ni rempli.
+- `heat = (score + information + 1) / 2` (entiers, arrondi vers le haut à .5). Un lead **jamais scoré** est classé sur l'information seule et
+  l'affiche (`scored: false`) : « non scoré » n'est pas 0. Pour un lead du CRM, un score de 0 veut dire « pas encore scoré ».
+- Paliers : **hot ≥ 65**, **warm ≥ 40**, **cold** en dessous.
+- La même arithmétique entière tourne en Python (`services/outreach_os/heat.py`) et en SQL (`repositories/heat_sql.py`) pour trier ; un test
+  les compare sur 37 combinaisons de champs × 6 scores.
+- Où : `GET /api/leads` (tri `heat` par défaut, `recent` possible), `GET /api/prospects` (`order=heat|score|recent`), `GET /api/prospects/queues`
+  (nombre de hot/warm/cold **comptés** par le serveur), liste des prospects de la carte, file de revue, page Leads.
+- « Temps réel » : sans WebSocket (hébergement gratuit), les pages Leads et Review queue **interrogent l'API toutes les 15 s** tant que l'onglet est
+  visible, signalent les nouveaux lignes (« new ») et gardent les dernières données si un rafraîchissement échoue. La fiche en cours de revue ne
+  change pas sous vos yeux : les nouveaux arrivants rejoignent les files et « Up next ».

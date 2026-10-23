@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
@@ -10,6 +10,9 @@ import BulkLeadsModal from "@/components/BulkLeadsModal";
 import BatchComposerModal from "@/components/BatchComposerModal";
 import LeadsBulkBar from "@/components/LeadsBulkBar";
 import LeadDetailDrawer from "@/components/LeadDetailDrawer";
+import HeatBadge from "@/components/outreach/HeatBadge";
+import { TIERS, TIER_LABEL, inLane, laneCounts } from "@/lib/heat";
+import { LIVE_MS, useLive } from "@/lib/live";
 
 const STAGES = ["new", "contacted", "engaged", "qualified", "won", "lost"];
 const STAGE_COLORS = {
@@ -18,9 +21,9 @@ const STAGE_COLORS = {
 };
 
 export default function Leads() {
-  const [leads, setLeads] = useState([]);
   const [view, setView] = useState("table");
   const [search, setSearch] = useState("");
+  const [lane, setLane] = useState("all"); // heat filter: all | hot | warm | cold
   const [showCreate, setShowCreate] = useState(false);
   const [showBulk, setShowBulk] = useState(false);
   const [showBatch, setShowBatch] = useState(false);
@@ -28,6 +31,12 @@ export default function Leads() {
   const [aiDefaults, setAiDefaults] = useState(null);
   const [selected, setSelected] = useState(new Set());
   const [detailLeadId, setDetailLeadId] = useState(null);
+
+  // Real leads, hottest first (real information + score), refreshed in the background.
+  const live = useLive(() => api.get("/leads", { params: { search, sort: "heat" } }).then((r) => r.data), [search]);
+  const everyLead = useMemo(() => live.data || [], [live.data]);
+  const counts = useMemo(() => laneCounts(everyLead), [everyLead]);
+  const leads = useMemo(() => inLane(everyLead, lane), [everyLead, lane]);
 
   const allVisible = leads.map((l) => l.id);
   const toggleOne = (id) =>
@@ -39,11 +48,7 @@ export default function Leads() {
   const toggleAll = () =>
     setSelected((s) => (s.size === allVisible.length ? new Set() : new Set(allVisible)));
 
-  const load = async () => {
-    const { data } = await api.get("/leads", { params: { search } });
-    setLeads(data);
-  };
-  useEffect(() => { load(); }, [search]); // eslint-disable-line
+  const load = () => live.reload();
 
   const updateStage = async (id, stage) => {
     await api.patch(`/leads/${id}`, { stage });
@@ -74,7 +79,14 @@ export default function Leads() {
         <div>
           <div className="mono-accent">// crm.pipeline</div>
           <h1 className="text-4xl font-black tracking-tighter">Leads</h1>
-          <p className="text-[#5F5F5A] mt-1">{leads.length} contacts across the pipeline.</p>
+          <p className="text-[#5F5F5A] mt-1">
+            {leads.length}{lane !== "all" ? ` ${TIER_LABEL[lane].toLowerCase()}` : ""} contact{leads.length === 1 ? "" : "s"} across the pipeline, hottest first.
+          </p>
+          <p className="text-xs mt-1 inline-flex items-center gap-2 text-[#4338CA]" role="status" aria-live="polite" data-testid="leads-live">
+            <span className="pos-live-dot" aria-hidden="true" />
+            {live.stale ? "Refresh failed: showing the last data. " : ""}
+            {live.updatedAt ? `Live · updated ${live.updatedAt.toLocaleTimeString()} · every ${LIVE_MS / 1000} s` : "Loading…"}
+          </p>
         </div>
         <div className="flex gap-2 items-center">
           <div className="flex items-center gap-2 px-3 py-1.5 border border-[#D3DBEA] rounded-md bg-[#FFFFFF]">
@@ -91,8 +103,20 @@ export default function Leads() {
         </div>
       </div>
 
+      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filter by heat" data-testid="leads-lanes">
+        {[["all", `All ${counts.total}`], ...TIERS.map((t) => [t, `${TIER_LABEL[t]} ${counts[t]}`])].map(([key, label]) => (
+          <button key={key} onClick={() => setLane(key)} aria-pressed={lane === key} data-testid={`lane-${key}`}
+            className={`px-3 py-1 rounded-full text-xs border transition-colors ${lane === key ? "bg-[#0B1020] text-white border-[#0B1020] shadow-[0_0_14px_-2px_rgba(99,102,241,0.7)]" : "bg-white/80 border-[#D3DBEA] hover:bg-white"}`}>
+            {label}
+          </button>
+        ))}
+        <span className="text-xs text-[#5F5F5A]">Heat = real information known + score. Hover a badge to see what is missing.</span>
+      </div>
+
+      {live.error && <div role="alert" className="text-sm text-[#991B1B]" data-testid="leads-error">{live.error}</div>}
+
       {view === "table" ? (
-        <div className="surface overflow-hidden">
+        <div className="surface overflow-hidden overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-[#F6F8FC] border-b border-[#D3DBEA]">
               <tr className="text-left mono-accent">
@@ -108,9 +132,10 @@ export default function Leads() {
                 </th>
                 <th className="p-3">Name</th>
                 <th className="p-3">Company</th>
-                <th className="p-3">Email</th>
+                <th className="p-3">Contact</th>
                 <th className="p-3">Country</th>
                 <th className="p-3">Stage</th>
+                <th className="p-3">Heat</th>
                 <th className="p-3">Score</th>
                 <th className="p-3 text-right">Actions</th>
               </tr>
@@ -123,7 +148,7 @@ export default function Leads() {
                   animate={{ opacity: 1 }}
                   transition={{ delay: i * 0.02 }}
                   onClick={() => setDetailLeadId(l.id)}
-                  className={`border-b border-[#E6ECF6] hover:bg-[#F6F8FC] transition-colors cursor-pointer ${selected.has(l.id) ? "bg-[#FEF2F2]" : ""}`}
+                  className={`border-b border-[#E6ECF6] hover:bg-[#F6F8FC] transition-colors cursor-pointer ${selected.has(l.id) ? "bg-indigo-50" : live.fresh.has(l.id) ? "bg-cyan-50" : ""}`}
                   data-testid={`lead-row-${l.id}`}
                 >
                   <td className="p-3" onClick={(e) => e.stopPropagation()}>
@@ -142,13 +167,16 @@ export default function Leads() {
                         {(l.full_name || "?").charAt(0)}
                       </div>
                       <div>
-                        <div className="font-medium">{l.full_name}</div>
+                        <div className="font-medium">{l.full_name}{live.fresh.has(l.id) && <span className="chip chip-cyan ml-2" data-testid="lead-new">new</span>}</div>
                         <div className="mono-accent text-[#6B6B66] text-[10px]">{l.title || "—"}</div>
                       </div>
                     </div>
                   </td>
                   <td className="p-3 text-[#5F5F5A]">{l.company}</td>
-                  <td className="p-3 font-mono text-xs text-[#5F5F5A]">{l.email}</td>
+                  <td className="p-3 font-mono text-xs text-[#5F5F5A]">
+                    <div>{l.email || <span className="text-[#6B6B66]">e-mail not known</span>}</div>
+                    <div>{l.phone || <span className="text-[#6B6B66]">phone not known</span>}</div>
+                  </td>
                   <td className="p-3 font-mono text-xs">{l.country}</td>
                   <td className="p-3" onClick={(e) => e.stopPropagation()}>
                     <select
@@ -162,6 +190,7 @@ export default function Leads() {
                       {STAGES.map((s) => <option key={s} value={s}>{s}</option>)}
                     </select>
                   </td>
+                  <td className="p-3"><HeatBadge heat={l.heat} /></td>
                   <td className="p-3">
                     <div className="flex items-center gap-2">
                       <div className="w-16 h-1 bg-[#E6ECF6] rounded overflow-hidden">
@@ -181,7 +210,7 @@ export default function Leads() {
                 </motion.tr>
               ))}
               {leads.length === 0 && (
-                <tr><td colSpan="7" className="p-10 text-center text-[#5F5F5A]">No leads. Add your first or import.</td></tr>
+                <tr><td colSpan="9" className="p-10 text-center text-[#5F5F5A]">{everyLead.length === 0 ? "No leads. Add your first or import." : "No lead in this heat tier."}</td></tr>
               )}
             </tbody>
           </table>
@@ -208,6 +237,7 @@ export default function Leads() {
                     >
                       <div className="font-semibold text-sm text-[#0A0A0A]">{l.full_name}</div>
                       <div className="text-[#5F5F5A] mt-0.5">{l.company}</div>
+                      <div className="mt-2"><HeatBadge heat={l.heat} compact /></div>
                       <div className="mono-accent text-[#6B6B66] mt-2 flex items-center justify-between">
                         <span>{l.country}</span>
                         <span>score · {l.score}</span>

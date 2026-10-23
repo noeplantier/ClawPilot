@@ -11,11 +11,38 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.session import get_db_session
 from deps import get_current_user
-from models import ConsentStatus, ConsentUpdateIn, Lead, LeadCreate, LeadUpdate
+from models import ConsentStatus, ConsentUpdateIn, HeatOut, Lead, LeadCreate, LeadUpdate
 from repositories import activity_repo, consent_repo, lead_repo, tags_repo
 from repositories.lead_repo import LeadExtra
+from services.outreach_os import heat as heat_rules
 
 router = APIRouter(prefix="/leads", tags=["leads"])
+
+
+def _heat(lead) -> HeatOut:
+    """Heat of a CRM lead: its real information and, when it has one, its score (a CRM score of 0 means not scored)."""
+    h = heat_rules.heat_of(
+        {
+            "email": lead.email,
+            "phone": lead.phone,
+            "website": lead.website,
+            "city": lead.city,
+            "company": lead.company,
+            "vertical": lead.vertical,
+            "country": lead.country,
+            "title": lead.title,
+        },
+        lead.score if lead.score > 0 else None,
+    )
+    return HeatOut(
+        value=h.value,
+        tier=h.tier,
+        info_pct=h.info_pct,
+        known=list(h.known),
+        missing=list(h.missing),
+        scored=h.scored,
+        score=h.score,
+    )
 
 
 def _to_schema(lead, extra: LeadExtra) -> Lead:
@@ -37,6 +64,10 @@ def _to_schema(lead, extra: LeadExtra) -> Lead:
         email_consent=cast(ConsentStatus, extra.email_consent),
         whatsapp_consent=cast(ConsentStatus, extra.whatsapp_consent),
         created_at=lead.created_at,
+        city=lead.city,
+        website=lead.website,
+        vertical=lead.vertical,
+        heat=_heat(lead),
     )
 
 
@@ -72,9 +103,13 @@ async def list_leads(
     session: AsyncSession = Depends(get_db_session),
     stage: Optional[str] = None,
     search: Optional[str] = None,
+    sort: str = Query("heat", pattern="^(heat|recent)$"),
     limit: int = Query(500, le=1000),
 ):
-    rows = await lead_repo.list_leads(session, uuid.UUID(user["org_id"]), stage=stage, search=search, limit=limit)
+    """Hottest first by default: real information and score (see services/outreach_os/heat.py)."""
+    rows = await lead_repo.list_leads(
+        session, uuid.UUID(user["org_id"]), stage=stage, search=search, sort=sort, limit=limit
+    )
     return [_to_schema(lead, extra) for lead, extra in rows]
 
 

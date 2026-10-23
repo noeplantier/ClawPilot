@@ -1,6 +1,7 @@
 """Campaign routes — Postgres-backed (campaigns + campaign_steps + campaign_leads)."""
 
 import uuid
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -9,10 +10,29 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.session import get_db_session
 from deps import get_current_user
-from models import Campaign, CampaignCreate, CampaignRescoreOut, CampaignStep, CampaignUpdate
-from repositories import activity_repo, audit_repo, campaign_repo, consent_repo, lead_repo, outreach_repo, prospect_repo
+from models import (
+    Campaign,
+    CampaignCreate,
+    CampaignRescoreOut,
+    CampaignStep,
+    CampaignUpdate,
+    SuggestionCreateOut,
+    SuggestionOut,
+    SuggestionsOut,
+)
+from repositories import (
+    activity_repo,
+    audit_repo,
+    campaign_repo,
+    consent_repo,
+    lead_repo,
+    outreach_repo,
+    prospect_repo,
+    suggestion_repo,
+)
 from routes._refusal import block_detail
-from services import legacy_email, scheduler, send_gate
+from services import feature_flags, legacy_email, scheduler, send_gate
+from services.outreach_os import suggestions as suggestion_rules
 from services.rate_limit import AttemptLimiter
 from services.sendgrid_svc import send_email
 from services.templating import render as _render
@@ -69,6 +89,95 @@ class RunStepOut(BaseModel):
 async def list_campaigns(user: dict = Depends(get_current_user), session: AsyncSession = Depends(get_db_session)):
     rows = await campaign_repo.list_campaigns(session, uuid.UUID(user["org_id"]))
     return [_to_schema(c) for c in rows]
+
+
+_suggest_limiter = AttemptLimiter(10, 60.0)  # per organisation: each creation assigns up to hundreds of people
+
+
+async def _suggestions(session: AsyncSession, account_id: uuid.UUID):
+    candidates = await suggestion_repo.load_candidates(session, account_id)
+    found = suggestion_rules.suggest(candidates, dry_run=feature_flags.dry_run())
+    basis = {
+        "prospects": sum(1 for c in candidates if c.is_prospect),
+        "leads": sum(1 for c in candidates if not c.is_prospect),
+    }
+    return found, basis
+
+
+@router.get("/suggestions", response_model=SuggestionsOut)
+async def campaign_suggestions(user: dict = Depends(get_current_user), session: AsyncSession = Depends(get_db_session)):
+    """Suggested campaigns computed from the organisation's own leads and prospects (counted facts, hottest first)."""
+    found, basis = await _suggestions(session, uuid.UUID(user["org_id"]))
+    return SuggestionsOut(
+        generated_at=datetime.now(timezone.utc),
+        dry_run=feature_flags.dry_run(),
+        basis=basis,
+        items=[
+            SuggestionOut(**{k: v for k, v in vars(s).items() if k not in ("member_ids", "eligible_ids")})
+            for s in found
+        ],
+    )
+
+
+@router.post("/suggestions/{suggestion_id}/create", response_model=SuggestionCreateOut)
+async def create_from_suggestion(
+    suggestion_id: str, user: dict = Depends(get_current_user), session: AsyncSession = Depends(get_db_session)
+):
+    """Create a DRAFT campaign from a suggestion and assign the people who can join today. Nothing is sent."""
+    account_id = uuid.UUID(user["org_id"])
+    wait = _suggest_limiter.retry_after(str(account_id))
+    if wait:
+        raise HTTPException(
+            status_code=429, detail="Too many campaigns created: wait a minute", headers={"Retry-After": str(wait)}
+        )
+    _suggest_limiter.record(str(account_id))
+    found, _ = await _suggestions(session, account_id)
+    chosen = next((s for s in found if s.id == suggestion_id), None)
+    if chosen is None:
+        raise HTTPException(
+            status_code=404, detail="This suggestion no longer exists: the data changed. Refresh the list."
+        )
+    if not chosen.eligible_ids:
+        raise HTTPException(
+            status_code=409, detail=chosen.blocked_reason or "Nobody in this group can receive a message yet."
+        )
+    allowed = await lead_repo.get_leads_by_ids(
+        session, account_id, chosen.eligible_ids
+    )  # the same gate as assign-leads
+    ids = [lead["id"] for lead in allowed]
+    goal = chosen.rationale + (f" {chosen.angle}." if chosen.angle else "")
+    c = await campaign_repo.create_campaign(
+        session, account_id, {"name": chosen.title, "goal": goal, "channels": ["email"], "steps": [], "lead_ids": []}
+    )
+    c = await campaign_repo.assign_leads(session, account_id, str(c.id), ids) or c
+    await activity_repo.record(
+        session,
+        user["org_id"],
+        "campaign.created",
+        f"Campaign '{c.name}' created from a suggestion ({len(ids)} assigned)",
+    )
+    await audit_repo.log(
+        session,
+        account_id,
+        action="campaign.suggestion_created",
+        resource_type="campaign",
+        resource_id=c.id,
+        actor_type="user",
+        actor_user_id=uuid.UUID(user["id"]) if user.get("id") else None,
+        diff={"suggestion": chosen.id, "kind": chosen.kind, "assigned": len(ids), "eligible": chosen.total},
+    )
+    left_out = chosen.total - len(ids)
+    return SuggestionCreateOut(
+        campaign_id=str(c.id),
+        name=c.name,
+        assigned=len(ids),
+        left_out=left_out,
+        note=(
+            "Draft created, nothing is sent. Add steps, then launch: "
+            "consent and send limits still apply to every message."
+            + (f" {left_out} of the group could not join yet (not approved, or no known contact)." if left_out else "")
+        ),
+    )
 
 
 @router.post("", response_model=Campaign)

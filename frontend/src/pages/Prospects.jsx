@@ -6,6 +6,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { canDecide, prospectsApi, useAsync } from "@/lib/outreach";
 import { REVIEW_META, describeApiError, domainOf } from "@/lib/outreachFormat";
 import ScoreBadge from "@/components/outreach/ScoreBadge";
+import HeatBadge from "@/components/outreach/HeatBadge";
 import { EmptyBlock, ErrorBlock, LoadingBlock } from "@/components/outreach/States";
 
 const PAGE_SIZE = 25;
@@ -177,6 +178,7 @@ export default function Prospects() {
             <thead className="bg-[#F6F8FC] border-b border-[#D3DBEA]">
               <tr className="text-left mono-accent">
                 <th className="p-3">business</th>
+                <th className="p-3">heat</th>
                 <th className="p-3">score</th>
                 <th className="p-3">review</th>
                 <th className="p-3 hidden md:table-cell">website</th>
@@ -191,6 +193,7 @@ export default function Prospects() {
                       {p.name}
                     </Link>
                   </td>
+                  <td className="p-3"><HeatBadge heat={p.heat} /></td>
                   <td className="p-3">
                     <ScoreBadge score={p.score} coverage={p.coverage} showCoverage />
                   </td>

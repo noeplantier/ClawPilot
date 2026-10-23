@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
-from typing import List, Literal, Optional
+from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
@@ -62,6 +62,18 @@ LeadStage = Literal["new", "contacted", "engaged", "qualified", "won", "lost"]
 ConsentStatus = Literal["opted_in", "opted_out", "unknown"]
 
 
+class HeatOut(BaseModel):
+    """Why a lead ranks where it does: real information and the score, never an invented figure."""
+
+    value: int  # 0..100
+    tier: Literal["hot", "warm", "cold"]
+    info_pct: int  # share of the 8 tracked fields that are really known
+    known: List[str]
+    missing: List[str]
+    scored: bool  # False: never scored, ranked on information alone
+    score: Optional[int] = None
+
+
 class Lead(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=_uid)
@@ -81,6 +93,10 @@ class Lead(BaseModel):
     email_consent: ConsentStatus = "unknown"
     whatsapp_consent: ConsentStatus = "unknown"
     created_at: datetime = Field(default_factory=_now)
+    city: Optional[str] = None
+    website: Optional[str] = None
+    vertical: Optional[str] = None
+    heat: Optional[HeatOut] = None
 
 
 class LeadCreate(BaseModel):
@@ -361,6 +377,32 @@ class WebhookStatus(BaseModel):
     sendgrid_signature_ready: bool = False  # SENDGRID_WEBHOOK_PUBLIC_KEY is set
 
 
+class IntegrationItem(BaseModel):
+    """One integration, computed from the real configuration: names of variables only, never a value."""
+
+    id: str
+    name: str
+    group: Literal["data", "sources", "sending", "inbound", "ai"]
+    status: Literal["ready", "unchecked", "partial", "missing", "blocked", "off"]
+    label: str
+    summary: str
+    env: List[str] = Field(default_factory=list)  # every variable that controls it
+    needs: List[str] = Field(default_factory=list)  # the ones still to set
+    facts: List[List[str]] = Field(default_factory=list)  # [key, value] pairs, never secret
+    test: Optional[Literal["server", "browser"]] = None  # where its live test runs
+    hint: Optional[str] = None
+    docs: str
+
+
+class IntegrationTestOut(BaseModel):
+    id: str
+    ok: bool
+    outcome: Literal["passed", "failed", "skipped"]
+    latency_ms: Optional[int] = None
+    detail: str
+    checked_at: datetime
+
+
 class IntegrationSettings(BaseModel):
     sendgrid_from_email: Optional[str] = None
     twilio_whatsapp_from: Optional[str] = None
@@ -369,6 +411,9 @@ class IntegrationSettings(BaseModel):
     ai: AIStatus = Field(default_factory=AIStatus)
     outreach: OutreachStatus = Field(default_factory=OutreachStatus)
     webhooks: WebhookStatus = Field(default_factory=WebhookStatus)
+    items: List[IntegrationItem] = Field(default_factory=list)
+    counts: Dict[str, int] = Field(default_factory=dict)
+    generated_at: Optional[datetime] = None
 
 
 class SettingsUpdate(BaseModel):
@@ -377,6 +422,13 @@ class SettingsUpdate(BaseModel):
 
 
 # ------------------------ OutreachOS prospects ------------------------
+class QueueCountsOut(BaseModel):
+    hot: int
+    warm: int
+    cold: int
+    total: int
+
+
 class ProspectSummary(BaseModel):
     id: str
     name: str
@@ -387,6 +439,7 @@ class ProspectSummary(BaseModel):
     score: Optional[int] = None  # None = never scored
     coverage: Optional[float] = None  # share of weighted signals that could be observed
     created_at: datetime
+    heat: Optional[HeatOut] = None
 
 
 class ProspectList(BaseModel):
@@ -762,6 +815,7 @@ class MapProspectOut(BaseModel):
     score: Optional[int] = None  # None = not scored (never 0)
     signals: List[str] = Field(default_factory=list)  # keys detected now; a dismissed signal does not count
     created_at: Optional[datetime] = None
+    heat: Optional[dict] = None  # {value, tier, info_pct}: the hottest prospects are listed first on the map
 
 
 class SourceInfo(BaseModel):
@@ -838,3 +892,36 @@ class AddFromRunOut(BaseModel):
     duplicates_merged: int
     suppressed: int
     sites_checked: int
+
+
+class SuggestionOut(BaseModel):
+    id: str
+    kind: Literal["segment", "signal", "hot", "new_leads"]
+    title: str
+    angle: Optional[str] = None
+    rationale: str  # counted facts only
+    total: int
+    eligible: int  # can join a campaign today
+    pending_review: int
+    hot: int
+    with_email: int
+    with_phone: int
+    avg_heat: int
+    priority: int
+    examples: List[str]
+    blocked_reason: Optional[str] = None
+
+
+class SuggestionsOut(BaseModel):
+    generated_at: datetime
+    dry_run: bool
+    basis: dict  # {"prospects": n, "leads": n}: what the suggestions were computed from
+    items: List[SuggestionOut]
+
+
+class SuggestionCreateOut(BaseModel):
+    campaign_id: str
+    name: str
+    assigned: int
+    left_out: int
+    note: str

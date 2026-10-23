@@ -197,6 +197,54 @@ class SmtpEmailAdapter:
         return SendResult("failed", None, error, simulated=False)
 
 
+def check_connection(config: Optional[SmtpConfig] = None) -> dict:
+    """Connect, negotiate TLS and sign in; nothing is sent (no MAIL FROM). Safe to run from Settings.
+
+    Returns {"ok", "phase", "error"}: `phase` is the step reached (connect, starttls, login) and `error` is redacted.
+    """
+    cfg = config or SmtpConfig.from_env()
+    if cfg is None:
+        return {"ok": False, "phase": None, "error": "SMTP_HOST, SMTP_USERNAME and SMTP_PASSWORD are not all set"}
+    secrets = (cfg.password,)
+    phase = "connect"
+    client: Optional[smtplib.SMTP] = None
+    try:
+        context = ssl.create_default_context()
+        if cfg.security == "ssl":
+            client = smtplib.SMTP_SSL(cfg.host, cfg.port, timeout=cfg.timeout, context=context)
+        else:
+            client = smtplib.SMTP(cfg.host, cfg.port, timeout=cfg.timeout)
+            client.ehlo()
+            phase = "starttls"
+            client.starttls(context=context)
+            client.ehlo()
+        phase = "login"
+        client.login(cfg.username, cfg.password)
+    except smtplib.SMTPAuthenticationError as exc:
+        return {
+            "ok": False,
+            "phase": phase,
+            "error": f"authentication failed ({exc.smtp_code}): {_reply_text(exc, secrets)}",
+        }
+    except smtplib.SMTPResponseException as exc:
+        return {
+            "ok": False,
+            "phase": phase,
+            "error": f"the server replied {exc.smtp_code}: {_reply_text(exc, secrets)}",
+        }
+    except ssl.SSLError:
+        return {"ok": False, "phase": phase, "error": "TLS error: certificate not trusted or host name mismatch"}
+    except (smtplib.SMTPException, OSError) as exc:
+        return {"ok": False, "phase": phase, "error": f"{phase} failed ({type(exc).__name__})"}
+    finally:
+        if client is not None:
+            try:
+                client.quit()
+            except Exception:  # closing is best effort
+                client.close()
+    return {"ok": True, "phase": "login", "error": None}
+
+
 def adapter_from_env(extra_allowed: tuple[str, ...] = ()) -> Optional[SmtpEmailAdapter]:
     """The configured adapter, or None. While the sandbox is on it only writes to the allowlist (+ `extra_allowed`)."""
     config = SmtpConfig.from_env()
