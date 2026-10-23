@@ -9,7 +9,7 @@ PostgreSQL, et Alembic applique les migrations au démarrage (`start.sh`). Le fr
    utilisateur `postgres.<ref>`). Ne pas prendre « Direct connection » : elle est en IPv6 seulement sur l'offre gratuite et Render n'a
    pas de route IPv6 (même cause que l'erreur `Network is unreachable` vue sur Overpass). Ne pas prendre non plus le « Transaction pooler »
    (port 6543) : il ne gère pas les requêtes préparées d'asyncpg.
-2. Render → service `clawpilot-api` → *Environment* → `DATABASE_URL` = cette adresse, **saisie dans Render, jamais dans un chat, un
+2. Render → le service de l'API (voir `docs/deployment.md`) → *Environment* → `DATABASE_URL` = cette adresse, **saisie dans Render, jamais dans un chat, un
    commit ou un ticket**. Un mot de passe contenant `@`, `%` ou `/` doit être encodé en URL (`%40`…) : c'est géré (Alembic échappe `%`).
 3. Redéployer : `alembic upgrade head` crée le schéma, y compris l'activation de la sécurité par ligne (ci-dessous).
 4. Vérifier : page `/app/system` (base « Supabase (session pooler) », migrations à jour).
