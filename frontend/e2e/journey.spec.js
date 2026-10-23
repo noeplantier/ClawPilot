@@ -467,3 +467,38 @@ test("the review queue is split into heat lanes counted by the server, hottest f
     await expect(page.getByTestId("queue-name")).toHaveText(name);
   }
 });
+
+test("campaign suggestions come from the real data, update on their own, and create a draft that sends nothing", async ({ page }) => {
+  await page.clock.install();
+  await register(page);
+  await page.goto("/app/campaigns");
+  await expect(page.getByTestId("suggestions-empty")).toContainText("No suggestion yet"); // nothing invented for an empty organisation
+
+  await apiPost(page, "/leads", { full_name: "Alice New", email: "alice@new.example", company: "Alice SAS" });
+  await apiPost(page, "/leads", { full_name: "Bob New", phone: "+33 4 78 00 00 03", company: "Bob SAS" });
+  await page.clock.fastForward(16000); // the next refresh
+  const card = page.getByTestId("suggestion").first();
+  await expect(card).toContainText("New leads still waiting for a first message");
+  await expect(card.getByTestId("suggestion-new")).toBeVisible();
+  await expect(card.getByTestId("suggestion-ready")).toHaveText("2 of 2 can join a campaign today");
+  await expect(page.getByTestId("suggestions-basis")).toContainText("Computed from 0 prospects and 2 CRM leads");
+
+  await apiPost(page, "/leads", { full_name: "Cleo New", email: "cleo@new.example", company: "Cleo SAS" });
+  await page.clock.fastForward(16000);
+  await expect(page.getByTestId("suggestion").first().getByTestId("suggestion-ready")).toHaveText("3 of 3 can join a campaign today");
+
+  await page.getByTestId("suggestion-create").first().click();
+  await expect(page.locator('[data-testid^="campaign-card-"]').first()).toContainText("New leads still waiting for a first message");
+  await expect(page.locator('[data-testid^="campaign-card-"]').first()).toContainText("draft");
+});
+
+test("suggestions for discovery prospects say why no campaign can start yet instead of offering a dead button", async ({ page }) => {
+  await register(page);
+  await apiPost(page, "/prospects/discovery/run", { source: "fixture_directory" });
+  await page.goto("/app/campaigns");
+  const first = page.getByTestId("suggestion").first();
+  await expect(first).toBeVisible();
+  await expect(first.getByTestId("suggestion-ready")).toContainText("dry-run");
+  await expect(first.getByTestId("suggestion-create")).toBeDisabled();
+  await expect(first.getByTestId("suggestion-create")).toContainText("NOT READY");
+});

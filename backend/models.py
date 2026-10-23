@@ -863,3 +863,36 @@ class AddFromRunOut(BaseModel):
     duplicates_merged: int
     suppressed: int
     sites_checked: int
+
+
+class SuggestionOut(BaseModel):
+    id: str
+    kind: Literal["segment", "signal", "hot", "new_leads"]
+    title: str
+    angle: Optional[str] = None
+    rationale: str  # counted facts only
+    total: int
+    eligible: int  # can join a campaign today
+    pending_review: int
+    hot: int
+    with_email: int
+    with_phone: int
+    avg_heat: int
+    priority: int
+    examples: List[str]
+    blocked_reason: Optional[str] = None
+
+
+class SuggestionsOut(BaseModel):
+    generated_at: datetime
+    dry_run: bool
+    basis: dict  # {"prospects": n, "leads": n}: what the suggestions were computed from
+    items: List[SuggestionOut]
+
+
+class SuggestionCreateOut(BaseModel):
+    campaign_id: str
+    name: str
+    assigned: int
+    left_out: int
+    note: str
