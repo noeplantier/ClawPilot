@@ -50,3 +50,11 @@ export function mineSummary(mine) {
   const by = (s) => mine.filter((p) => p.review_status === s).length;
   return `${mine.length} prospect${mine.length === 1 ? "" : "s"} on the map: ${by("pending")} to review, ${by("approved")} approved, ${by("rejected")} rejected.`;
 }
+
+// Room to keep free around the map for the floating panels, as Leaflet's [x, y] auto-pan paddings: a popup never opens under
+// the search card (left) or the results drawer (right; at the bottom on a phone).
+export function panelPadding({ narrow, searchOpen, panelOpen, hidden }) {
+  if (hidden) return { topLeft: [20, 70], bottomRight: [20, 50] };
+  if (narrow) return { topLeft: [20, searchOpen ? 360 : 70], bottomRight: [20, panelOpen ? 280 : 50] };
+  return { topLeft: [searchOpen ? 440 : 20, 70], bottomRight: [panelOpen ? 400 : 20, 50] };
+}

@@ -539,3 +539,47 @@ test("settings lists every integration from the server, tests the database live 
   await page.getByTestId("int-geocoder-test").click();
   await expect(page.getByTestId("int-geocoder-status")).toContainText("VERIFIED");
 });
+
+test("one click on a map point adds the business to the CRM, with the attestation and exactly what the map published", async ({ page }) => {
+  await register(page);
+  await page.route("**/api/prospects/settings", async (route) => {
+    const real = await (await route.fetch()).json();
+    await route.fulfill({ json: { ...real, flags: { ...real.flags, external_sources: true, prospect_import: true } } });
+  });
+  await page.route(/(tile\.openstreetmap\.org)/, (route) =>
+    route.fulfill({ contentType: "image/png", body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64") }));
+  let mine = [];
+  await page.route("**/api/map/prospects", (route) => route.fulfill({ json: mine }));
+  await page.route(/\/api\/map\/search(\?.*)?$/, (route) =>
+    route.fulfill(route.request().method() === "POST" ? { status: 202, json: JOB("succeeded", { id: "j9", result_count: 1 }) } : { json: [] }));
+  await page.route("**/api/map/search/j9/places", (route) => route.fulfill({ json: ONE_PLACE }));
+  let sent = null;
+  await page.route("**/api/map/places/add", async (route) => {
+    sent = route.request().postDataJSON();
+    mine = [{ id: "p77", name: "Boulangerie Sept", city: "Lyon", lat: 45.76, lon: 4.835, review_status: "approved", has_email: false, external_id: "node/7" }];
+    await route.fulfill({
+      json: { lead_id: "p77", name: "Boulangerie Sept", created: true, review_status: "approved", in_crm: true, email: null, phone: null, website: null, email_found_on_site: false, website_checked: false, heat: null },
+    });
+  });
+  await page.goto("/app/map");
+  await page.getByTestId("map-search").click();
+  await expect(page.getByTestId("place-row")).toContainText("Boulangerie Sept");
+
+  await page.locator(".map-pin").first().dispatchEvent("click"); // the pin opens its popup
+  const popup = page.getByTestId("place-popup");
+  await expect(popup).toContainText("Boulangerie Sept");
+  await expect(popup).toContainText("not published"); // the phone and the e-mail were not published: nothing is invented
+  await expect(page.getByTestId("place-add")).toBeDisabled(); // no attestation yet
+  await page.getByTestId("place-attest").check();
+  await page.getByTestId("place-add").click();
+
+  await expect(page.getByTestId("place-added")).toContainText("Boulangerie Sept is added.");
+  await expect(page.getByTestId("place-added")).toContainText("in your CRM");
+  await expect(page.getByTestId("place-added")).toContainText("Nothing was sent");
+  await expect(page.getByTestId("place-open-crm")).toHaveAttribute("href", "/app/leads");
+  expect(sent).toMatchObject({ attestation: true, approve: true, check_website: false });
+  expect(sent.place).toMatchObject({ external_id: "node/7", name: "Boulangerie Sept", lat: 45.76, lon: 4.835, source_url: "https://www.openstreetmap.org/node/7" });
+  expect(sent.place.phone).toBeUndefined();
+  // The pin is now one of my prospects (a square) and is no longer offered as a search result.
+  await expect(page.getByTestId("map-mine-toggle")).toContainText("1 prospect on the map: 0 to review, 1 approved");
+});

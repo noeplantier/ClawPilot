@@ -20,7 +20,7 @@ from services.outreach_os import signals as sig
 from services.outreach_os.dedupe import build_candidate, dedupe
 from services.outreach_os.scoring import ScoreConfig, compute_score
 from services.outreach_os.sources import SiteFetcher, SourceAdapter
-from services.outreach_os.types import Candidate, RawListing
+from services.outreach_os.types import Candidate, RawListing, SiteSnapshot
 
 if TYPE_CHECKING:
     from db.models import ScoreVersion
@@ -129,6 +129,27 @@ async def preview_listings(session: AsyncSession, account_id: uuid.UUID, listing
     return out
 
 
+async def site_contact_email(
+    fetcher: SiteFetcher, snapshot: SiteSnapshot, website: Optional[str]
+) -> tuple[Optional[str], Optional[str]]:
+    """(e-mail, where it was published) from the business's own homepage, else from its own contact page.
+
+    The contact page is only read when the homepage links to it (same site, `contact`-like address) and the fetcher
+    allows it (robots.txt, budget, public address): nothing is guessed or crawled further.
+    """
+    email = contact.extract_contact_email(snapshot.html, website)
+    if email:
+        return email, "homepage"
+    page = contact.find_contact_page(snapshot.html, website)
+    if page is None:
+        return None, None
+    second = await asyncio.to_thread(fetcher.fetch, page)
+    if second is None:
+        return None, None
+    email = contact.extract_contact_email(second.html, website)
+    return (email, "contact page") if email else (None, None)
+
+
 async def _ingest(
     session: AsyncSession,
     account_id: uuid.UUID,
@@ -178,7 +199,7 @@ async def _ingest(
     )
     if snapshot is not None:
         summary.sites_checked += 1
-        found = contact.extract_contact_email(snapshot.html, cand.listing.website) if not lead.email else None
+        found, page = (None, None) if lead.email else await site_contact_email(fetcher, snapshot, cand.listing.website)
         if found and await prospect_repo.fill_email(session, account_id, lead, found):
             await audit_repo.log(
                 session,
@@ -188,7 +209,7 @@ async def _ingest(
                 resource_id=lead.id,
                 actor_type="user" if user_id else "system",
                 actor_user_id=user_id,
-                diff={"origin": "mailto link on the business's own homepage", "site": cand.domain},
+                diff={"origin": f"mailto link on the business's own {page}", "site": cand.domain},
             )
     results = sig.analyze(cand.listing, snapshot, now=now, stale_days=config.stale_days, trust_absence=trust_absence)
     observed = results
