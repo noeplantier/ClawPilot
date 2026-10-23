@@ -111,6 +111,38 @@ class ImapMailbox:
             _close(client)
 
 
+def check_connection(config: Optional[ImapConfig] = None) -> dict:
+    """Sign in over TLS and open the folder READ-ONLY; no message is fetched, flagged or changed.
+
+    Returns {"ok", "phase", "error"} with a redacted error (never the username or the password).
+    """
+    cfg = config or ImapConfig.from_env()
+    if cfg is None:
+        return {"ok": False, "phase": None, "error": "IMAP_HOST, IMAP_USERNAME and IMAP_PASSWORD are not all set"}
+    phase = "connect"
+    client: Optional[imaplib.IMAP4_SSL] = None
+    try:
+        client = imaplib.IMAP4_SSL(
+            cfg.host, cfg.port, ssl_context=ssl.create_default_context(), timeout=TIMEOUT_SECONDS
+        )
+        phase = "login"
+        client.login(cfg.username, cfg.password)
+        phase = "folder"
+        status_, _ = client.select(cfg.folder, readonly=True)
+        if status_ != "OK":
+            return {"ok": False, "phase": phase, "error": "the folder cannot be opened (check IMAP_FOLDER)"}
+    except imaplib.IMAP4.error:
+        return {"ok": False, "phase": phase, "error": "the server refused the request (wrong credentials or folder)"}
+    except ssl.SSLError:
+        return {"ok": False, "phase": phase, "error": "TLS error: certificate not trusted or host name mismatch"}
+    except OSError as exc:
+        return {"ok": False, "phase": phase, "error": f"{phase} failed ({type(exc).__name__})"}
+    finally:
+        if client is not None:
+            _close(client)
+    return {"ok": True, "phase": "folder", "error": None}
+
+
 def _close(client: imaplib.IMAP4_SSL) -> None:
     try:
         client.close()

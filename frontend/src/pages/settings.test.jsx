@@ -1,10 +1,11 @@
-// Settings must show what the server really has configured: no hard-coded "ACTIVE".
+// Settings must show what the server really has configured, entry by entry: no hard-coded "ACTIVE", no secret, no invented status.
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 
-jest.mock("@/lib/api", () => ({ api: { get: jest.fn() } }));
+jest.mock("@/lib/api", () => ({ api: { get: jest.fn(), post: jest.fn() } }));
+let mockRole = "owner";
 jest.mock("@/contexts/AuthContext", () => ({
-  useAuth: () => ({ user: { full_name: "Ada", email: "a@x.example", role: "owner" }, org: { id: "o1", name: "Org", plan: "pro" } }),
+  useAuth: () => ({ user: { full_name: "Ada", email: "a@x.example", role: mockRole }, org: { id: "o1", name: "Org", plan: "pro" } }),
 }));
 
 import { api } from "@/lib/api";
@@ -12,103 +13,143 @@ import Settings from "@/pages/Settings";
 
 global.IS_REACT_ACT_ENVIRONMENT = true;
 
-const BASE = {
-  sendgrid_from_email: null,
-  twilio_whatsapp_from: null,
-  twilio_account_sid_configured: false,
-  sendgrid_configured: false,
-  ai: { key_configured: false, library_available: false, active: false, mode: "template", reason: "EMERGENT_LLM_KEY is not set" },
-  outreach: {
-    dry_run: true, live_sending_flag: false, kill_switch: false, sender_configured: false, sender_email: null,
-    smtp_configured: false, smtp_host: null, imap_configured: false, imap_host: null, sandbox: true, allowlist_size: 0,
-  },
-  webhooks: { production: false, twilio_signature_ready: false, twilio_webhook_url_set: false, sendgrid_signature_ready: false },
+const mk = (id, group, status, label, extra = {}) => ({
+  id, name: `name-${id}`, group, status, label, summary: `summary of ${id}`, env: [], needs: [], facts: [], test: null, hint: null,
+  docs: `docs/integrations.md#${id}`, ...extra,
+});
+
+// What a bare server (nothing configured) returns, in the shape of GET /settings/integrations.
+const BARE = {
+  items: [
+    mk("database", "data", "ready", "CONNECTED", { test: "server", facts: [["host.kind", "Supabase · Session pooler"], ["latency", "12 ms"]] }),
+    mk("osm", "sources", "unchecked", "KEYLESS · NOT TESTED", { test: "server" }),
+    mk("geocoder", "sources", "unchecked", "KEYLESS · NOT TESTED", { test: "browser" }),
+    mk("smtp", "sending", "missing", "NOT CONFIGURED", { test: "server", needs: ["SMTP_HOST", "SMTP_USERNAME", "SMTP_PASSWORD"], env: ["SMTP_HOST", "SMTP_USERNAME", "SMTP_PASSWORD"] }),
+    mk("sendgrid", "sending", "unchecked", "CONFIGURED · NOT TESTED", { test: "server", hint: "The test only reads the key's scopes." }),
+    mk("twilio_webhook", "inbound", "off", "NOT NEEDED YET"),
+    mk("ai", "ai", "missing", "TEMPLATE ONLY", { needs: ["EMERGENT_LLM_KEY"], summary: "No model is called: the composer returns a fixed template. Reason: EMERGENT_LLM_KEY is not set." }),
+  ],
+  counts: {},
 };
 
 let container;
 let root;
 beforeEach(() => {
+  mockRole = "owner";
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
   api.get.mockReset();
+  api.post.mockReset();
+  global.fetch = jest.fn();
 });
-afterEach(() => {
-  act(() => root.unmount());
+afterEach(async () => {
+  await act(async () => root.unmount());
   container.remove();
 });
 
-async function show(data) {
+async function show(data = BARE) {
   api.get.mockResolvedValue({ data });
   await act(async () => root.render(<Settings />));
   await act(async () => {});
 }
 const byId = (id) => container.querySelector(`[data-testid="${id}"]`);
-const merge = (patch) => ({ ...BASE, ...patch });
+const click = async (id) => { await act(async () => { byId(id).click(); }); await act(async () => {}); };
 
 describe("Settings integrations", () => {
-  it("does not claim the AI is active when no model can be called, and says why", async () => {
-    await show(BASE);
-    expect(byId("row-ai-status").textContent).toContain("TEMPLATE ONLY");
-    expect(byId("row-ai").textContent).toContain("EMERGENT_LLM_KEY is not set");
+  it("renders one card per integration the server returns, with the server's own label", async () => {
+    await show();
+    for (const item of BARE.items) {
+      expect(byId(`int-${item.id}`)).not.toBeNull();
+      expect(byId(`int-${item.id}-status`).textContent).toContain(item.label);
+    }
+    expect(byId("group-data")).not.toBeNull();
+    expect(byId("group-inbound")).not.toBeNull();
+  });
+
+  it("does not claim the AI is active when no model can be called, and says why and what to set", async () => {
+    await show();
+    expect(byId("int-ai-status").textContent).toContain("TEMPLATE ONLY");
+    expect(byId("int-ai").textContent).toContain("EMERGENT_LLM_KEY is not set");
+    expect(byId("int-ai-needs").textContent).toContain("EMERGENT_LLM_KEY");
     expect(container.textContent).not.toContain("MODEL CALLED");
   });
 
-  it("shows the AI as live only when the server reports it", async () => {
-    await show(merge({ ai: { key_configured: true, library_available: true, active: true, mode: "live", reason: null } }));
-    expect(byId("row-ai-status").textContent).toContain("LIVE");
-    expect(byId("row-ai").textContent).toContain("installed");
+  it("counts from the entries: a configured but untested service is never counted as ready", async () => {
+    await show();
+    expect(byId("sum-ready").textContent).toBe("1 READY");
+    expect(byId("sum-unchecked").textContent).toBe("3 NOT TESTED");
+    expect(byId("sum-attention").textContent).toBe("2 NEED ATTENTION");
+    expect(byId("sum-off").textContent).toBe("1 OFF");
   });
 
-  it("reports a missing package even when the key is set", async () => {
-    await show(merge({ ai: { key_configured: true, library_available: false, active: false, mode: "template", reason: "the emergentintegrations package is not installed" } }));
-    expect(byId("row-ai-status").textContent).toContain("TEMPLATE ONLY");
-    expect(byId("row-ai").textContent).toContain("not installed");
+  it("lists the exact variable names to set and never offers a field to type a secret", async () => {
+    await show();
+    const needs = byId("int-smtp-needs").textContent;
+    for (const name of ["SMTP_HOST", "SMTP_USERNAME", "SMTP_PASSWORD"]) expect(needs).toContain(name);
+    expect(container.querySelector('input[type="password"]')).toBeNull();
+    expect(container.querySelector("input")).toBeNull();
+    expect(byId("int-secrets-note").textContent).toContain("never typed or shown here");
+    expect(byId("int-sendgrid-hint").textContent).toContain("scopes");
   });
 
-  it("reflects each provider's configuration and lists what is missing", async () => {
-    await show(merge({ sendgrid_configured: true, sendgrid_from_email: "founder@plantiers.com" }));
-    expect(byId("row-sendgrid-status").textContent).toContain("CONFIGURED");
-    expect(byId("row-sendgrid").textContent).toContain("founder@plantiers.com");
-    expect(byId("row-twilio-status").textContent).toContain("NOT CONFIGURED");
-    const missing = byId("missing-config").textContent;
-    expect(missing).toContain("TWILIO_ACCOUNT_SID");
-    expect(missing).not.toContain("SENDGRID_API_KEY");
+  it("a passed server test marks the entry verified, with the measured latency", async () => {
+    await show();
+    api.post.mockResolvedValue({ data: { id: "sendgrid", ok: true, outcome: "passed", latency_ms: 87, detail: "SendGrid accepted the key.", checked_at: "2026-10-23T10:00:00Z" } });
+    await click("int-sendgrid-test");
+    expect(api.post).toHaveBeenCalledWith("/settings/integrations/sendgrid/test");
+    expect(byId("int-sendgrid-status").textContent).toBe("VERIFIED · 87 ms");
+    expect(byId("int-sendgrid-result").textContent).toContain("SendGrid accepted the key.");
+    expect(byId("sum-ready").textContent).toBe("2 READY");
   });
 
-  it("shows dry-run, live and kill-switch states distinctly", async () => {
-    await show(BASE);
-    expect(byId("row-outreach-status").textContent).toContain("DRY-RUN");
-    await act(async () => root.unmount());
-    root = createRoot(container);
-    const live = { ...BASE.outreach, dry_run: false, live_sending_flag: true, sender_configured: true, sender_email: "founder@plantiers.com" };
-    await show(merge({ outreach: live }));
-    expect(byId("row-outreach-status").textContent).toContain("SMTP INCOMPLETE");
-    await act(async () => root.unmount());
-    root = createRoot(container);
-    await show(merge({ outreach: { ...live, smtp_configured: true, smtp_host: "smtp.example", sandbox: true, allowlist_size: 1 } }));
-    expect(byId("row-outreach-status").textContent).toContain("SANDBOX");
-    expect(byId("row-outreach").textContent).toContain("smtp.example");
-    expect(byId("row-outreach").textContent).toContain("on (1 allowed)");
-    await act(async () => root.unmount());
-    root = createRoot(container);
-    await show(merge({ outreach: { ...live, smtp_configured: true, smtp_host: "smtp.example", sandbox: false } }));
-    expect(byId("row-outreach-status").textContent).toContain("REAL E-MAIL");
-    await act(async () => root.unmount());
-    root = createRoot(container);
-    await show(merge({ outreach: { ...BASE.outreach, kill_switch: true } }));
-    expect(byId("row-outreach-status").textContent).toContain("KILL SWITCH");
+  it("a failed test turns the entry red with the reason; a service with a fallback only turns amber", async () => {
+    await show();
+    api.post.mockResolvedValueOnce({ data: { ok: false, outcome: "failed", latency_ms: 20, detail: "SendGrid rejected the key (HTTP 401).", checked_at: "x" } });
+    await click("int-sendgrid-test");
+    expect(byId("int-sendgrid").dataset.status).toBe("blocked");
+    expect(byId("int-sendgrid-result").textContent).toContain("rejected the key");
+    api.post.mockResolvedValueOnce({ data: { ok: false, outcome: "failed", latency_ms: 20, detail: "No OpenStreetMap server answered.", checked_at: "x" } });
+    await click("int-osm-test");
+    expect(byId("int-osm").dataset.status).toBe("partial");
   });
 
-  it("has no warning banner when everything is configured", async () => {
-    await show({
-      sendgrid_from_email: "a@b.example", twilio_whatsapp_from: "whatsapp:+1", twilio_account_sid_configured: true, sendgrid_configured: true,
-      ai: { ...BASE.ai, key_configured: true, library_available: true, active: true, mode: "live", reason: null },
-      outreach: { ...BASE.outreach, sender_configured: true, sender_email: "a@b.example", smtp_configured: true, smtp_host: "smtp.example" },
-      webhooks: { production: true, twilio_signature_ready: true, twilio_webhook_url_set: true, sendgrid_signature_ready: true },
-    });
-    expect(byId("missing-config")).toBeNull();
-    expect(byId("row-webhooks-status").textContent).toContain("BOTH VERIFIED");
+  it("a skipped test or an API error keeps the server's status instead of inventing one", async () => {
+    await show();
+    api.post.mockResolvedValueOnce({ data: { ok: false, outcome: "skipped", latency_ms: null, detail: "SMTP_HOST … are not all set.", checked_at: "x" } });
+    await click("int-smtp-test");
+    expect(byId("int-smtp").dataset.status).toBe("missing");
+    api.post.mockRejectedValueOnce({ response: { status: 429, data: { detail: "Test limit reached: wait a minute" } } });
+    await click("int-sendgrid-test");
+    expect(byId("int-sendgrid").dataset.status).toBe("unchecked");
+    expect(byId("int-sendgrid-result").textContent).toContain("Test limit reached");
+  });
+
+  it("tests the city search from the browser, not through the API", async () => {
+    await show();
+    global.fetch.mockResolvedValue({ ok: true, status: 200, json: async () => ({ features: [{}] }) });
+    await click("int-geocoder-test");
+    expect(api.post).not.toHaveBeenCalled();
+    expect(global.fetch.mock.calls[0][0]).toContain("api-adresse.data.gouv.fr");
+    expect(byId("int-geocoder-status").textContent).toContain("VERIFIED");
+  });
+
+  it("only an owner or an admin can run the server checks; the browser check stays open", async () => {
+    mockRole = "member";
+    await show();
+    expect(byId("int-sendgrid-test").disabled).toBe(true);
+    expect(byId("int-geocoder-test").disabled).toBe(false);
+  });
+
+  it("run checks only tests what is configured and spares the rate limit", async () => {
+    await show();
+    api.post.mockImplementation((url) => Promise.resolve({ data: { ok: true, outcome: "passed", latency_ms: 5, detail: `ok ${url}`, checked_at: "x" } }));
+    global.fetch.mockResolvedValue({ ok: true, status: 200, json: async () => ({ features: [{}] }) });
+    await click("int-run-all");
+    const called = api.post.mock.calls.map(([url]) => url).sort();
+    expect(called).toEqual(["/settings/integrations/database/test", "/settings/integrations/osm/test", "/settings/integrations/sendgrid/test"]);
+    expect(called.join()).not.toContain("smtp"); // not configured: nothing to test
+    expect(byId("int-geocoder-status").textContent).toContain("VERIFIED");
   });
 
   it("shows an error with retry instead of default 'ACTIVE' labels when the server cannot be read", async () => {
@@ -117,6 +158,26 @@ describe("Settings integrations", () => {
     await act(async () => {});
     expect(container.querySelector('[data-testid="error-block"]').textContent).toContain("boom");
     expect(container.textContent).not.toContain("ACTIVE");
-    expect(byId("row-ai")).toBeNull();
+    expect(byId("int-ai")).toBeNull();
+  });
+
+  it("re-reads the server on its own and says when a refresh failed", async () => {
+    jest.useFakeTimers();
+    try {
+      await show();
+      expect(api.get).toHaveBeenCalledTimes(1);
+      const next = { ...BARE, items: BARE.items.map((i) => (i.id === "smtp" ? { ...i, status: "unchecked", label: "CONFIGURED · NOT TESTED", needs: [] } : i)) };
+      api.get.mockResolvedValue({ data: next });
+      await act(async () => { jest.advanceTimersByTime(30000); });
+      expect(api.get).toHaveBeenCalledTimes(2);
+      expect(byId("int-smtp-status").textContent).toContain("CONFIGURED");
+      expect(byId("int-smtp-needs")).toBeNull();
+      api.get.mockRejectedValue(new Error("offline"));
+      await act(async () => { jest.advanceTimersByTime(30000); });
+      expect(byId("int-live").textContent).toContain("Refresh failed");
+      expect(byId("int-smtp-status").textContent).toContain("CONFIGURED"); // the last data stays
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });
