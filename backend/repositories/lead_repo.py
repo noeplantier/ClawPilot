@@ -293,6 +293,11 @@ def _sendable_clause():
     return or_(Lead.review_status.is_(None), Lead.review_status == "approved")
 
 
+def sendable_clause():
+    """Public name of the send rule (CRM leads; approved prospects once live sending is on)."""
+    return _sendable_clause()
+
+
 async def discovery_send_block(session: AsyncSession, account_id: uuid.UUID, lead_id: uuid.UUID) -> Optional[str]:
     """Why a single-recipient send must be refused for a discovery prospect, or None if it may proceed."""
     status = (

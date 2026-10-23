@@ -6,6 +6,7 @@ import {
   Plus, Play, Pause, Trash, Target, PaperPlaneTilt, Eye, ChatCircleDots, Rocket, X, ArrowRight, Sparkle, ArrowSquareOut, Users,
 } from "@phosphor-icons/react";
 import CampaignDetailDrawer from "@/components/CampaignDetailDrawer";
+import Suggestions from "@/components/campaigns/Suggestions";
 import { describeLaunch, launchErrorText } from "@/lib/campaignLaunch";
 
 const STATUS_CHIP = {
@@ -69,6 +70,8 @@ export default function Campaigns() {
           <Plus size={16} weight="bold" /> NEW CAMPAIGN
         </button>
       </div>
+
+      <Suggestions onCreated={load} />
 
       <div className="grid lg:grid-cols-2 gap-4">
         {list.map((c, i) => (
