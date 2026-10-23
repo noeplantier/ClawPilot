@@ -32,11 +32,10 @@ from repositories import (
 )
 from routes._refusal import block_detail
 from services import feature_flags, legacy_email, scheduler, send_gate
+from services.mail_provider import send_email, send_whatsapp
 from services.outreach_os import suggestions as suggestion_rules
 from services.rate_limit import AttemptLimiter
-from services.sendgrid_svc import send_email
 from services.templating import render as _render
-from services.twilio_svc import send_whatsapp
 
 router = APIRouter(prefix="/campaigns", tags=["campaigns"])
 
@@ -77,7 +76,6 @@ class AssignLeadsIn(BaseModel):
 class RunStepOut(BaseModel):
     dispatched: int
     sent: int
-    mocked: int
     failed: int
     skipped: int
     not_attempted: int = 0  # leads not reached because a limit, the pause or the kill switch stopped the step
@@ -270,7 +268,7 @@ async def _execute_step(session: AsyncSession, account_id: uuid.UUID, c, step, l
     Stops at the first refusal: the leads not reached are reported as `not_attempted` with the reason, nothing is queued
     silently and nothing is faked. Consent is checked per lead exactly as before.
     """
-    sent = mocked = failed = skipped = not_attempted = 0
+    sent = failed = skipped = not_attempted = 0
     blocked: Optional[send_gate.SendBlocked] = None
 
     for index, lead in enumerate(leads):
@@ -287,7 +285,7 @@ async def _execute_step(session: AsyncSession, account_id: uuid.UUID, c, step, l
             continue
 
         try:
-            await send_gate.check(session, account_id, channel)
+            await send_gate.check(session, account_id, channel, provider=True)
         except send_gate.SendBlocked as exc:
             blocked = exc
             not_attempted = len(leads) - index
@@ -358,14 +356,11 @@ async def _execute_step(session: AsyncSession, account_id: uuid.UUID, c, step, l
 
         if result["status"] == "sent":
             sent += 1
-        elif result["status"] == "mock":
-            mocked += 1
         else:
             failed += 1
 
     return {
         "sent": sent,
-        "mocked": mocked,
         "failed": failed,
         "skipped": skipped,
         "not_attempted": not_attempted,
@@ -401,7 +396,7 @@ async def run_step(
     leads = await _campaign_leads(session, account_id, c)
     outcome = await _execute_step(session, account_id, c, step, leads)
 
-    dispatched = outcome["sent"] + outcome["mocked"]
+    dispatched = outcome["sent"]
     await campaign_repo.increment_counters(session, account_id, campaign_id, sent=dispatched, set_status="running")
     await activity_repo.record(
         session,
@@ -421,8 +416,9 @@ async def launch_campaign(
 ):
     """Start the campaign: really execute its first step now, under the send limits and the pause.
 
-    This used to invent sent/opened/replied/converted numbers with `random`. It now sends (or records a mock send when
-    the provider is not configured) and the counters only ever reflect real attempts; opens, replies and conversions
+    This used to invent sent/opened/replied/converted numbers with `random`. It now really sends (and refuses, saying
+    why,
+    when no provider is configured) and the counters only ever reflect real sends; opens, replies and conversions
     come from webhooks, never from here.
     """
     account_id = uuid.UUID(user["org_id"])
@@ -435,7 +431,7 @@ async def launch_campaign(
 
     leads = await _campaign_leads(session, account_id, c)
     outcome = await _execute_step(session, account_id, c, steps[0], leads)
-    dispatched = outcome["sent"] + outcome["mocked"]
+    dispatched = outcome["sent"]
     await campaign_repo.increment_counters(session, account_id, campaign_id, sent=dispatched, set_status="running")
     await activity_repo.record(
         session,

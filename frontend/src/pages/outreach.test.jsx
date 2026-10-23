@@ -80,7 +80,16 @@ describe("Prospects list", () => {
     expect(byId("empty-no-prospects")).toBeTruthy();
     expect(text()).toContain("No prospect yet");
     expect(byId("prospects-table")).toBeNull();
+    expect(byId("empty-open-map")).toBeTruthy(); // the way to real prospects, not a demo
+    expect(byId("empty-run-discovery")).toBeNull(); // the demo directory is off unless the server enables it
+    expect(byId("run-discovery")).toBeNull();
+  });
+
+  it("offers the demo directory only when the server enables FEATURE_DEMO_DATA", async () => {
+    answer({ "/prospects": { items: [], total: 0 }, "/prospects/settings": { flags: { demo_data: true } } });
+    await show(<Prospects />);
     expect(byId("empty-run-discovery")).toBeTruthy();
+    expect(byId("run-discovery").textContent).toContain("DEMO");
   });
 
   it("lists real rows with score, review state and website", async () => {
@@ -103,7 +112,7 @@ describe("Prospects list", () => {
 
   it("disables discovery for a member (the API would refuse anyway)", async () => {
     global.__user = member;
-    answer({ "/prospects": { items: [], total: 0 } });
+    answer({ "/prospects": { items: [], total: 0 }, "/prospects/settings": { flags: { demo_data: true } } });
     await show(<Prospects />);
     expect(byId("run-discovery").disabled).toBe(true);
   });
@@ -219,6 +228,34 @@ describe("Sending", () => {
     await setValue(day, "-3");
     expect(byId("limit-error-max_per_day")).toBeTruthy();
     expect(byId("save-limits").disabled).toBe(true);
+  });
+
+  it("tests the real WhatsApp connection with one listed number and says exactly what happened", async () => {
+    load();
+    await show(<Sending />);
+    const setValue = async (el, v) => {
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+      await act(async () => {
+        setter.call(el, v);
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+    };
+    expect(byId("whatsapp-test-send").disabled).toBe(true); // nothing typed
+    await setValue(byId("whatsapp-test-to"), "+33666167788");
+    api.post.mockResolvedValue({ data: { status: "sent", to: "+33666167788", provider_message_id: "SM1", error: null } });
+    await act(async () => byId("whatsapp-test-send").click());
+    expect(api.post).toHaveBeenCalledWith("/outbound/test-whatsapp", { to: "+33666167788" });
+    expect(byId("whatsapp-test-result").textContent).toContain("Accepted by Twilio");
+    api.post.mockRejectedValue({ response: { status: 409, data: { detail: { code: "provider_not_configured", message: "x", retry_at: null } } } });
+    await act(async () => byId("whatsapp-test-send").click());
+    expect(byId("whatsapp-test-error").textContent).toContain("Settings > Integrations");
+  });
+
+  it("hides the WhatsApp test from a member", async () => {
+    global.__user = member;
+    load();
+    await show(<Sending />);
+    expect(byId("whatsapp-test")).toBeNull();
   });
 
   it("lists dispatched messages, marks dry-run, and shows erased addresses as such", async () => {

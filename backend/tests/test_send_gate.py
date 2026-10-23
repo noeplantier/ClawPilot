@@ -2,7 +2,7 @@
 
 Runs on a server (see .github/workflows/ci.yml). Every test uses its own freshly registered organisation, so the
 counters start at zero and the tests can be replayed on a database that has already been used. Nothing leaves the
-process: without provider keys the senders return `mock`.
+process: the server runs with OUTREACH_TEST_SINK, which records a send in-process (its id starts with `sink:`).
 """
 
 import os

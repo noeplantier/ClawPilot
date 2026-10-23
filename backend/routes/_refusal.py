@@ -25,6 +25,8 @@ STATUS_FOR_CODE = {
     "sandbox_recipient": 422,
     "not_compliant": 422,
     "sender_not_configured": 409,
+    "provider_not_configured": 409,
+    "invalid_number": 422,
 }
 
 

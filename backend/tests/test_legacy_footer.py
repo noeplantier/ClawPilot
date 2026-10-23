@@ -1,6 +1,7 @@
 """Legacy send paths (single, batch, campaign step) append identity, data origin and a working unsubscribe link.
 
-Runs on a server whose OUTREACH_SENDER_* are set (see .github/workflows/ci.yml). Nothing leaves the process (mock).
+Runs on a server whose OUTREACH_SENDER_* are set (see .github/workflows/ci.yml). Nothing leaves the process (the
+server runs with OUTREACH_TEST_SINK).
 """
 
 import os

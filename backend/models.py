@@ -352,8 +352,8 @@ class AIStatus(BaseModel):
     key_configured: bool = False
     library_available: bool = False
     active: bool = False  # True only when the model is really called
-    mode: str = "template"  # "live" | "template" (fixed text, no model call)
-    reason: Optional[str] = None  # why it is in template mode
+    mode: str = "off"  # "live" | "off" (nothing is generated)
+    reason: Optional[str] = None  # why it is off
 
 
 class OutreachStatus(BaseModel):
@@ -690,6 +690,17 @@ class OutboundMessageDetail(OutboundMessageOut):
 
 class SmtpCheckIn(BaseModel):
     to: EmailStr
+
+
+class WhatsAppCheckIn(BaseModel):
+    to: str = Field(min_length=8, max_length=20, description="E.164 number, e.g. +33612345678")
+
+
+class WhatsAppCheckOut(BaseModel):
+    status: str  # sent | failed
+    to: str
+    provider_message_id: Optional[str] = None
+    error: Optional[str] = None
 
 
 class InboxSyncOut(BaseModel):

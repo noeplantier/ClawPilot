@@ -13,16 +13,16 @@ EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")
 
 def status() -> dict:
     """What the AI composer will really do right now. It only calls the model when a key is set AND the optional
-    `emergentintegrations` package (private index, not in requirements.txt) is installed; otherwise it returns a
-    fixed template. Settings shows this instead of a hard-coded 'ACTIVE'."""
+    `emergentintegrations` package (private index, not in requirements.txt) is installed; otherwise it refuses (no
+    canned text pretending to be a message). Settings shows this instead of a hard-coded 'ACTIVE'."""
     key_present = bool(EMERGENT_KEY)
     library_available = importlib.util.find_spec("emergentintegrations") is not None
     if key_present and library_available:
         mode, reason = "live", None
     elif not key_present:
-        mode, reason = "template", "EMERGENT_LLM_KEY is not set"
+        mode, reason = "off", "EMERGENT_LLM_KEY is not set"
     else:
-        mode, reason = "template", "the emergentintegrations package is not installed"
+        mode, reason = "off", "the emergentintegrations package is not installed"
     return {
         "key_configured": key_present,
         "library_available": library_available,
@@ -32,14 +32,13 @@ def status() -> dict:
     }
 
 
-def _fallback(recipient_name: str, product: str, language: str, tone: str, channel: str, company: str | None) -> dict:
-    subj = f"Quick idea for {company or recipient_name}"
-    body = (
-        f"Hi {recipient_name},\n\n"
-        f"I noticed {company or 'your team'} is doing great work and thought {product} might help you move faster.\n\n"
-        f"Worth a 15-min chat this week?\n\nBest,\nThe Plantiers Team"
-    )
-    return {"subject": subj if channel == "email" else None, "body": body, "language": language}
+class AIUnavailable(Exception):
+    """The composer cannot write a real message right now. Never replaced by a canned text that pretends to be one."""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+        self.message = message
 
 
 async def generate_message(
@@ -51,15 +50,14 @@ async def generate_message(
     goal: str | None = None,
     company: str | None = None,
 ) -> dict:
-    """Generate AI message using Gemini 3 Flash via emergentintegrations."""
-    if not EMERGENT_KEY:
-        return _fallback(recipient_name, product, language, tone, channel, company)
-
-    try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
-    except Exception as e:
-        logger.warning("emergentintegrations not available: %s", e)
-        return _fallback(recipient_name, product, language, tone, channel, company)
+    """Generate a message with the model, or raise `AIUnavailable` saying why (no key, no package, model error)."""
+    state = status()
+    if not state["active"]:
+        raise AIUnavailable(
+            "ai_not_configured",
+            f"The AI composer is off: {state['reason']}. Write the message yourself, or set it up in Settings.",
+        )
+    from emergentintegrations.llm.chat import LlmChat, UserMessage
 
     system = (
         "You are an expert B2B outreach copywriter. "
@@ -103,5 +101,5 @@ async def generate_message(
             "language": language,
         }
     except Exception as e:
-        logger.exception("AI generation failed, using fallback: %s", e)
-        return _fallback(recipient_name, product, language, tone, channel, company)
+        logger.warning("AI generation failed: %s", type(e).__name__)
+        raise AIUnavailable("ai_failed", f"The model did not answer ({type(e).__name__}). Nothing was generated.")

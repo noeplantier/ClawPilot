@@ -1,7 +1,8 @@
 """Outbound dispatch: send an approved draft through a channel adapter, under limits and a kill switch.
 
 Dry-run unless `FEATURE_LIVE_SENDING` is on; then the SMTP adapter is used (refused when it is not fully configured).
-Reading is open to any member; dispatching, simulating events, testing the SMTP connection and changing limits
+Reading is open to any member; dispatching, simulating events, testing the SMTP / WhatsApp connections and
+changing limits
 need owner/admin. Refused attempts are written to the audit log (committed before the 4xx is returned).
 """
 
@@ -30,13 +31,16 @@ from models import (
     SimulateIn,
     SmtpCheckIn,
     SmtpCheckOut,
+    WhatsAppCheckIn,
+    WhatsAppCheckOut,
 )
 from repositories import audit_repo, draft_repo, outbound_repo, outreach_repo, send_policy_repo
 from routes._refusal import refusal
-from services import feature_flags, imap_svc, inbox_sync, send_gate, smtp_svc
+from services import feature_flags, imap_svc, inbox_sync, mail_provider, send_gate, smtp_svc
 from services.outreach_os import channels
 from services.outreach_os import dispatch as dispatch_svc
 from services.outreach_os import drafts, sandbox
+from services.outreach_os.normalize import normalize_phone
 
 router = APIRouter(prefix="/outbound", tags=["outbound"])
 decider = require_roles("owner", "admin")
@@ -253,6 +257,74 @@ async def smtp_test_send(
     )
     return SmtpCheckOut(
         status=result.status, to=to, adapter=adapter.name, provider_message_id=result.provider_id, error=result.error
+    )
+
+
+@router.post("/test-whatsapp", response_model=WhatsAppCheckOut)
+async def whatsapp_test_send(
+    payload: WhatsAppCheckIn, user: dict = Depends(decider), session: AsyncSession = Depends(get_db_session)
+):
+    """Send ONE technical WhatsApp message to verify the real Twilio connection, before any prospect.
+
+    Only to a number listed in `OUTREACH_LIVE_PHONES` (your own phones: never a prospect), through the same kill switch,
+    pause and limits as everything else. Naming a number in that variable is the owner's own opt-in for it. Records a
+    `whatsapp_sends` row (so it counts toward the limits) and an audit entry, but no outreach event.
+    """
+    account_id = _account(user)
+
+    async def refuse(code: str, message: str):
+        return await refusal(
+            session,
+            user,
+            send_gate.SendBlocked(code, message),
+            resource_type="whatsapp_test",
+            action="whatsapp_test.blocked",
+            channel="whatsapp",
+        )
+
+    to = normalize_phone(payload.to)
+    if to is None:
+        raise await refuse(
+            "invalid_number", "The number cannot be read: use the international format, e.g. +33612345678"
+        )
+    if to not in feature_flags.live_phones():
+        raise await refuse(
+            "sandbox_recipient", "A test only goes to a number listed in OUTREACH_LIVE_PHONES (your own phone)"
+        )
+    try:
+        await send_gate.check(session, account_id, "whatsapp", provider=True)
+    except send_gate.SendBlocked as blocked:
+        raise await refusal(
+            session, user, blocked, resource_type="whatsapp_test", action="whatsapp_test.blocked", channel="whatsapp"
+        )
+
+    body = (
+        "Message de test technique de Plantiers - OutreachOS : il vérifie la connexion WhatsApp, ce n'est pas de la "
+        "prospection. Il a été demandé par l'administrateur de ce compte pour son propre numéro."
+    )
+    result = await asyncio.to_thread(mail_provider.send_whatsapp, to, body)
+    await outreach_repo.create_whatsapp_send(
+        session,
+        account_id,
+        direction="outbound",
+        from_number="",
+        to_number=to,
+        body=body,
+        status="sent" if result["status"] == "sent" else "failed",
+        provider_message_sid=result.get("provider_id"),
+        error=result.get("error"),
+    )
+    await audit_repo.log(
+        session,
+        account_id,
+        action=f"whatsapp_test.{result['status']}",
+        resource_type="whatsapp_test",
+        actor_type="user",
+        actor_user_id=uuid.UUID(user["id"]),
+        diff={"provider": mail_provider.whatsapp_provider()},
+    )
+    return WhatsAppCheckOut(
+        status=result["status"], to=to, provider_message_id=result.get("provider_id"), error=result.get("error")
     )
 
 

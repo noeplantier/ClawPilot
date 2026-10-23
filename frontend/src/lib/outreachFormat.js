@@ -78,7 +78,11 @@ const BLOCK_TEXT = {
   sender_not_configured: "The sender identity is not configured on the server (OUTREACH_SENDER_*).",
   not_compliant: "The draft is missing a mandatory element (sender, data origin or unsubscribe link).",
   live_not_available: "Real sending is not available: live sending is off, or the SMTP settings are incomplete. Nothing was sent.",
-  sandbox_recipient: "Sandbox is on: this recipient is not on OUTREACH_LIVE_ALLOWLIST. Nothing was sent.",
+  sandbox_recipient: "Sandbox is on: this recipient is not on the allowlist (OUTREACH_LIVE_ALLOWLIST for e-mail, OUTREACH_LIVE_PHONES for WhatsApp). Nothing was sent.",
+  provider_not_configured: "No provider is configured for this channel, so nothing was sent. Set it up in Settings > Integrations.",
+  invalid_number: "The number cannot be read: use the international format, e.g. +33612345678.",
+  ai_not_configured: "The AI composer is off (no key or package). Write the message yourself, or set it up in Settings > Integrations.",
+  demo_disabled: "The demo directory is off: find real businesses on the map or import a list.",
   not_simulated: "Only dry-run messages can be simulated.",
   already_bounced: "This message already bounced.",
   not_delivered: "This message was never sent.",
@@ -96,6 +100,17 @@ export function describeTestSend(result) {
     return { tone: "warn", text: `Outcome unknown (${result.error}). Check the mailbox's Sent folder before trying again.` };
   }
   return { tone: "danger", text: `Not sent: ${result.error || "the SMTP server refused the message"}` };
+}
+
+// What a WhatsApp test result means. "sent" says Twilio accepted it; delivery to the phone is confirmed there.
+export function describeWhatsappTest(result) {
+  if (result.status === "sent") {
+    return {
+      tone: "ok",
+      text: `Accepted by Twilio for ${result.to}. It should arrive on that phone within seconds; on the Twilio sandbox, the number must first have joined it.`,
+    };
+  }
+  return { tone: "danger", text: `Not sent: ${result.error || "Twilio refused the message"}` };
 }
 
 // What a mailbox read did, in the numbers the API returned. Zero everywhere is said plainly, never dressed up.

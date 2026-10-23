@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import { ArrowsClockwise, CaretLeft, CaretRight, ListChecks } from "@phosphor-icons/react";
+import { ArrowsClockwise, CaretLeft, CaretRight, ListChecks, MapTrifold } from "@phosphor-icons/react";
 import { useAuth } from "@/contexts/AuthContext";
 import { canDecide, prospectsApi, useAsync } from "@/lib/outreach";
 import { REVIEW_META, describeApiError, domainOf } from "@/lib/outreachFormat";
@@ -43,6 +43,9 @@ export default function Prospects() {
       }),
     [status, minScore, page]
   );
+  // The built-in demo directory (fictional businesses) is offered only when the server explicitly enables it.
+  const settings = useAsync(() => prospectsApi.settings().catch(() => null), []);
+  const demoOn = !!(settings.data && settings.data.flags && settings.data.flags.demo_data);
   // Real totals per review status (one tiny request each), shown on the tabs.
   const counts = useAsync(async () => {
     const [pending, approved, rejected] = await Promise.all(
@@ -97,15 +100,20 @@ export default function Prospects() {
           <Link to="/app/prospects/review" className="btn-ghost" data-testid="open-review-queue">
             <ListChecks size={14} /> REVIEW QUEUE{counts.data ? ` (${counts.data.pending})` : ""}
           </Link>
-          <button
-            className="btn-primary"
-            onClick={runDiscovery}
-            disabled={running || !canDecide(user)}
-            title={canDecide(user) ? "Reads the local fixture directory; no network" : "Requires owner or admin"}
-            data-testid="run-discovery"
-          >
-            <ArrowsClockwise size={14} weight="bold" className={running ? "animate-spin" : ""} /> RUN DISCOVERY (DRY-RUN)
-          </button>
+          <Link to="/app/map" className="btn-primary" data-testid="open-map-search">
+            <MapTrifold size={14} weight="bold" /> FIND ON THE MAP
+          </Link>
+          {demoOn && (
+            <button
+              className="btn-ghost"
+              onClick={runDiscovery}
+              disabled={running || !canDecide(user)}
+              title={canDecide(user) ? "Reads the built-in demo directory (fictional businesses); no network" : "Requires owner or admin"}
+              data-testid="run-discovery"
+            >
+              <ArrowsClockwise size={14} weight="bold" className={running ? "animate-spin" : ""} /> LOAD THE DEMO DIRECTORY
+            </button>
+          )}
         </div>
       </div>
 
@@ -154,14 +162,21 @@ export default function Prospects() {
 
       {list.data && items.length === 0 && !filtered && (
         <EmptyBlock title="No prospect yet" testId="empty-no-prospects">
-          <p>Run discovery to read the local fixture directory (fictional restaurants). No network access is used and nothing is sent.</p>
-          {canDecide(user) ? (
-            <button className="btn-primary" onClick={runDiscovery} disabled={running} data-testid="empty-run-discovery">
-              RUN DISCOVERY (DRY-RUN)
-            </button>
-          ) : (
-            <p className="mono-accent">requires owner or admin</p>
-          )}
+          <p>
+            Find real businesses on the map: search an area, click a place and add it to your CRM in one click. You can also import
+            a list you own. Nothing is contacted until a person approves it.
+          </p>
+          <div className="flex gap-2 justify-center flex-wrap">
+            <Link to="/app/map" className="btn-primary" data-testid="empty-open-map">
+              <MapTrifold size={14} weight="bold" /> FIND ON THE MAP
+            </Link>
+            <Link to="/app/prospects/import" className="btn-ghost">IMPORT A LIST</Link>
+            {demoOn && canDecide(user) && (
+              <button className="btn-ghost" onClick={runDiscovery} disabled={running} data-testid="empty-run-discovery">
+                LOAD THE DEMO DIRECTORY
+              </button>
+            )}
+          </div>
         </EmptyBlock>
       )}
       {list.data && items.length === 0 && filtered && (

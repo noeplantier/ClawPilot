@@ -18,7 +18,7 @@ from datetime import datetime, timedelta, timezone
 from celery_app import celery_app
 from repositories import campaign_repo, consent_repo, lead_repo, outreach_repo, send_policy_repo
 from services import legacy_email, send_gate
-from services.sendgrid_svc import send_email
+from services.mail_provider import send_email
 from services.templating import render as _render
 from services.timezones import resolve_timezone
 from tasks._bridge import run_async
@@ -88,8 +88,10 @@ async def _send_email_impl(
         raise task.retry(eta=retry_at, max_retries=None)
 
     try:
-        await send_gate.check(session, account_id, "email")
+        await send_gate.check(session, account_id, "email", provider=True)
     except send_gate.SendBlocked as blocked:
+        if blocked.code == "provider_not_configured":  # waiting cannot fix it: report it, do not retry forever
+            return {"status": "failed", "reason": blocked.code}
         raise task.retry(**_retry_args(blocked))
 
     subject = _render(step.subject or "", lead)
@@ -130,7 +132,7 @@ async def _send_email_impl(
         campaign_step_id=campaign_step_id,
         lead_id=lead_id,
     )
-    if result["status"] in ("sent", "mock"):
+    if result["status"] == "sent":
         await campaign_repo.increment_counters(session, account_id, campaign_id, sent=1)
     return result
 
@@ -138,7 +140,7 @@ async def _send_email_impl(
 async def _send_whatsapp_impl(
     session, task, account_id: uuid.UUID, campaign_id: str, campaign_step_id: str, lead_id: str
 ) -> dict:
-    from services.twilio_svc import send_whatsapp
+    from services.mail_provider import send_whatsapp
 
     campaign = await campaign_repo.get_campaign(session, account_id, campaign_id)
     if not campaign:
@@ -162,8 +164,10 @@ async def _send_whatsapp_impl(
         raise task.retry(eta=retry_at, max_retries=None)
 
     try:
-        await send_gate.check(session, account_id, "whatsapp")
+        await send_gate.check(session, account_id, "whatsapp", provider=True)
     except send_gate.SendBlocked as blocked:
+        if blocked.code == "provider_not_configured":  # waiting cannot fix it: report it, do not retry forever
+            return {"status": "failed", "reason": blocked.code}
         raise task.retry(**_retry_args(blocked))
 
     body = _render(step.body or "", lead)
@@ -191,7 +195,7 @@ async def _send_whatsapp_impl(
         campaign_id=campaign_id,
         lead_id=lead_id,
     )
-    if result["status"] in ("sent", "mock"):
+    if result["status"] == "sent":
         await campaign_repo.increment_counters(session, account_id, campaign_id, sent=1)
     return result
 

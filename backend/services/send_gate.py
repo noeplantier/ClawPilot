@@ -2,7 +2,7 @@
 
 Every path that can make a message leave the system calls this before the provider: the prospect dispatch
 (services/outreach_os/dispatch.py), the single and batch send routes, the campaign step runner and the Celery send
-tasks. Never call `sendgrid_svc.send_email` / `twilio_svc.send_whatsapp` from a new path without going through here.
+tasks. Never call `mail_provider.send_email` / `send_whatsapp` from a new path without going through here.
 
 Order: kill switch (environment) → pause of the organisation → daily cap, rolling hourly cap, minimum delay.
 Counting is shared: sends from every path (the prospect ledger and the legacy `email_sends` / `whatsapp_sends`)
@@ -23,7 +23,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from repositories import outbound_repo, send_policy_repo
-from services import feature_flags
+from services import feature_flags, mail_provider
 from services.outreach_os import limits
 
 CHANNELS = ("email", "whatsapp")
@@ -90,13 +90,32 @@ async def assert_within_limits(
         raise SendBlocked(f"limit_{decision.code}", decision.reason or "send limit reached", decision.retry_at)
 
 
-async def check(session: AsyncSession, account_id: uuid.UUID, channel: str, now: Optional[datetime] = None) -> None:
-    """Raise `SendBlocked` unless one more message may leave now. Holds the sender lock until the transaction ends."""
+def assert_provider_configured(channel: str) -> None:
+    """The legacy paths (single send, batch, campaign step) need a real provider: refuse instead of faking a send."""
+    if mail_provider.provider_for(channel) is None:
+        raise SendBlocked("provider_not_configured", mail_provider.NOT_CONFIGURED[channel])
+
+
+async def check(
+    session: AsyncSession,
+    account_id: uuid.UUID,
+    channel: str,
+    now: Optional[datetime] = None,
+    *,
+    provider: bool = False,
+) -> None:
+    """Raise `SendBlocked` unless one more message may leave now. Holds the sender lock until the transaction ends.
+
+    `provider=True` (the legacy paths that call `mail_provider`) also refuses when no provider is configured, after
+    the kill switch, the pause and the limits: the reason an operator needs first is the one reported first.
+    """
     if channel not in CHANNELS:
         raise ValueError(f"unknown channel: {channel}")
     await _lock(session, account_id, channel)
     await assert_not_halted(session, account_id, channel)
     await assert_within_limits(session, account_id, channel, now)
+    if provider:
+        assert_provider_configured(channel)
 
 
 async def lock_and_assert_not_halted(session: AsyncSession, account_id: uuid.UUID, channel: str) -> None:

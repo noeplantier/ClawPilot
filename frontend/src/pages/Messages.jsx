@@ -3,12 +3,13 @@ import { motion } from "framer-motion";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 import { sendErrorText } from "@/lib/campaignLaunch";
+import { describeApiError } from "@/lib/outreachFormat";
 import { Envelope, WhatsappLogo, PaperPlaneTilt, Sparkle, Users } from "@phosphor-icons/react";
 import BatchComposerModal from "@/components/BatchComposerModal";
 
 const STATUS_CHIP = {
   sent: "chip-success", delivered: "chip-success", opened: "chip-cyan",
-  replied: "chip-purple", failed: "chip-danger", queued: "chip-warn", mock: "chip-warn",
+  replied: "chip-purple", failed: "chip-danger", queued: "chip-warn", mock: "chip-danger", // "mock" = legacy rows from before sends were real
 };
 
 export default function Messages() {
@@ -71,7 +72,7 @@ export default function Messages() {
                   {m.subject && <div className="text-[#0A0A0A]">{m.subject}</div>}
                   <div className="truncate">{m.body}</div>
                 </td>
-                <td className="p-3"><span className={`chip ${STATUS_CHIP[m.status]}`}>{m.status}</span></td>
+                <td className="p-3"><span className={`chip ${STATUS_CHIP[m.status]}`}>{m.status === "mock" ? "not sent" : m.status}</span></td>
                 <td className="p-3 font-mono text-xs text-[#6B6B66]">{new Date(m.created_at).toLocaleString()}</td>
               </motion.tr>
             ))}
@@ -111,7 +112,7 @@ function Composer({ channel, onClose, onSent }) {
       });
       if (data.subject) setSubject(data.subject);
       setBody(data.body);
-    } catch (e) { toast.error("AI generation failed"); }
+    } catch (e) { toast.error(describeApiError(e)); }
     finally { setGenerating(false); }
   };
 
@@ -123,9 +124,8 @@ function Composer({ channel, onClose, onSent }) {
       const payload = channel === "email" ? { to, subject, body } : { to, body };
       const { data } = await api.post(path, payload);
       const status = data.result.status;
-      if (status === "sent") toast.success("Dispatched successfully");
-      else if (status === "mock") toast.info("Logged as MOCK — configure integration in Settings");
-      else toast.error(`Status: ${status}`);
+      if (status === "sent") toast.success("Sent");
+      else toast.error(data.result.error || `Not sent (${status})`);
       onSent();
     } catch (e) { toast.error(sendErrorText(e)); }
     finally { setSending(false); }

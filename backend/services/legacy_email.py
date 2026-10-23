@@ -1,10 +1,11 @@
 """Compliance envelope for the legacy e-mail paths (single send, batch, campaign step, Celery task).
 
-Every e-mail sent through SendGrid goes through `prepare()` first: it refuses a suppressed recipient, then appends the
-sender identity, the origin of the data and a signed unsubscribe link to the body, and returns the RFC 8058 headers.
-Fail closed: with SendGrid configured (a message can really leave), a missing sender identity or a missing recipient
-record makes `prepare()` raise `EmailNotCompliant` and nothing is sent. Without SendGrid nothing can leave, so the
-message stays untouched (mock) when the identity is not configured.
+Every e-mail sent by these paths (SMTP or SendGrid) goes through `prepare()` first: it refuses a suppressed recipient,
+then appends the sender identity, the origin of the data and a signed unsubscribe link to the body, and returns
+the RFC 8058 headers.
+Fail closed: with a provider configured (a message can really leave), a missing sender identity or a missing recipient
+record makes `prepare()` raise `EmailNotCompliant` and nothing is sent. Without a provider nothing can leave, so the
+message stays untouched when the identity is not configured (the send gate then refuses it anyway).
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from deps import JWT_SECRET
 from repositories import suppression_repo
-from services import sendgrid_svc
+from services import mail_provider
 from services.outreach_os import channels, email_footer
 from services.outreach_os.drafts import SenderIdentity
 from services.outreach_os.normalize import normalize_email
@@ -57,7 +58,7 @@ async def prepare(
     """The body to send (footer included) and its headers, or `EmailNotCompliant`."""
     if await suppression_repo.is_suppressed(session, account_id, email=normalize_email(to_email)):
         raise EmailNotCompliant("suppressed", "Recipient is on the suppression list")
-    enforce = sendgrid_svc.is_configured()
+    enforce = mail_provider.email_provider() in ("smtp", "sendgrid")  # the test sink sends nothing: not enforced
     sender = SenderIdentity.from_env()
     if sender is None:
         if enforce:

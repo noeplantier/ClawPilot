@@ -1,4 +1,4 @@
-"""SendGrid email sending wrapper with graceful mock fallback."""
+"""SendGrid e-mail sender. Without credentials nothing is attempted and the answer says so (no pretend dispatch)."""
 
 import logging
 import os
@@ -9,7 +9,7 @@ from services.outreach_os import channels
 logger = logging.getLogger(__name__)
 
 API_KEY = os.environ.get("SENDGRID_API_KEY")
-# No default sender: a message never leaves from an address nobody configured. Without SENDGRID_FROM_EMAIL, mock.
+# No default sender: a message never leaves from an address nobody configured. Without SENDGRID_FROM_EMAIL, no send.
 FROM_EMAIL = os.environ.get("SENDGRID_FROM_EMAIL") or None
 
 
@@ -42,15 +42,20 @@ def is_configured() -> bool:
 def send_email(
     to_email: str, subject: str, body: str, from_email: str | None = None, headers: dict[str, str] | None = None
 ) -> dict:
-    """Send email. Returns {status, provider_id, error}.
+    """Send email. Returns {status, provider_id, error}; `status` is "sent" or "failed", never a pretend success.
 
-    If SendGrid isn't fully configured (no API key or no `SENDGRID_FROM_EMAIL`), returns mocked dispatch.
+    If SendGrid isn't fully configured (no API key or no `SENDGRID_FROM_EMAIL`) nothing is attempted and the answer
+    says so. A provider error (an unverified sender, a rejected key) is returned as the failure it is.
     """
     if feature_flags.kill_switch():
         return {"status": "failed", "provider_id": None, "error": "sending halted by the kill switch"}
     sender = from_email or FROM_EMAIL
     if not API_KEY or not sender:
-        return {"status": "mock", "provider_id": None, "error": "sendgrid not configured"}
+        return {
+            "status": "failed",
+            "provider_id": None,
+            "error": "SendGrid is not configured (SENDGRID_API_KEY and SENDGRID_FROM_EMAIL): nothing was sent",
+        }
 
     try:
         from sendgrid import SendGridAPIClient
@@ -85,6 +90,5 @@ def send_email(
             }
         return {"status": "failed", "provider_id": None, "error": f"status {resp.status_code}"}
     except Exception as e:
-        logger.warning("sendgrid send failed: %s", e)
-        # Graceful mock on failure (e.g., unverified sender) so UX continues
-        return {"status": "mock", "provider_id": None, "error": str(e)}
+        logger.warning("sendgrid send failed: %s", type(e).__name__)
+        return {"status": "failed", "provider_id": None, "error": f"SendGrid refused the message: {str(e)[:200]}"}

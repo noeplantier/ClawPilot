@@ -97,14 +97,14 @@ python3 -m venv /tmp/dev && /tmp/dev/bin/pip install -r requirements-dev.in && /
 
 The previous `pip freeze` of ~130 packages (LLM SDKs, `boto3`, `stripe`, `pandas`, `numpy`, `huggingface_hub`, `litellm`, `openai`,
 `google-*`, `jq`, `s5cmd`, …) was not imported by any code and was removed. `emergentintegrations` (AI composer) is optional and
-installed from a private index; without it the composer returns a template (see Settings).
+installed from a private index; without it the composer refuses and says why (see Settings).
 
 ## Environment variables
 
 See [`backend/.env.example`](backend/.env.example) and
 [`frontend/.env.example`](frontend/.env.example) for the full list. Nothing is
-required to boot in a degraded/mock mode except `DATABASE_URL` and `JWT_SECRET` —
-SendGrid/Twilio/AI all fall back to graceful mocks when unconfigured.
+required to boot except `DATABASE_URL` and `JWT_SECRET`. An integration that is not configured refuses to act and says what to
+set (Settings > Integrations): nothing is ever recorded as sent, generated or found unless it really happened.
 
 | Variable | Purpose |
 |---|---|
@@ -114,8 +114,8 @@ SendGrid/Twilio/AI all fall back to graceful mocks when unconfigured.
 | `APP_ENV` | `production` makes `scripts/seed_demo.py` refuse to run |
 | `CORS_ORIGINS` | Comma-separated allowed origins (default `http://localhost:3000`; never `*`) |
 | `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND`, `REDIS_URL` | Redis for Celery |
-| `SENDGRID_API_KEY`, `SENDGRID_FROM_EMAIL` | Email (mock when unset) |
-| `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM` | WhatsApp (mock when unset) |
+| `SENDGRID_API_KEY`, `SENDGRID_FROM_EMAIL` | E-mail for CRM messages and campaigns when SMTP is not used (refused, not simulated, when unset) |
+| `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM` | WhatsApp (refused, not simulated, when unset) |
 | `TWILIO_WEBHOOK_URL` | Exact public URL Twilio calls (e.g. `https://api.example.com/api/webhooks/twilio`); used to verify `X-Twilio-Signature` |
 | `SENDGRID_WEBHOOK_PUBLIC_KEY` | Verification key for `X-Twilio-Email-Event-Webhook-Signature` on `POST /api/webhooks/sendgrid` |
 | `OUTREACH_SENDER_NAME`, `_COMPANY`, `_ADDRESS`, `_EMAIL` | Sender identity printed in drafts; all four required, no default |
@@ -124,9 +124,11 @@ SendGrid/Twilio/AI all fall back to graceful mocks when unconfigured.
 | `FEATURE_LIVE_SENDING`, `FEATURE_EXTERNAL_SOURCES` | Dangerous capabilities, off unless `true`. Live sending = real e-mail over SMTP (below). External sources = the **Sources** page (`docs/sources.md`), the **Map search** page (live OpenStreetMap places, see `docs/map-search.md`) and the opt-in "check websites" of a list import: each company's own public homepage is fetched (`robots.txt` respected, identified User-Agent, platforms and non-public addresses refused, 25 sites max per import). Enabling it is your attestation that this is permitted for the sites concerned |
 | `SMTP_HOST`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_SECURITY`, `SMTP_PORT` | The real e-mail channel. The first three are required; `SMTP_SECURITY` is `starttls` (587, default) or `ssl` (465); TLS is verified and mandatory |
 | `IMAP_HOST`, `IMAP_USERNAME`, `IMAP_PASSWORD`, `IMAP_PORT`, `IMAP_FOLDER` | Reads replies, hard bounces and STOP from the sending mailbox (TLS only, port 993, folder `INBOX` by default). The first three are required; without them nothing is read. Run by beat every 5 minutes where a worker exists, or by `POST /api/outbound/sync-inbox` |
-| `OUTREACH_SANDBOX`, `OUTREACH_LIVE_ALLOWLIST` | While live sending is on, only the allowlisted addresses/`@domains` receive mail. The sandbox is on unless set to `false`; an empty allowlist allows nobody |
+| `OUTREACH_SANDBOX`, `OUTREACH_LIVE_ALLOWLIST`, `OUTREACH_LIVE_PHONES` | While the sandbox is on, only the allowlisted addresses/`@domains` receive e-mail and only the listed numbers (E.164, comma separated, no spaces) receive WhatsApp. The sandbox is on unless set to `false`; an empty list allows nobody. `POST /api/outbound/test-whatsapp` only reaches `OUTREACH_LIVE_PHONES` |
+| `FEATURE_DEMO_DATA` | `true` offers the built-in demo directory (fictional businesses) as a source; off by default so only real data is shown |
+| `OUTREACH_TEST_SINK` | Automated tests only: records sends in-process (ids start with `sink:`) instead of calling a provider. Ignored when `APP_ENV=production` |
 | `SEND_KILL_SWITCH` | `true` halts every send immediately (dispatch, SMTP test, SendGrid, Twilio) |
-| `EMERGENT_LLM_KEY` | AI composer (mock when unset) |
+| `EMERGENT_LLM_KEY` | AI composer (refuses, with the reason, when unset: no canned text) |
 | `REACT_APP_BACKEND_URL` (frontend) | API base URL |
 
 ## OutreachOS: local prospect journey (dry-run, no network)
@@ -251,8 +253,9 @@ until `OUTREACH_SANDBOX=false` is set on purpose. Check the connection first wit
 The message row is written as `sending` and committed **before** the SMTP call (at most once: a message left in `sending` has an
 unknown outcome and is never resent by the system); a clean failure is `failed` and the draft can be dispatched again.
 Full procedure (SPF/DKIM/DMARC, kill-switch drill, known limits): [`docs/go-live-email.md`](docs/go-live-email.md).
-Not covered yet: a real prospect source (only the fictional directory exists), bounce/reply tracking over SMTP, and the
-legacy Messages/campaign paths (SendGrid or mock, no unsubscribe footer).
+The legacy Messages/campaign paths use SMTP first (when live sending is on and SMTP is set, sandbox allowlist applied), then
+SendGrid; with neither they refuse and say so. `POST /api/outbound/test-whatsapp {"to": "+33612345678"}` does the same for WhatsApp
+(only to `OUTREACH_LIVE_PHONES`).
 Go-live requirements are in [`docs/deployment.md`](docs/deployment.md).
 
 Tests: `pytest tests/unit` runs offline with no server or database; `pytest tests/test_outreach_prospects.py` is the end-to-end

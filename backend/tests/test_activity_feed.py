@@ -92,7 +92,7 @@ def test_integration_status_is_computed_not_hard_coded():
     data = requests.get(f"{BASE_URL}/api/settings/integrations", headers=headers).json()
     ai = data["ai"]
     assert ai["active"] == (ai["key_configured"] and ai["library_available"])
-    assert ai["mode"] == ("live" if ai["active"] else "template")
+    assert ai["mode"] == ("live" if ai["active"] else "off")
     assert (ai["reason"] is None) == ai["active"]  # a reason is given exactly when it is not live
     out = data["outreach"]
     assert out["dry_run"] is True and out["kill_switch"] is False  # defaults of the test server

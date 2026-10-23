@@ -8,7 +8,7 @@ Status vocabulary (the UI maps each to a colour and a label, nothing is hard-cod
     ready       works as configured (nothing to check from here, or the check passed)
     unchecked   nothing missing, but only a live test can prove it works: shown with a "Test" button
     partial     works with a limit, or is set but unusable as is
-    missing     not configured: the product falls back to its mock / template mode
+    missing     not configured: the product refuses to act and says what to configure
     blocked     a safety stop or a configuration that makes sends or links fail
     off         deliberately disabled (a feature flag, dry-run) or not needed yet
 """
@@ -36,6 +36,9 @@ TRACKED_ENV = (
     "SEND_KILL_SWITCH",
     "OUTREACH_SANDBOX",
     "OUTREACH_LIVE_ALLOWLIST",
+    "OUTREACH_LIVE_PHONES",
+    "OUTREACH_TEST_SINK",
+    "FEATURE_DEMO_DATA",
     "OUTREACH_SENDER_NAME",
     "OUTREACH_SENDER_COMPANY",
     "OUTREACH_SENDER_ADDRESS",
@@ -86,6 +89,8 @@ class Facts:
     kill_switch: bool = False
     sandbox: bool = True
     allowlist_size: int = 0
+    phones_size: int = 0  # numbers in OUTREACH_LIVE_PHONES
+    test_sink: bool = False  # automated tests only: sends are recorded in-process, never sent
     sender_configured: bool = False
     sender_email: Optional[str] = None
     smtp_configured: bool = False
@@ -318,9 +323,15 @@ def _sending_mode(f: Facts) -> dict[str, Any]:
     facts = [
         ("FEATURE_LIVE_SENDING", "on" if f.live_sending else "off"),
         ("SEND_KILL_SWITCH", "ON" if f.kill_switch else "off"),
-        ("OUTREACH_SANDBOX", f"on ({f.allowlist_size} allowed)" if f.sandbox else "off"),
+        ("OUTREACH_SANDBOX", f"on ({f.allowlist_size} e-mail, {f.phones_size} phone allowed)" if f.sandbox else "off"),
     ]
-    env = ("FEATURE_LIVE_SENDING", "SEND_KILL_SWITCH", "OUTREACH_SANDBOX", "OUTREACH_LIVE_ALLOWLIST")
+    env = (
+        "FEATURE_LIVE_SENDING",
+        "SEND_KILL_SWITCH",
+        "OUTREACH_SANDBOX",
+        "OUTREACH_LIVE_ALLOWLIST",
+        "OUTREACH_LIVE_PHONES",
+    )
     summary = "What actually leaves the system. Limits, pause and compliance checks apply to every send path."
     if f.kill_switch:
         return _item(
@@ -330,6 +341,17 @@ def _sending_mode(f: Facts) -> dict[str, Any]:
             "blocked",
             "HALTED BY THE KILL SWITCH",
             summary,
+            env=env,
+            facts=facts,
+        )
+    if f.test_sink:
+        return _item(
+            "sending_mode",
+            "Sending mode",
+            "sending",
+            "partial",
+            "TEST SINK · NOTHING IS SENT",
+            summary + " Automated tests only: sends are recorded in-process.",
             env=env,
             facts=facts,
         )
@@ -452,7 +474,7 @@ def _imap(f: Facts) -> dict[str, Any]:
 
 def _sendgrid(f: Facts) -> dict[str, Any]:
     names = ("SENDGRID_API_KEY", "SENDGRID_FROM_EMAIL")
-    summary = "Optional provider for the legacy campaign and composer paths, with open and click tracking."
+    summary = "E-mail provider for CRM messages and campaigns (open and click tracking). SMTP is used first when set."
     if f.sendgrid_configured:
         return _item(
             "sendgrid",
@@ -466,12 +488,23 @@ def _sendgrid(f: Facts) -> dict[str, Any]:
             test="server",
             hint="The test only reads the key's scopes.",
         )
+    if f.smtp_configured:  # SMTP already carries the e-mail: SendGrid is an alternative, not a gap
+        return _item(
+            "sendgrid",
+            "SendGrid e-mail",
+            "sending",
+            "off",
+            "NOT NEEDED · SMTP IS USED",
+            summary,
+            env=names,
+            test="server",
+        )
     return _item(
         "sendgrid",
         "SendGrid e-mail",
         "sending",
         "missing",
-        "NOT CONFIGURED · MOCK DISPATCH",
+        "NOT CONFIGURED · NOTHING IS SENT",
         summary,
         env=names,
         needs=_missing(f, names),
@@ -481,7 +514,9 @@ def _sendgrid(f: Facts) -> dict[str, Any]:
 
 def _twilio(f: Facts) -> dict[str, Any]:
     names = ("TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_WHATSAPP_FROM")
-    summary = "Optional provider for WhatsApp, only to contacts who opted in. Mock dispatch when not configured."
+    summary = (
+        "WhatsApp provider, only to contacts who opted in. Until it is configured nothing is sent or recorded as sent."
+    )
     if f.twilio_configured:
         return _item(
             "twilio",
@@ -512,7 +547,7 @@ def _twilio(f: Facts) -> dict[str, Any]:
         "Twilio WhatsApp",
         "sending",
         "missing",
-        "NOT CONFIGURED · MOCK DISPATCH",
+        "NOT CONFIGURED · NOTHING IS SENT",
         summary,
         env=names,
         needs=_missing(f, ("TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN")),
@@ -599,8 +634,8 @@ def _ai(f: Facts) -> dict[str, Any]:
         "AI composer",
         "ai",
         status,
-        "TEMPLATE ONLY",
-        f"No model is called: the composer returns a fixed template. Reason: {reason}.",
+        "OFF · NOTHING IS GENERATED",
+        f"No model is called and no canned text is offered in its place. Reason: {reason}.",
         env=("EMERGENT_LLM_KEY",),
         needs=[] if ai.get("key_configured") else ["EMERGENT_LLM_KEY"],
         facts=facts,

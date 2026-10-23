@@ -12,6 +12,16 @@ from helpers import open_send_limits
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
 
+
+def _ai_off(response) -> bool:
+    """The AI composer is off on this server (no key or package): it refuses with 503, it never fabricates a message."""
+    if response.status_code == 503:
+        detail = response.json()["detail"]
+        assert detail["code"] == "ai_not_configured" and "AI composer is off" in detail["message"]
+        return True
+    return False
+
+
 # Demo credentials (pre-seeded)
 DEMO_EMAIL = "demo@outreachos.example"
 DEMO_PASSWORD = "Demo12345!"
@@ -199,7 +209,7 @@ class TestBatchEmail:
         # Verify response structure
         assert "dispatched" in data
         assert "sent" in data
-        assert "mocked" in data
+        assert "mocked" not in data  # a send is real or refused: there is no pretend category
         assert "failed" in data
         assert "skipped" in data
         assert "total" in data
@@ -207,10 +217,10 @@ class TestBatchEmail:
 
         # Verify counts
         assert data["total"] == 2
-        assert data["dispatched"] == data["sent"] + data["mocked"]
+        assert data["dispatched"] == data["sent"]
         assert data["skipped"] == 0  # All leads have emails
 
-        print(f"✓ Batch email: dispatched={data['dispatched']}, sent={data['sent']}, mocked={data['mocked']}")
+        print(f"✓ Batch email: dispatched={data['dispatched']}, sent={data['sent']}")
 
     def test_batch_email_token_substitution(self, auth_headers):
         """Test that tokens are substituted correctly in batch emails"""
@@ -305,16 +315,16 @@ class TestBatchWhatsApp:
         # Verify response structure
         assert "dispatched" in data
         assert "sent" in data
-        assert "mocked" in data
+        assert "mocked" not in data  # a send is real or refused: there is no pretend category
         assert "failed" in data
         assert "skipped" in data
         assert "total" in data
 
         # Verify counts
         assert data["total"] == 2
-        assert data["dispatched"] == data["sent"] + data["mocked"]
+        assert data["dispatched"] == data["sent"]
 
-        print(f"✓ Batch WhatsApp: dispatched={data['dispatched']}, sent={data['sent']}, mocked={data['mocked']}")
+        print(f"✓ Batch WhatsApp: dispatched={data['dispatched']}, sent={data['sent']}")
 
     def test_batch_whatsapp_skips_no_phone(self, auth_headers):
         """Test that batch WhatsApp skips leads without phone"""
@@ -495,14 +505,14 @@ class TestCampaignRunStep:
         # Verify response structure
         assert "dispatched" in data
         assert "sent" in data
-        assert "mocked" in data
+        assert "mocked" not in data  # a send is real or refused: there is no pretend category
         assert "failed" in data
         assert "skipped" in data
         assert "total" in data
 
         # Verify execution
         assert data["total"] == 2
-        assert data["dispatched"] == data["sent"] + data["mocked"]
+        assert data["dispatched"] == data["sent"]
 
         print(f"✓ Run step: dispatched={data['dispatched']}, total={data['total']}")
 
@@ -579,6 +589,8 @@ class TestAIGenerateVariants:
             "goal": "book a demo call",
         }
         response = requests.post(f"{BASE_URL}/api/ai/generate/variants", headers=auth_headers, json=payload)
+        if _ai_off(response):
+            return
         assert response.status_code == 200, f"Generate variants failed: {response.text}"
         data = response.json()
 
@@ -607,6 +619,8 @@ class TestAIGenerateVariants:
             "goal": "quick chat",
         }
         response = requests.post(f"{BASE_URL}/api/ai/generate/variants", headers=auth_headers, json=payload)
+        if _ai_off(response):
+            return
         assert response.status_code == 200
         data = response.json()
 
@@ -701,6 +715,8 @@ class TestRegressionEndpoints:
                 "channel": "email",
             },
         )
+        if _ai_off(response):
+            return
         assert response.status_code == 200
         assert "body" in response.json()
         print("✓ AI generate single working")

@@ -9,7 +9,8 @@ Par défaut rien ne sort : `FEATURE_LIVE_SENDING` est éteint, l'adaptateur est 
 |---|---|---|
 | Brouillons de prospects approuvés (`POST /api/outbound/dispatch`) | **SMTP** (`services/smtp_svc.py`) quand `FEATURE_LIVE_SENDING=true`, sinon dry-run | Identité, origine des données, lien de désinscription et en-têtes `List-Unsubscribe` dans chaque message |
 | Test de connexion (`POST /api/outbound/test-send`) | SMTP | Un seul message technique, uniquement vers **votre propre adresse** ou une adresse de la liste blanche |
-| Page *Messages*, lots, campagnes (anciens chemins) | **SendGrid** ou mock, **pas** SMTP | Voir « Limites connues » |
+| Page *Messages*, lots, campagnes (anciens chemins) | **SMTP** d'abord (envoi réel activé, liste blanche appliquée), puis **SendGrid** ; sans aucun des deux, **refus explicite** (`provider_not_configured`), jamais d'envoi simulé | Voir « Limites connues » |
+| Test WhatsApp (`POST /api/outbound/test-whatsapp`) | Twilio | Un seul message technique, uniquement vers un numéro de `OUTREACH_LIVE_PHONES` (votre propre téléphone) |
 
 ## Variables d'environnement (serveur, jamais dans le code)
 
@@ -23,6 +24,7 @@ Par défaut rien ne sort : `FEATURE_LIVE_SENDING` est éteint, l'adaptateur est 
 | `FEATURE_LIVE_SENDING` | `true` autorise l'envoi réel. |
 | `OUTREACH_SANDBOX` | Actif tant qu'il n'est pas mis explicitement à `false` : seuls les destinataires de `OUTREACH_LIVE_ALLOWLIST` reçoivent quoi que ce soit. |
 | `OUTREACH_LIVE_ALLOWLIST` | Adresses (`founder@plantiers.com`) ou domaines (`@plantiers.com`) autorisés pendant le sandbox. Vide = personne. |
+| `OUTREACH_LIVE_PHONES` | Numéros WhatsApp (format `+33612345678`, séparés par des virgules, sans espaces) autorisés pendant le sandbox, et seuls destinataires du test WhatsApp. Vide = personne. |
 | `SEND_KILL_SWITCH` | `true` arrête immédiatement tout envoi (se pose en redéployant). |
 
 Le mot de passe SMTP doit être saisi dans le tableau de bord de l'hébergeur (Render : variable `sync: false`). Il n'apparaît ni dans les
@@ -85,8 +87,10 @@ journaux, ni dans une réponse d'API, ni dans la page Settings (qui n'affiche qu
    demande par le bouton « Read mailbox now » de la page *Sending* (`POST /api/outbound/sync-inbox`, rôle owner/admin).
    Sans variables IMAP, rien n'est lu : `simulate` reste réservé au dry-run, et un rebond/une réponse se traite à la main
    (`POST /api/prospects/suppressions`). Le chemin SendGrid (anciens chemins) a ses propres webhooks signés.
-3. **Les anciens chemins (page Messages, lots, campagnes) n'utilisent pas SMTP.** Ils passent par SendGrid (ou mock). Sans
-   `SENDGRID_FROM_EMAIL` ils restent en mock. Depuis cette tranche, chaque e-mail qu'ils envoient porte le même pied de page que
+3. **Les anciens chemins (page Messages, lots, campagnes)** utilisent SMTP quand l'envoi réel est activé et que `SMTP_*` est
+   complet (la liste blanche du sandbox s'applique), sinon SendGrid ; sans l'un ni l'autre ils **refusent** (409
+   `provider_not_configured`) au lieu de simuler un envoi. Un échec du fournisseur (expéditeur non vérifié, clé refusée) est
+   rapporté tel quel, jamais transformé en succès. Depuis cette tranche, chaque e-mail qu'ils envoient porte le même pied de page que
    les brouillons (identité de l'expéditeur, origine des données lue dans la source du prospect — « source non renseignée » si
    elle est vide, jamais inventée — et lien de désinscription signé) ainsi que les en-têtes `List-Unsubscribe` / one-click. Un
    destinataire sur la liste de suppression est refusé. Avec SendGrid configuré, ces chemins échouent fermé : sans identité
