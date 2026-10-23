@@ -71,12 +71,12 @@ export default function CampaignDetailDrawer({ open, campaignId, onClose, onUpda
           onClick={(e) => e.stopPropagation()}
           data-testid="campaign-detail-drawer"
         >
-          <div className="sticky top-0 bg-[#FFFFFF] border-b border-[#D6D3C8] px-6 py-4 flex items-center justify-between z-10">
+          <div className="sticky top-0 bg-[#FFFFFF] border-b border-[#D3DBEA] px-6 py-4 flex items-center justify-between z-10">
             <div>
               <div className="mono-accent">/// campaign · {c.status}</div>
               <h2 className="text-2xl font-black tracking-tighter text-[#0A0A0A]">{c.name}</h2>
             </div>
-            <button onClick={onClose} className="text-[#595955] hover:text-[#DC2626]" data-testid="close-campaign-drawer">
+            <button onClick={onClose} className="text-[#595955] hover:text-[#4F46E5]" data-testid="close-campaign-drawer">
               <X size={22} />
             </button>
           </div>
@@ -85,7 +85,7 @@ export default function CampaignDetailDrawer({ open, campaignId, onClose, onUpda
             {/* metrics */}
             <div className="grid grid-cols-4 gap-3">
               {[
-                ["sent", c.sent, "#DC2626"],
+                ["sent", c.sent, "#4F46E5"],
                 ["opened", c.opened, "#0F172A"],
                 ["replied", c.replied, "#475569"],
                 ["converted", c.converted, "#10B981"],
@@ -115,7 +115,7 @@ export default function CampaignDetailDrawer({ open, campaignId, onClose, onUpda
               ) : (
                 <div className="grid grid-cols-2 gap-2 max-h-[160px] overflow-y-auto">
                   {leads.map((l) => (
-                    <div key={l.id} className="surface bg-[#FAFAF7] p-2 text-xs">
+                    <div key={l.id} className="surface bg-[#F6F8FC] p-2 text-xs">
                       <div className="font-semibold text-[#0A0A0A] truncate">{l.full_name}</div>
                       <div className="font-mono text-[#595955] truncate">{l.email || l.phone || "—"}</div>
                     </div>
@@ -242,7 +242,7 @@ function AssignLeadsSheet({ campaign, allLeads, onClose, onSaved }) {
         onClick={(e) => e.stopPropagation()}
         data-testid="assign-leads-modal"
       >
-        <button onClick={onClose} className="absolute top-3 right-3 text-[#595955] hover:text-[#DC2626]"><X size={20} /></button>
+        <button onClick={onClose} className="absolute top-3 right-3 text-[#595955] hover:text-[#4F46E5]"><X size={20} /></button>
         <div className="mono-accent">/// assign.leads</div>
         <h3 className="text-xl font-black tracking-tighter mt-1">Add leads to campaign</h3>
         <input
@@ -252,7 +252,7 @@ function AssignLeadsSheet({ campaign, allLeads, onClose, onSaved }) {
           onChange={(e) => setSearch(e.target.value)}
           data-testid="assign-search-input"
         />
-        <div className="mt-3 max-h-[340px] overflow-y-auto divide-y divide-[#D6D3C8]">
+        <div className="mt-3 max-h-[340px] overflow-y-auto divide-y divide-[#D3DBEA]">
           {candidates.map((l) => {
             const checked = selected.has(l.id);
             return (
@@ -263,7 +263,7 @@ function AssignLeadsSheet({ campaign, allLeads, onClose, onSaved }) {
                     checked ? n.delete(l.id) : n.add(l.id);
                     return n;
                   });
-                }} className="accent-[#DC2626]" />
+                }} className="accent-[#4F46E5]" />
                 <div className="flex-1 min-w-0 text-sm">
                   <div className="font-semibold">{l.full_name}</div>
                   <div className="text-xs font-mono text-[#595955] truncate">{l.email} {l.company && `· ${l.company}`}</div>

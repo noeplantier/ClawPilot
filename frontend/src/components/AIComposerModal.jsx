@@ -100,7 +100,7 @@ export default function AIComposerModal({ open, onClose, defaults }) {
             className={`relative w-full max-w-4xl surface p-6 md:p-8 ${loading ? "glow-purple" : ""}`}
             data-testid="ai-composer-modal"
           >
-            <button onClick={onClose} className="absolute top-4 right-4 text-[#5F5F5A] hover:text-[#DC2626]" data-testid="close-ai-composer">
+            <button onClick={onClose} className="absolute top-4 right-4 text-[#5F5F5A] hover:text-[#4F46E5]" data-testid="close-ai-composer">
               <X size={20} />
             </button>
 
@@ -160,11 +160,11 @@ export default function AIComposerModal({ open, onClose, defaults }) {
               </div>
 
               {/* Result */}
-              <div className="surface bg-[#FAFAF7] p-5 min-h-[380px] relative">
+              <div className="surface bg-[#F6F8FC] p-5 min-h-[380px] relative">
                 <div className="flex items-center justify-between mb-3">
                   <span className="mono-accent">output</span>
                   {result && (
-                    <button onClick={copy} className="chip chip-cyan hover:border-[#DC2626]" data-testid="ai-copy-button">
+                    <button onClick={copy} className="chip chip-cyan hover:border-[#4F46E5]" data-testid="ai-copy-button">
                       <Copy size={12} /> COPY
                     </button>
                   )}
@@ -177,7 +177,7 @@ export default function AIComposerModal({ open, onClose, defaults }) {
                   </div>
                 )}
                 {(loading || variantsLoading) && (
-                  <div className="h-full flex items-center justify-center text-[#DC2626]">
+                  <div className="h-full flex items-center justify-center text-[#4F46E5]">
                     <ArrowClockwise size={32} className="spin-slow" />
                   </div>
                 )}
@@ -188,7 +188,7 @@ export default function AIComposerModal({ open, onClose, defaults }) {
                       const v = variants[i];
                       if (!v) return null;
                       return (
-                        <div key={tone} className="surface p-3 hover:border-[#DC2626]/40 transition cursor-pointer" onClick={() => pickVariant(v)} data-testid={`variant-${tone}`}>
+                        <div key={tone} className="surface p-3 hover:border-[#4F46E5]/40 transition cursor-pointer" onClick={() => pickVariant(v)} data-testid={`variant-${tone}`}>
                           <div className="flex items-center justify-between mb-2">
                             <span className="chip chip-red">{tone}</span>
                             <button className="btn-primary !py-1 !px-2 text-xs"><Check size={10} /> USE</button>
@@ -213,7 +213,7 @@ export default function AIComposerModal({ open, onClose, defaults }) {
                       <div className="mono-accent text-[#595955] mb-1">body</div>
                       <div className="text-[#1a1a1a] whitespace-pre-wrap leading-relaxed" data-testid="ai-result-body">{result.body}</div>
                     </div>
-                    <div className="pt-3 border-t border-[#D6D3C8] flex items-center justify-between">
+                    <div className="pt-3 border-t border-[#D3DBEA] flex items-center justify-between">
                       <span className="chip chip-purple">{result.language}</span>
                       <span className="mono-accent text-[#6B6B66]">gemini-3-flash · {(result.body || "").length} chars</span>
                     </div>

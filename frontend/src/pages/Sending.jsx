@@ -21,7 +21,7 @@ const BLOCKED_TEXT = {
 
 function Fact({ label, children, testId }) {
   return (
-    <div className="border border-[#D6D3C8] rounded-md p-3 bg-white">
+    <div className="border border-[#D3DBEA] rounded-md p-3 bg-white">
       <div className="mono-accent">{label}</div>
       <div className="font-display font-semibold mt-1" data-testid={testId}>{children}</div>
     </div>
@@ -162,7 +162,7 @@ function MessageRow({ message, canEdit, onChanged }) {
 
   return (
     <Fragment>
-      <tr className="border-b border-[#EDEBE0] hover:bg-[#FAF9F3] cursor-pointer" onClick={() => setOpen(!open)} data-testid="message-row">
+      <tr className="border-b border-[#E9EEF7] hover:bg-[#F7F9FD] cursor-pointer" onClick={() => setOpen(!open)} data-testid="message-row">
         <td className="p-3 font-mono text-xs">{formatDateTime(message.dispatched_at)}</td>
         <td className="p-3">{message.to_email || <span className="text-[#6B6B66]">erased</span>}</td>
         <td className="p-3 hidden md:table-cell truncate max-w-xs">{message.subject}</td>
@@ -170,7 +170,7 @@ function MessageRow({ message, canEdit, onChanged }) {
         <td className="p-3">{message.dry_run ? <span className="chip chip-ink">dry-run</span> : <span className="chip chip-warn">live</span>}</td>
       </tr>
       {open && (
-        <tr className="bg-[#FAFAF7] border-b border-[#D6D3C8]" data-testid="message-detail">
+        <tr className="bg-[#F6F8FC] border-b border-[#D3DBEA]" data-testid="message-detail">
           <td colSpan={5} className="p-4 space-y-3">
             <div className="flex flex-wrap gap-3 text-sm">
               <Link to={`/app/prospects/${message.lead_id}`} className="underline">open the prospect</Link>
@@ -180,7 +180,7 @@ function MessageRow({ message, canEdit, onChanged }) {
             {detail.error && <ErrorBlock message={detail.error} onRetry={detail.reload} />}
             {detail.data && <HistoryTimeline items={events} />}
             {message.dry_run && canEdit && message.status !== "bounced" && message.status !== "failed" && (
-              <div className="border-t border-[#D6D3C8] pt-3 space-y-2" data-testid="simulate-box">
+              <div className="border-t border-[#D3DBEA] pt-3 space-y-2" data-testid="simulate-box">
                 <p className="mono-accent">simulation · stands in for the provider webhook, same effects</p>
                 {error && <div role="alert" className="text-sm text-[#991B1B]" data-testid="simulate-error">{error}</div>}
                 <div className="flex flex-wrap gap-2 items-center">
@@ -313,7 +313,7 @@ export default function Sending() {
             ) : (
               <div className="surface overflow-hidden">
                 <table className="w-full text-sm" data-testid="messages-table">
-                  <thead className="bg-[#FAFAF7] border-b border-[#D6D3C8]">
+                  <thead className="bg-[#F6F8FC] border-b border-[#D3DBEA]">
                     <tr className="text-left mono-accent">
                       <th className="p-3">when</th><th className="p-3">to</th><th className="p-3 hidden md:table-cell">subject</th><th className="p-3">status</th><th className="p-3">mode</th>
                     </tr>

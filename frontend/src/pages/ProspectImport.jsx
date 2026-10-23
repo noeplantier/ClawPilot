@@ -113,7 +113,7 @@ function ImportForm({ onImported, externalSources }) {
       </div>
 
       {result && (
-        <div className="border border-[#D6D3C8] rounded-md p-4 bg-white space-y-3" data-testid="import-result" role="status">
+        <div className="border border-[#D3DBEA] rounded-md p-4 bg-white space-y-3" data-testid="import-result" role="status">
           <p className="text-sm" data-testid="import-summary">{describeImport(result)}</p>
           {result.already_imported && <p className="text-sm text-[#92400E]" data-testid="import-already">A file with exactly this content was imported before.</p>}
           {result.ignored_columns.length > 0 && <p className="text-xs text-[#5F5F5A]">Ignored columns: {result.ignored_columns.join(", ")}</p>}
@@ -124,7 +124,7 @@ function ImportForm({ onImported, externalSources }) {
             </ul>
           )}
           {result.preview && (
-            <div className="space-y-2 border-t border-[#D6D3C8] pt-3">
+            <div className="space-y-2 border-t border-[#D3DBEA] pt-3">
               <label className="flex items-start gap-2 text-sm">
                 <input type="checkbox" checked={attest} onChange={(e) => setAttest(e.target.checked)} className="mt-1" data-testid="import-attest" />
                 <span>I confirm that I have the right to use this list for B2B prospecting on the legal basis stated above, and that the origin I gave is accurate.</span>
@@ -184,7 +184,7 @@ export default function ProspectImport() {
           ) : (
             <div className="surface overflow-hidden">
               <table className="w-full text-sm">
-                <thead className="bg-[#FAFAF7] border-b border-[#D6D3C8]"><tr className="text-left mono-accent"><th className="p-3">when</th><th className="p-3">file</th><th className="p-3">origin</th><th className="p-3">basis</th><th className="p-3">rows</th><th className="p-3">created</th></tr></thead>
+                <thead className="bg-[#F6F8FC] border-b border-[#D3DBEA]"><tr className="text-left mono-accent"><th className="p-3">when</th><th className="p-3">file</th><th className="p-3">origin</th><th className="p-3">basis</th><th className="p-3">rows</th><th className="p-3">created</th></tr></thead>
                 <tbody>
                   {page.data.batches.map((b) => (
                     <tr key={b.id} className="border-b border-[#EEE]" data-testid="import-batch">

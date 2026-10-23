@@ -11,8 +11,8 @@ export default function LegalLayout({ title, updated, children, testId }) {
   }, [title]);
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#EDEBE0] text-[#0A0A0A]">
-      <header className="px-6 md:px-16 py-6 border-b border-[#D6D3C8] bg-white">
+    <div className="min-h-screen flex flex-col bg-[#E9EEF7] text-[#0A0A0A]">
+      <header className="px-6 md:px-16 py-6 border-b border-[#D3DBEA] bg-white">
         <Link to="/" className="font-display font-black tracking-tight text-lg" data-testid="legal-home">
           Plantiers - OutreachOS
         </Link>

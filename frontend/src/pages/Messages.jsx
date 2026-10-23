@@ -47,7 +47,7 @@ export default function Messages() {
 
       <div className="surface overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-[#FAFAF7] border-b border-[#D6D3C8]">
+          <thead className="bg-[#F6F8FC] border-b border-[#D3DBEA]">
             <tr className="text-left mono-accent">
               <th className="p-3">Channel</th>
               <th className="p-3">To</th>
@@ -59,10 +59,10 @@ export default function Messages() {
           <tbody>
             {list.map((m, i) => (
               <motion.tr key={m.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.02 }}
-                className="border-b border-[#F0F0EA] hover:bg-[#FAFAF7]">
+                className="border-b border-[#E6ECF6] hover:bg-[#F6F8FC]">
                 <td className="p-3">
                   {m.channel === "email"
-                    ? <span className="inline-flex items-center gap-1.5 text-[#DC2626]"><Envelope size={14} /> email</span>
+                    ? <span className="inline-flex items-center gap-1.5 text-[#4F46E5]"><Envelope size={14} /> email</span>
                     : <span className="inline-flex items-center gap-1.5 text-[#25D366]"><WhatsappLogo size={14} weight="fill" /> whatsapp</span>
                   }
                 </td>

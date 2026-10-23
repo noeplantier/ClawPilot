@@ -7,7 +7,7 @@ export default function HistoryTimeline({ items }) {
   return (
     <ol className="space-y-2" data-testid="history-list">
       {items.map((e) => (
-        <li key={e.key} className="flex gap-3 text-sm border-l-2 border-[#D6D3C8] pl-3" data-testid="history-item">
+        <li key={e.key} className="flex gap-3 text-sm border-l-2 border-[#D3DBEA] pl-3" data-testid="history-item">
           <div className="min-w-0">
             <div className="font-medium">{e.label}</div>
             <div className="mono-accent text-[#5F5F5A]">
@@ -15,7 +15,7 @@ export default function HistoryTimeline({ items }) {
             </div>
             {detailSummary(e.detail) && <div className="text-xs text-[#475569] mt-0.5 break-words">{detailSummary(e.detail)}</div>}
             {e.detail && e.detail.excerpt && (
-              <blockquote className="text-xs text-[#475569] mt-1 pl-2 border-l border-[#D6D3C8] whitespace-pre-wrap">{e.detail.excerpt}</blockquote>
+              <blockquote className="text-xs text-[#475569] mt-1 pl-2 border-l border-[#D3DBEA] whitespace-pre-wrap">{e.detail.excerpt}</blockquote>
             )}
           </div>
         </li>

@@ -200,7 +200,7 @@ export function Inbox({ items }) {
 const Bar = ({ label, n, max }) => (
   <li className="text-sm">
     <div className="flex justify-between gap-2"><span className="truncate">{label}</span><span className="font-mono text-xs">{n}</span></div>
-    <div className="h-1.5 bg-[#EDEBE0] rounded-full" aria-hidden="true"><div className="h-1.5 rounded-full bg-[#0F172A]" style={{ width: `${Math.max(4, Math.round((n / max) * 100))}%` }} /></div>
+    <div className="h-1.5 bg-[#E9EEF7] rounded-full" aria-hidden="true"><div className="h-1.5 rounded-full bg-[#0F172A]" style={{ width: `${Math.max(4, Math.round((n / max) * 100))}%` }} /></div>
   </li>
 );
 

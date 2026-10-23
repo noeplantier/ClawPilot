@@ -30,11 +30,11 @@ export default function Login() {
 
 
   return (
-    <div className="min-h-screen grid lg:grid-cols-5 bg-[#EDEBE0]">
+    <div className="min-h-screen grid lg:grid-cols-5 bg-[#E9EEF7]">
       {/* Left form */}
       <div className="lg:col-span-2 flex flex-col px-8 md:px-16 py-10 relative bg-[#FFFFFF] border-r-2 border-[#0F172A]">
         <Link to="/" className="flex items-center gap-2" data-testid="brand-logo">
-          <Lightning size={22} weight="fill" className="text-[#DC2626]" />
+          <Lightning size={22} weight="fill" className="text-[#4F46E5]" />
           <span className="font-display font-black tracking-tight text-xl">OUTREACHOS</span>
         </Link>
 
@@ -89,7 +89,7 @@ export default function Login() {
 
           <p className="mt-8 text-sm text-[#5F5F5A]">
             No account?{" "}
-            <Link to="/register" className="text-[#B91C1C] underline" data-testid="goto-register-link">
+            <Link to="/register" className="text-[#4338CA] underline" data-testid="goto-register-link">
               Request access →
             </Link>
           </p>
@@ -107,15 +107,15 @@ export default function Login() {
 
         <div className="relative z-10 h-full flex flex-col justify-between p-14 text-white">
           <div className="flex items-center gap-2">
-            <span className="w-2 h-2 bg-[#DC2626] rounded-full pulse-dot" />
-            <span className="mono-accent text-[#DC2626]">// DRY-RUN BY DEFAULT · HUMAN REVIEW BEFORE SENDING</span>
+            <span className="w-2 h-2 bg-[#4F46E5] rounded-full pulse-dot" />
+            <span className="mono-accent text-[#4F46E5]">// DRY-RUN BY DEFAULT · HUMAN REVIEW BEFORE SENDING</span>
           </div>
 
           <div className="max-w-xl">
-            <div className="mono-accent mb-3 text-[#DC2626]">/// plantiers.outreachos</div>
+            <div className="mono-accent mb-3 text-[#4F46E5]">/// plantiers.outreachos</div>
             <h2 className="text-4xl md:text-5xl font-black tracking-tighter leading-[0.95] text-white">
               Detect the need.<br />
-              <span className="text-[#DC2626]">Reach out responsibly.</span>
+              <span className="text-[#4F46E5]">Reach out responsibly.</span>
             </h2>
             <p className="mt-5 text-white/80 max-w-md">
               Find companies that need digital solutions, explain every score, and send only what a human approved.

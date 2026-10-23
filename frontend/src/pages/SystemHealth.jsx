@@ -37,10 +37,10 @@ export default function SystemHealth() {
       {page.error && <ErrorBlock message={page.error} onRetry={page.reload} />}
       {d && (
         <>
-          <ul className="surface divide-y divide-[#EDEBE0]" data-testid="health-checks">
+          <ul className="surface divide-y divide-[#E9EEF7]" data-testid="health-checks">
             {checks(d).map((c) => (
               <li key={c.key} className="p-4 flex items-start gap-3" data-testid={`health-${c.key}`} data-ok={c.ok}>
-                {c.ok ? <CheckCircle size={20} weight="fill" className="text-[#15803D] shrink-0" /> : <WarningCircle size={20} weight="fill" className="text-[#B91C1C] shrink-0" />}
+                {c.ok ? <CheckCircle size={20} weight="fill" className="text-[#15803D] shrink-0" /> : <WarningCircle size={20} weight="fill" className="text-[#4338CA] shrink-0" />}
                 <div><div className="font-semibold">{c.label}</div><div className="text-sm text-[#5F5F5A]">{c.detail}</div></div>
               </li>
             ))}

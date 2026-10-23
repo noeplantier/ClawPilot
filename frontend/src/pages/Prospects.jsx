@@ -127,7 +127,7 @@ export default function Prospects() {
               aria-selected={status === t.key}
               onClick={() => setParam("status", t.key)}
               className={`px-3 py-1.5 rounded-md text-sm border font-display ${
-                status === t.key ? "bg-[#0F172A] text-white border-[#0F172A]" : "bg-white text-[#475569] border-[#D6D3C8] hover:border-[#0F172A]"
+                status === t.key ? "bg-[#0F172A] text-white border-[#0F172A]" : "bg-white text-[#475569] border-[#D3DBEA] hover:border-[#0F172A]"
               }`}
               data-testid={`tab-${t.key || "all"}`}
             >
@@ -174,7 +174,7 @@ export default function Prospects() {
       {items.length > 0 && (
         <div className="surface overflow-hidden">
           <table className="w-full text-sm" data-testid="prospects-table">
-            <thead className="bg-[#FAFAF7] border-b border-[#D6D3C8]">
+            <thead className="bg-[#F6F8FC] border-b border-[#D3DBEA]">
               <tr className="text-left mono-accent">
                 <th className="p-3">business</th>
                 <th className="p-3">score</th>
@@ -185,9 +185,9 @@ export default function Prospects() {
             </thead>
             <tbody>
               {items.map((p) => (
-                <tr key={p.id} className="border-b border-[#EDEBE0] hover:bg-[#FAF9F3]" data-testid="prospect-row">
+                <tr key={p.id} className="border-b border-[#E9EEF7] hover:bg-[#F7F9FD]" data-testid="prospect-row">
                   <td className="p-3">
-                    <Link to={`/app/prospects/${p.id}`} className="font-display font-semibold hover:text-[#DC2626]" data-testid="prospect-link">
+                    <Link to={`/app/prospects/${p.id}`} className="font-display font-semibold hover:text-[#4F46E5]" data-testid="prospect-link">
                       {p.name}
                     </Link>
                   </td>
@@ -203,7 +203,7 @@ export default function Prospects() {
               ))}
             </tbody>
           </table>
-          <div className="flex items-center justify-between p-3 border-t border-[#D6D3C8] text-sm text-[#5F5F5A]">
+          <div className="flex items-center justify-between p-3 border-t border-[#D3DBEA] text-sm text-[#5F5F5A]">
             <span data-testid="prospects-total">{total} prospect{total === 1 ? "" : "s"}</span>
             <span className="flex items-center gap-2">
               <button className="btn-ghost" disabled={page === 0} onClick={() => setParam("page", String(page - 1))} aria-label="Previous page">

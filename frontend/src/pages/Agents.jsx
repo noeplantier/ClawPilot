@@ -104,7 +104,7 @@ export default function Agents() {
               </div>
 
               {logs[a.id] && (
-                <div className="mt-3 surface bg-[#FAFAF7] p-3 text-xs font-mono space-y-1 max-h-[140px] overflow-y-auto">
+                <div className="mt-3 surface bg-[#F6F8FC] p-3 text-xs font-mono space-y-1 max-h-[140px] overflow-y-auto">
                   {logs[a.id].map((l, idx) => (
                     <div key={idx} className="text-[#10B981]/80">{l}</div>
                   ))}
