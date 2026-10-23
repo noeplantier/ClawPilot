@@ -19,7 +19,7 @@ export default function ScoreBreakdown({ detail }) {
       </p>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
-          <thead className="bg-[#FAFAF7] border-b border-[#D6D3C8]">
+          <thead className="bg-[#F6F8FC] border-b border-[#D3DBEA]">
             <tr className="text-left mono-accent">
               <th className="p-2">signal</th>
               <th className="p-2">state</th>
@@ -30,7 +30,7 @@ export default function ScoreBreakdown({ detail }) {
           </thead>
           <tbody>
             {detail.breakdown.map((line) => (
-              <tr key={line.signal} className="border-b border-[#EDEBE0] align-top" data-testid={`breakdown-${line.signal}`}>
+              <tr key={line.signal} className="border-b border-[#E9EEF7] align-top" data-testid={`breakdown-${line.signal}`}>
                 <td className="p-2 font-medium">{line.label}</td>
                 <td className="p-2 whitespace-nowrap">
                   <StateChip state={line.state} />
@@ -42,7 +42,7 @@ export default function ScoreBreakdown({ detail }) {
             ))}
           </tbody>
           <tfoot>
-            <tr className="bg-[#FAFAF7]">
+            <tr className="bg-[#F6F8FC]">
               <td className="p-2 font-bold" colSpan={3}>
                 Total
               </td>

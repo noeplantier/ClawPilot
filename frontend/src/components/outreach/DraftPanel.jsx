@@ -36,7 +36,7 @@ export default function DraftPanel({ prospect, drafts, messages, canDecide, dryR
   return (
     <div className="space-y-4" data-testid="draft-panel">
       {dryRun && (
-        <p className="text-xs text-[#475569] border border-[#D6D3C8] bg-[#FAFAF7] rounded-md p-2" data-testid="dry-run-note">
+        <p className="text-xs text-[#475569] border border-[#D3DBEA] bg-[#F6F8FC] rounded-md p-2" data-testid="dry-run-note">
           Dry-run is on: dispatching records the message and applies every limit, but nothing leaves the system.
         </p>
       )}
@@ -66,8 +66,8 @@ export default function DraftPanel({ prospect, drafts, messages, canDecide, dryR
       {(drafts || []).map((d) => {
         const msg = messageOf(d.id);
         return (
-          <article key={d.id} className="border border-[#D6D3C8] rounded-md bg-white" data-testid="draft-item">
-            <header className="flex flex-wrap items-center gap-2 p-3 border-b border-[#EDEBE0]">
+          <article key={d.id} className="border border-[#D3DBEA] rounded-md bg-white" data-testid="draft-item">
+            <header className="flex flex-wrap items-center gap-2 p-3 border-b border-[#E9EEF7]">
               <span className="font-display font-semibold text-sm flex-1 min-w-0 truncate">{d.subject}</span>
               <span className={`chip ${DRAFT_CHIP[d.status] || "chip"}`} data-testid="draft-status">{d.status}</span>
               {d.dry_run && <span className="chip chip-ink">dry-run</span>}
@@ -86,7 +86,7 @@ export default function DraftPanel({ prospect, drafts, messages, canDecide, dryR
               ) : (
                 <p className="text-xs text-[#5F5F5A]">No signal supports a specific statement, so the draft stays neutral.</p>
               )}
-              <pre className="whitespace-pre-wrap text-sm font-sans bg-[#FAFAF7] border border-[#EDEBE0] rounded-md p-3" data-testid="draft-body">
+              <pre className="whitespace-pre-wrap text-sm font-sans bg-[#F6F8FC] border border-[#E9EEF7] rounded-md p-3" data-testid="draft-body">
                 {d.body}
               </pre>
               {msg && (

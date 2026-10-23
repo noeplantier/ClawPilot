@@ -106,7 +106,7 @@ export default function ReviewQueue() {
                 {error}
               </div>
             )}
-            <div className="space-y-2 pt-2 border-t border-[#EDEBE0]">
+            <div className="space-y-2 pt-2 border-t border-[#E9EEF7]">
               <label className="mono-accent block" htmlFor="review-note">
                 note (optional, kept on the prospect, not in the audit trail)
               </label>

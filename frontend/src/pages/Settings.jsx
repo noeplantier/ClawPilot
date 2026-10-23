@@ -28,7 +28,7 @@ export default function Settings() {
 
       <section className="surface p-6 space-y-4">
         <div className="flex items-center gap-2">
-          <Shield size={18} className="text-[#DC2626]" />
+          <Shield size={18} className="text-[#4F46E5]" />
           <h2 className="font-display text-xl font-bold">Profile</h2>
         </div>
         <div className="grid md:grid-cols-2 gap-4">
@@ -175,9 +175,9 @@ function Row({ label, value, mono, truncate }) {
 function IntegrationRow({ icon: Icon, name, description, tone, statusLabel, details = [], testId }) {
   const { chip, Icon: StatusIcon } = TONES[tone] || TONES.warn;
   return (
-    <div className="surface p-5 bg-[#FAFAF7]" data-testid={testId}>
+    <div className="surface p-5 bg-[#F6F8FC]" data-testid={testId}>
       <div className="flex items-start gap-4">
-        <Icon size={24} weight="duotone" className="text-[#DC2626] mt-1" />
+        <Icon size={24} weight="duotone" className="text-[#4F46E5] mt-1" />
         <div className="flex-1">
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="font-display font-semibold">{name}</h3>

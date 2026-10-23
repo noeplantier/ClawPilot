@@ -4,10 +4,11 @@ import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { ArrowsOut, ArrowsIn, CaretDoubleRight, CaretDoubleLeft, MagnifyingGlass, MapPin } from "@phosphor-icons/react";
+import { ArrowsOut, ArrowsIn, CaretDoubleRight, CaretDoubleLeft, CaretDown, CaretUp, Eye, EyeSlash, MagnifyingGlass, MapPin, X } from "@phosphor-icons/react";
 import { useAuth } from "@/contexts/AuthContext";
 import { campaignsApi, canDecide, importsApi, mapApi, prospectsApi, useAsync } from "@/lib/outreach";
 import { describeApiError } from "@/lib/outreachFormat";
+import { isTypingTarget, readPref, writePref } from "@/lib/uiPrefs";
 import {
   CATEGORY_LABELS, IMPORT_ORIGIN, MAX_SITES_CHECKED, STATUS_COLOR, STATUS_LABEL, areaTooLarge, importRows, knownIds, markerColor,
   mineSummary, summaryText,
@@ -20,12 +21,9 @@ import {
 import { EmptyBlock, ErrorBlock, LoadingBlock } from "@/components/outreach/States";
 
 const START = { center: [45.764, 4.8357], zoom: 14 }; // Lyon; move the map anywhere in the world
-const BASEMAPS = {
-  light: { label: "Light", url: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", credit: "© OpenStreetMap contributors © CARTO" },
-  dark: { label: "Dark", url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", credit: "© OpenStreetMap contributors © CARTO" },
-  osm: { label: "Standard", url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png", credit: "© OpenStreetMap contributors" },
-};
-const GLASS = "bg-white/85 backdrop-blur-md border border-white/60 shadow-xl rounded-2xl";
+// One real map: the standard OpenStreetMap style (no light/dark variants).
+const OSM_STANDARD = { url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png", credit: "© OpenStreetMap contributors" };
+const GLASS = "bg-white/80 backdrop-blur-xl border border-white/70 ring-1 ring-indigo-500/10 shadow-[0_10px_44px_-14px_rgba(30,41,90,0.4)] rounded-2xl";
 
 const clusterIcon = (n) => {
   const size = clusterSize(n);
@@ -66,7 +64,7 @@ function popupHtml(p) {
     `<div><a href="${esc(p.source_url)}" target="_blank" rel="noopener noreferrer">source on OpenStreetMap</a></div>`;
 }
 
-function ImportPanel({ selected, onDone }) {
+function ImportPanel({ selected, onDone, open, onToggle, onClose }) {
   const [attest, setAttest] = useState(false);
   const [checkSites, setCheckSites] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -89,8 +87,18 @@ function ImportPanel({ selected, onDone }) {
     }
   };
   return (
-    <div className="surface p-4 space-y-3" data-testid="map-import">
-      <h2 className="font-display text-lg font-bold">Import {selected.length} selected place{selected.length === 1 ? "" : "s"}</h2>
+    <div className="rounded-xl border border-indigo-500/20 bg-white/70 p-3 space-y-3" data-testid="map-import">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="font-display text-base font-bold">Import {selected.length} selected place{selected.length === 1 ? "" : "s"}</h2>
+        <div className="flex gap-1">
+          <button className="btn-ghost !px-2 !py-1" onClick={onToggle} aria-expanded={open} aria-label={open ? "Minimise the import form" : "Expand the import form"} data-testid="import-minimise">
+            {open ? <CaretDown size={14} /> : <CaretUp size={14} />}
+          </button>
+          <button className="btn-ghost !px-2 !py-1" onClick={onClose} aria-label="Close the import form and clear the selection" data-testid="import-close"><X size={14} /></button>
+        </div>
+      </div>
+      {open && (
+        <>
       <p className="text-xs text-[#5F5F5A]">
         They become prospects waiting for your review, with their OpenStreetMap page as provenance. Nothing is sent.
       </p>
@@ -106,6 +114,8 @@ function ImportPanel({ selected, onDone }) {
       <button className="btn-ink" disabled={busy || !attest || selected.length === 0} onClick={send} data-testid="map-import-run">
         {busy ? "IMPORTING…" : `IMPORT ${selected.length}`}
       </button>
+        </>
+      )}
     </div>
   );
 }
@@ -115,8 +125,6 @@ function MapView({ canImport }) {
   const el = useRef(null);
   const map = useRef(null);
   const layer = useRef(null);
-  const tiles = useRef(null);
-  const [base, setBase] = useState("light");
   const [category, setCategory] = useState("restaurants");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -125,7 +133,10 @@ function MapView({ canImport }) {
   const [retrying, setRetrying] = useState(false);
   const [selected, setSelected] = useState(new Set());
   const [tooLarge, setTooLarge] = useState(false);
-  const [panelOpen, setPanelOpen] = useState(() => window.innerWidth >= 768);
+  const [panelOpen, setPanelOpen] = useState(() => readPref("map.results", window.innerWidth >= 768));
+  const [searchOpen, setSearchOpen] = useState(() => readPref("map.search", true)); // the "Map search" card, or a small pill
+  const [overlaysHidden, setOverlaysHidden] = useState(false); // every panel hidden: just the map
+  const [importOpen, setImportOpen] = useState(true); // the import form of the selection, expanded or minimised
   const [full, setFull] = useState(false);
   const [query, setQuery] = useState("");
   const [cities, setCities] = useState([]);
@@ -144,8 +155,14 @@ function MapView({ canImport }) {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const m = L.map(el.current, { center: START.center, zoom: START.zoom, zoomControl: false });
+    const m = L.map(el.current, {
+      center: START.center, zoom: START.zoom, zoomControl: false, zoomSnap: 0.5, zoomDelta: 0.5, wheelPxPerZoomLevel: 100,
+      attributionControl: false,
+    });
+    L.tileLayer(OSM_STANDARD.url, { maxZoom: 19, attribution: OSM_STANDARD.credit }).addTo(m);
+    L.control.attribution({ position: "bottomright", prefix: false }).addTo(m);
     L.control.zoom({ position: "bottomleft" }).addTo(m);
+    L.control.scale({ position: "bottomleft", imperial: false }).addTo(m);
     mineLayer.current = L.layerGroup().addTo(m);
     layer.current = L.layerGroup().addTo(m);
     const check = () => setTooLarge(areaTooLarge(bounds(m)));
@@ -159,16 +176,23 @@ function MapView({ canImport }) {
   }, []);
 
   useEffect(() => {
-    if (!map.current) return;
-    if (tiles.current) tiles.current.remove();
-    const b = BASEMAPS[base];
-    tiles.current = L.tileLayer(b.url, { maxZoom: 19, subdomains: "abcd", attribution: `${b.credit}` }).addTo(map.current);
-  }, [base]);
-
-  useEffect(() => {
     const onChange = () => setFull(Boolean(document.fullscreenElement));
     document.addEventListener("fullscreenchange", onChange);
     return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+
+  useEffect(() => writePref("map.results", panelOpen), [panelOpen]);
+  useEffect(() => writePref("map.search", searchOpen), [searchOpen]);
+
+  // "H" hides or shows every panel (never while typing in a field); Escape brings them back.
+  useEffect(() => {
+    const onKey = (e) => {
+      if (isTypingTarget(e.target) || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key === "h" || e.key === "H") setOverlaysHidden((v) => !v);
+      if (e.key === "Escape") setOverlaysHidden(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
 
   const toggleFull = () => {
@@ -323,183 +347,208 @@ function MapView({ canImport }) {
   const chosen = places.filter((p) => selected.has(p.external_id));
 
   return (
-    <div ref={root} className="relative w-full h-[calc(100svh-9.5rem)] md:h-[calc(100vh-4.25rem)] min-h-[28rem] overflow-hidden bg-[#EDEBE0]" data-testid="map-page">
+    <div ref={root} className="relative w-full h-[calc(100svh-9.5rem)] md:h-[calc(100vh-4.25rem)] min-h-[28rem] overflow-hidden bg-[#E9EEF7]" data-testid="map-page">
       <div ref={el} className="absolute inset-0 z-0" data-testid="map" aria-label="Interactive map" />
 
-      {/* search card */}
-      <div className={`absolute z-[500] top-3 left-3 right-3 md:right-auto md:w-[26rem] p-4 space-y-3 ${GLASS}`}>
-        <div className="flex items-center justify-between gap-2">
-          <div>
-            <div className="mono-accent">// live.map</div>
-            <h1 className="text-2xl font-black tracking-tighter leading-none">Map search</h1>
-          </div>
-          <button className="btn-ghost !px-2" onClick={toggleFull} aria-label={full ? "Leave full screen" : "Full screen"} data-testid="map-fullscreen">
-            {full ? <ArrowsIn size={16} /> : <ArrowsOut size={16} />}
+      {/* always visible: hide every panel to see the whole map, or go full screen */}
+      <div className={`absolute z-[503] top-3 left-1/2 -translate-x-1/2 flex gap-1 p-1 ${GLASS} !rounded-full`} role="toolbar" aria-label="Map view">
+        <button className="btn-ghost !rounded-full !px-3 !py-1 text-xs" onClick={() => setOverlaysHidden((v) => !v)} aria-pressed={overlaysHidden} title="Hide or show every panel (H)" data-testid="map-hide-panels">
+          {overlaysHidden ? <Eye size={14} /> : <EyeSlash size={14} />} {overlaysHidden ? "SHOW PANELS" : "FULL MAP"}
+        </button>
+        <button className="btn-ghost !rounded-full !px-2 !py-1" onClick={toggleFull} aria-label={full ? "Leave full screen" : "Full screen"} data-testid="map-fullscreen">
+          {full ? <ArrowsIn size={14} /> : <ArrowsOut size={14} />}
+        </button>
+      </div>
+
+      {/* search card, or its small pill */}
+      {!overlaysHidden && !searchOpen && (
+        <div className={`absolute z-[500] top-3 left-3 flex items-center gap-2 p-2 ${GLASS} !rounded-full`} data-testid="map-search-pill">
+          <button className="btn-ghost !rounded-full !px-3 !py-1 text-xs" onClick={() => setSearchOpen(true)} aria-label="Expand the map search panel" aria-expanded="false" data-testid="map-search-expand">
+            <CaretDown size={14} /> MAP SEARCH
+          </button>
+          <button className="btn-ink !rounded-full !px-3 !py-1 text-xs" onClick={search} disabled={busy || tooLarge} data-testid="map-search">
+            <MagnifyingGlass size={14} /> {busy ? "SEARCHING…" : "SEARCH"}
           </button>
         </div>
-        <div className="relative">
-          <input className="neo-input w-full" placeholder="Go to a town… (e.g. Lyon)" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Go to a town" data-testid="map-goto" />
-          {cities.length > 0 && (
-            <ul className={`absolute left-0 right-0 mt-1 z-10 max-h-56 overflow-auto ${GLASS} !rounded-lg`} data-testid="map-cities">
-              {cities.map((c) => (
-                <li key={c.label}>
-                  <button className="w-full text-left px-3 py-2 text-sm hover:bg-[#F4F2E7] flex gap-2 items-center"
-                    onClick={() => { map.current.setView([c.lat, c.lon], 14); setQuery(""); setCities([]); }}>
-                    <MapPin size={14} /> {c.label}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-        <div className="flex gap-1.5 flex-wrap" role="group" aria-label="Business category">
-          {Object.entries(CATEGORY_LABELS).map(([k, v]) => (
-            <button key={k} onClick={() => setCategory(k)} aria-pressed={category === k} data-testid={`map-cat-${k}`}
-              className={`px-3 py-1 rounded-full text-xs border transition-colors ${category === k ? "bg-[#0F172A] text-white border-[#0F172A]" : "bg-white/70 border-[#D6D3C8] hover:bg-white"}`}>
-              {v.split(",")[0].split(" (")[0]}
+      )}
+      {!overlaysHidden && searchOpen && (
+        <div className={`absolute z-[500] top-3 left-3 right-3 md:right-auto md:w-[26rem] max-h-[calc(100%-1.5rem)] overflow-y-auto p-4 space-y-3 ${GLASS}`} data-testid="map-search-card">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <div className="mono-accent">// live.map</div>
+              <h1 className="text-2xl font-black tracking-tighter leading-none">Map search</h1>
+            </div>
+            <button className="btn-ghost !px-2" onClick={() => setSearchOpen(false)} aria-label="Minimise the map search panel" aria-expanded="true" data-testid="map-search-minimise">
+              <CaretUp size={16} />
             </button>
-          ))}
-        </div>
-        <div className="flex md:hidden gap-1" role="group" aria-label="Map style (mobile)">
-          {Object.entries(BASEMAPS).map(([k, v]) => (
-            <button key={k} onClick={() => setBase(k)} aria-pressed={base === k}
-              className={`px-3 py-1 rounded-full text-xs border ${base === k ? "bg-[#0F172A] text-white border-[#0F172A]" : "bg-white/70 border-[#D6D3C8]"}`}>{v.label}</button>
-          ))}
-        </div>
-        <label className="flex items-center gap-2 text-xs" data-testid="map-mine-toggle">
-          <input type="checkbox" checked={showMine} onChange={(e) => setShowMine(e.target.checked)} />
-          <span><b>My prospects</b> (squares) — {mineSummary(mine)}</span>
-        </label>
-        {mine.length > 0 && showMine && (
-          <div className="space-y-2" data-testid="map-filters">
-            <div className="grid grid-cols-2 gap-2">
-              <select className="neo-input" aria-label="Filter by vertical" value={filter.vertical} onChange={(e) => setFilter({ ...filter, vertical: e.target.value })} data-testid="filter-vertical">
-                <option value="">All verticals</option>
-                {options.verticals.map((v) => <option key={v.value} value={v.value}>{v.value} ({v.count})</option>)}
-              </select>
-              <select className="neo-input" aria-label="Filter by review status" value={filter.status} onChange={(e) => setFilter({ ...filter, status: e.target.value })} data-testid="filter-status">
-                <option value="">Any status</option>
-                {Object.entries(STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-              </select>
-              <select className="neo-input" aria-label="Filter by detected signal" value={filter.signal} onChange={(e) => setFilter({ ...filter, signal: e.target.value })} data-testid="filter-signal">
-                <option value="">Any signal</option>
-                {options.signals.map((v) => <option key={v.value} value={v.value}>{signalLabel(v.value)} ({v.count})</option>)}
-              </select>
-              <input className="neo-input" type="number" min="0" max="100" placeholder="Min score" aria-label="Minimum score" value={filter.minScore} onChange={(e) => setFilter({ ...filter, minScore: e.target.value })} data-testid="filter-score" />
-            </div>
-            <div className="flex items-center justify-between gap-2 text-xs">
-              <span data-testid="filter-summary">{filterSummary(shown.length, mine.length)}</span>
-              {hasFilter(filter) && <button className="underline" onClick={() => { setFilter(EMPTY_FILTER); setGroup(null); }} data-testid="filter-clear">Clear</button>}
-            </div>
-            <p className="text-[11px] text-[#5F5F5A]" data-testid="map-updated" aria-live="polite">
-              {stale ? "Update failed: showing the last data. " : ""}{updatedAt ? `Updated ${updatedAt.toLocaleTimeString()} · refreshes every ${POLL_MS / 1000} s` : "Loading…"}
-            </p>
           </div>
-        )}
-        <button className="btn-ink w-full justify-center" onClick={search} disabled={busy || tooLarge} data-testid="map-search">
-          <MagnifyingGlass size={14} /> {busy ? "SEARCHING…" : "SEARCH THIS AREA"}
-        </button>
-        {tooLarge && <p className="text-xs text-[#92400E]" data-testid="map-zoom-hint">Zoom in on a town or a neighbourhood to search.</p>}
-        {job && job.status !== "failed" && <p className="text-xs" role="status" aria-live="polite" data-testid="map-job">{jobLine(job)}{job.truncated ? " The area holds more places: zoom in to see the rest." : ""}</p>}
-        {job && job.status === "failed" && (
-          <div role="alert" className="text-sm text-[#991B1B] space-y-2" data-testid="map-job-failed">
-            <p>{job.error}</p>
-            <p className="text-[11px] text-[#5F5F5A]">Code: {job.error_code}. This search is saved with its error.</p>
-            {canRetryInBrowser(job) && (
-              <button className="btn-ghost" onClick={retryInBrowser} disabled={retrying} data-testid="map-retry-browser">
-                {retrying ? "ASKING OPENSTREETMAP…" : "RETRY FROM MY BROWSER"}
-              </button>
+          <div className="relative">
+            <input className="neo-input w-full" placeholder="Go to a town… (e.g. Lyon)" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Go to a town" data-testid="map-goto" />
+            {cities.length > 0 && (
+              <ul className={`absolute left-0 right-0 mt-1 z-10 max-h-56 overflow-auto ${GLASS} !rounded-lg`} data-testid="map-cities">
+                {cities.map((c) => (
+                  <li key={c.label}>
+                    <button className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 flex gap-2 items-center"
+                      onClick={() => { map.current.flyTo([c.lat, c.lon], 14, { duration: 1.2 }); setQuery(""); setCities([]); }}>
+                      <MapPin size={14} /> {c.label}
+                    </button>
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
-        )}
-        {error && <div role="alert" className="text-sm text-[#991B1B]" data-testid="map-error">{error}</div>}
-      </div>
-
-      {/* basemap switch */}
-      <div className={`hidden md:flex absolute z-[500] top-3 right-3 gap-1 p-1 ${GLASS} !rounded-full ${panelOpen ? "md:right-[25rem]" : ""}`} role="group" aria-label="Map style">
-        {Object.entries(BASEMAPS).map(([k, v]) => (
-          <button key={k} onClick={() => setBase(k)} aria-pressed={base === k} data-testid={`map-base-${k}`}
-            className={`px-3 py-1 rounded-full text-xs ${base === k ? "bg-[#0F172A] text-white" : "hover:bg-white"}`}>{v.label}</button>
-        ))}
-      </div>
+          <div className="flex gap-1.5 flex-wrap" role="group" aria-label="Business category">
+            {Object.entries(CATEGORY_LABELS).map(([k, v]) => (
+              <button key={k} onClick={() => setCategory(k)} aria-pressed={category === k} data-testid={`map-cat-${k}`}
+                className={`px-3 py-1 rounded-full text-xs border transition-colors ${category === k ? "bg-[#0B1020] text-white border-[#0B1020] shadow-[0_0_14px_-2px_rgba(99,102,241,0.7)]" : "bg-white/70 border-[#D3DBEA] hover:bg-white"}`}>
+                {v.split(",")[0].split(" (")[0]}
+              </button>
+            ))}
+          </div>
+          <label className="flex items-center gap-2 text-xs" data-testid="map-mine-toggle">
+            <input type="checkbox" checked={showMine} onChange={(e) => setShowMine(e.target.checked)} />
+            <span><b>My prospects</b> (squares) — {mineSummary(mine)}</span>
+          </label>
+          {mine.length > 0 && showMine && (
+            <div className="space-y-2" data-testid="map-filters">
+              <div className="grid grid-cols-2 gap-2">
+                <select className="neo-input" aria-label="Filter by vertical" value={filter.vertical} onChange={(e) => setFilter({ ...filter, vertical: e.target.value })} data-testid="filter-vertical">
+                  <option value="">All verticals</option>
+                  {options.verticals.map((v) => <option key={v.value} value={v.value}>{v.value} ({v.count})</option>)}
+                </select>
+                <select className="neo-input" aria-label="Filter by review status" value={filter.status} onChange={(e) => setFilter({ ...filter, status: e.target.value })} data-testid="filter-status">
+                  <option value="">Any status</option>
+                  {Object.entries(STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </select>
+                <select className="neo-input" aria-label="Filter by detected signal" value={filter.signal} onChange={(e) => setFilter({ ...filter, signal: e.target.value })} data-testid="filter-signal">
+                  <option value="">Any signal</option>
+                  {options.signals.map((v) => <option key={v.value} value={v.value}>{signalLabel(v.value)} ({v.count})</option>)}
+                </select>
+                <input className="neo-input" type="number" min="0" max="100" placeholder="Min score" aria-label="Minimum score" value={filter.minScore} onChange={(e) => setFilter({ ...filter, minScore: e.target.value })} data-testid="filter-score" />
+              </div>
+              <div className="flex items-center justify-between gap-2 text-xs">
+                <span data-testid="filter-summary">{filterSummary(shown.length, mine.length)}</span>
+                {hasFilter(filter) && <button className="underline" onClick={() => { setFilter(EMPTY_FILTER); setGroup(null); }} data-testid="filter-clear">Clear</button>}
+              </div>
+              <p className="text-[11px] text-[#5F5F5A]" data-testid="map-updated" aria-live="polite">
+                {stale ? "Update failed: showing the last data. " : ""}{updatedAt ? `Updated ${updatedAt.toLocaleTimeString()} · refreshes every ${POLL_MS / 1000} s` : "Loading…"}
+              </p>
+            </div>
+          )}
+          <button className="btn-ink w-full justify-center" onClick={search} disabled={busy || tooLarge} data-testid="map-search">
+            <MagnifyingGlass size={14} /> {busy ? "SEARCHING…" : "SEARCH THIS AREA"}
+          </button>
+          {tooLarge && <p className="text-xs text-[#92400E]" data-testid="map-zoom-hint">Zoom in on a town or a neighbourhood to search.</p>}
+          {job && job.status !== "failed" && <p className="text-xs" role="status" aria-live="polite" data-testid="map-job">{jobLine(job)}{job.truncated ? " The area holds more places: zoom in to see the rest." : ""}</p>}
+          {job && job.status === "failed" && (
+            <div role="alert" className="text-sm text-[#991B1B] space-y-2" data-testid="map-job-failed">
+              <p>{job.error}</p>
+              <p className="text-[11px] text-[#5F5F5A]">Code: {job.error_code}. This search is saved with its error.</p>
+              {canRetryInBrowser(job) && (
+                <button className="btn-ghost" onClick={retryInBrowser} disabled={retrying} data-testid="map-retry-browser">
+                  {retrying ? "ASKING OPENSTREETMAP…" : "RETRY FROM MY BROWSER"}
+                </button>
+              )}
+            </div>
+          )}
+          {error && <div role="alert" className="text-sm text-[#991B1B]" data-testid="map-error">{error}</div>}
+        </div>
+      )}
+      {/* the search status stays visible when the card is minimised */}
+      {!overlaysHidden && !searchOpen && job && (
+        <p className={`absolute z-[499] top-[3.9rem] left-3 text-xs px-3 py-1 ${GLASS} !rounded-full`} role="status" aria-live="polite" data-testid="map-job">
+          {job.status === "failed" ? `${job.error_code}: open the panel for details.` : jobLine(job)}
+        </p>
+      )}
 
       {/* results drawer */}
-      <aside className={`absolute z-[500] bottom-8 left-3 right-3 md:left-auto md:top-3 md:bottom-8 md:w-[24rem] flex flex-col ${panelOpen ? "" : "md:translate-x-[calc(100%+1rem)] translate-y-[calc(100%+1rem)] md:translate-y-0"} transition-transform duration-300 max-h-[45%] md:max-h-none`} aria-label="Results">
-        <div className={`${GLASS} flex-1 min-h-0 flex flex-col overflow-hidden`}>
-          {mine.length > 0 && showMine && (
-            <section className="p-4 border-b border-[#D6D3C8] max-h-[50%] overflow-y-auto" data-testid="map-mine-list">
-              <div className="flex items-center justify-between gap-2">
-                <h2 className="font-display text-lg font-bold">{group ? `Cluster · ${group.length} prospects` : "My prospects"}</h2>
-                {group && <button className="underline text-xs" onClick={() => setGroup(null)} data-testid="cluster-close">All</button>}
+      {!overlaysHidden && (
+        <>
+          <aside className={`absolute z-[500] bottom-8 left-3 right-3 md:left-auto md:top-3 md:bottom-8 md:w-[24rem] flex flex-col ${panelOpen ? "" : "md:translate-x-[calc(100%+1rem)] translate-y-[calc(100%+1rem)] md:translate-y-0 pointer-events-none"} transition-transform duration-300 max-h-[45%] md:max-h-none`} aria-label="Results" aria-hidden={!panelOpen}>
+            <div className={`${GLASS} flex-1 min-h-0 flex flex-col overflow-hidden`}>
+              <div className="flex items-center justify-between px-4 pt-3">
+                <div className="mono-accent">// results</div>
+                <button className="btn-ghost !px-2 !py-1" onClick={() => setPanelOpen(false)} aria-label="Close the results panel" data-testid="map-panel-close"><X size={14} /></button>
               </div>
-              {list.length === 0 && <p className="text-sm text-[#5F5F5A] mt-1" data-testid="mine-none">No prospect matches the filters.</p>}
-              <ul className="divide-y divide-[#EDEBE0]">
-                {list.map((p) => (
-                  <li key={p.id} className="py-1.5 flex gap-2 items-start text-sm" data-testid="mine-row">
-                    <input type="checkbox" checked={picked.has(p.id)} onChange={() => togglePick(p.id)} aria-label={`Select ${p.name}`} className="mt-1" />
-                    <button className="text-left min-w-0 flex-1" onClick={() => map.current.setView([p.lat, p.lon], 17)}>
-                      <span className="font-medium block truncate">{p.name}</span>
-                      <span className="block text-xs text-[#5F5F5A] truncate">{STATUS_LABEL[p.review_status]} · {p.score === null || p.score === undefined ? "not scored" : `score ${p.score}`}{p.city ? ` · ${p.city}` : ""}</span>
-                    </button>
-                    <Link to={`/app/prospects/${p.id}`} className="text-xs underline shrink-0">open</Link>
-                  </li>
-                ))}
-              </ul>
-              {!group && shown.length > list.length && <p className="text-xs text-[#5F5F5A] mt-1">Showing the first {list.length} of {shown.length}: click a cluster or filter to narrow.</p>}
-              <button className="btn-ink w-full justify-center mt-2" disabled={starting || pickInfo.ids.length === 0} onClick={startCampaign} data-testid="start-campaign">
-                {starting ? "CREATING…" : `START CAMPAIGN (${pickInfo.ids.length})`}
-              </button>
-              <p className="text-[11px] text-[#5F5F5A] mt-1" data-testid="start-campaign-note">
-                {picked.size === 0 ? "Tick prospects to start a campaign. Only approved ones can join; nothing is sent until you add steps and launch." : pickInfo.excluded > 0 ? `${pickInfo.excluded} selected prospect${pickInfo.excluded === 1 ? " is" : "s are"} not approved and will be left out.` : "Creates a draft campaign: nothing is sent."}
-              </p>
-            </section>
-          )}
-          {!result ? (
-            <div className="p-4" data-testid="map-empty">
-              <h2 className="font-display text-lg font-bold">Nothing searched yet</h2>
-              <p className="text-sm text-[#5F5F5A] mt-1">Move the map to a town, choose a category and press “Search this area”.</p>
-            </div>
-          ) : (
-            <section className="flex-1 min-h-0 flex flex-col" data-testid="map-results">
-              <div className="p-4 pb-2 space-y-2">
-                <p className="text-sm" data-testid="map-summary">{summaryText(places, result.truncated)}</p>
-                {places.length > 0 && (
-                  <div className="flex gap-2 flex-wrap">
-                    <button className="btn-ghost" onClick={() => setSelected(new Set(places.map((p) => p.external_id)))} data-testid="map-select-all">SELECT ALL</button>
-                    <button className="btn-ghost" onClick={() => setSelected(new Set(places.filter((p) => p.email).map((p) => p.external_id)))} data-testid="map-select-email">ONLY WITH E-MAIL</button>
-                    <button className="btn-ghost" onClick={() => setSelected(new Set())}>NONE</button>
+              {mine.length > 0 && showMine && (
+                <section className="p-4 border-b border-[#D3DBEA] max-h-[50%] overflow-y-auto" data-testid="map-mine-list">
+                  <div className="flex items-center justify-between gap-2">
+                    <h2 className="font-display text-lg font-bold">{group ? `Cluster · ${group.length} prospects` : "My prospects"}</h2>
+                    {group && <button className="underline text-xs" onClick={() => setGroup(null)} data-testid="cluster-close">All</button>}
                   </div>
-                )}
-              </div>
-              <ul className="flex-1 min-h-0 overflow-y-auto divide-y divide-[#EDEBE0] px-4">
-                {places.map((p) => (
-                  <li key={p.external_id} className="py-2 flex gap-2 items-start text-sm">
-                    <input type="checkbox" checked={selected.has(p.external_id)} onChange={() => toggle(p.external_id)} aria-label={`Select ${p.name}`} className="mt-1" />
-                    <button className="text-left min-w-0" onClick={() => map.current.setView([p.lat, p.lon], 18)}>
-                      <span className="font-medium block truncate">{p.name}</span>
-                      <span className="block text-xs text-[#5F5F5A] truncate">{p.email || p.phone || "no contact published"}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-          {canImport && chosen.length > 0 && <div className="border-t border-[#D6D3C8] p-3 overflow-y-auto max-h-[50%]"><ImportPanel selected={chosen} onDone={() => setSelected(new Set())} /></div>}
-          {!canImport && result && <p className="p-3 text-xs text-[#92400E] border-t border-[#D6D3C8]" data-testid="map-import-off">Importing is off: set FEATURE_PROSPECT_IMPORT=true to import the selection.</p>}
-        </div>
-      </aside>
-      <button className={`hidden md:flex absolute z-[501] top-1/2 ${GLASS} !rounded-full p-2 transition-all ${panelOpen ? "right-[24.6rem]" : "right-3"}`}
-        onClick={() => setPanelOpen((o) => !o)} aria-label={panelOpen ? "Hide results" : "Show results"} aria-expanded={panelOpen} data-testid="map-panel-toggle">
-        {panelOpen ? <CaretDoubleRight size={14} /> : <CaretDoubleLeft size={14} />}
-      </button>
-
-      <button className={`md:hidden absolute z-[501] bottom-1 left-1/2 -translate-x-1/2 ${GLASS} !rounded-full px-4 py-1.5 text-xs font-medium`}
-        onClick={() => setPanelOpen((o) => !o)} aria-expanded={panelOpen} data-testid="map-panel-toggle-mobile">
-        {panelOpen ? "Hide results" : result ? `Results (${places.length})` : "Results"}
-      </button>
-      <p className="absolute z-[400] bottom-1 left-24 text-[10px] text-[#0F172A]/70 bg-white/70 px-2 rounded-full pointer-events-none hidden lg:block">
-        Round: search results (green e-mail, amber phone/site, grey name) · square: my prospects (blue to review, green approved) · double-click a pin to select
-      </p>
+                  {list.length === 0 && <p className="text-sm text-[#5F5F5A] mt-1" data-testid="mine-none">No prospect matches the filters.</p>}
+                  <ul className="divide-y divide-[#E3E9F4]">
+                    {list.map((p) => (
+                      <li key={p.id} className="py-1.5 flex gap-2 items-start text-sm" data-testid="mine-row">
+                        <input type="checkbox" checked={picked.has(p.id)} onChange={() => togglePick(p.id)} aria-label={`Select ${p.name}`} className="mt-1" />
+                        <button className="text-left min-w-0 flex-1" onClick={() => map.current.flyTo([p.lat, p.lon], 17, { duration: 1 })}>
+                          <span className="font-medium block truncate">{p.name}</span>
+                          <span className="block text-xs text-[#5F5F5A] truncate">{STATUS_LABEL[p.review_status]} · {p.score === null || p.score === undefined ? "not scored" : `score ${p.score}`}{p.city ? ` · ${p.city}` : ""}</span>
+                        </button>
+                        <Link to={`/app/prospects/${p.id}`} className="text-xs underline shrink-0">open</Link>
+                      </li>
+                    ))}
+                  </ul>
+                  {!group && shown.length > list.length && <p className="text-xs text-[#5F5F5A] mt-1">Showing the first {list.length} of {shown.length}: click a cluster or filter to narrow.</p>}
+                  <button className="btn-ink w-full justify-center mt-2" disabled={starting || pickInfo.ids.length === 0} onClick={startCampaign} data-testid="start-campaign">
+                    {starting ? "CREATING…" : `START CAMPAIGN (${pickInfo.ids.length})`}
+                  </button>
+                  <p className="text-[11px] text-[#5F5F5A] mt-1" data-testid="start-campaign-note">
+                    {picked.size === 0 ? "Tick prospects to start a campaign. Only approved ones can join; nothing is sent until you add steps and launch." : pickInfo.excluded > 0 ? `${pickInfo.excluded} selected prospect${pickInfo.excluded === 1 ? " is" : "s are"} not approved and will be left out.` : "Creates a draft campaign: nothing is sent."}
+                  </p>
+                </section>
+              )}
+              {!result ? (
+                <div className="p-4" data-testid="map-empty">
+                  <h2 className="font-display text-lg font-bold">Nothing searched yet</h2>
+                  <p className="text-sm text-[#5F5F5A] mt-1">Move the map to a town, choose a category and press “Search this area”.</p>
+                </div>
+              ) : (
+                <section className="flex-1 min-h-0 flex flex-col" data-testid="map-results">
+                  <div className="p-4 pb-2 space-y-2">
+                    <p className="text-sm" data-testid="map-summary">{summaryText(places, result.truncated)}</p>
+                    {places.length > 0 && (
+                      <div className="flex gap-2 flex-wrap">
+                        <button className="btn-ghost" onClick={() => setSelected(new Set(places.map((p) => p.external_id)))} data-testid="map-select-all">SELECT ALL</button>
+                        <button className="btn-ghost" onClick={() => setSelected(new Set(places.filter((p) => p.email).map((p) => p.external_id)))} data-testid="map-select-email">ONLY WITH E-MAIL</button>
+                        <button className="btn-ghost" onClick={() => setSelected(new Set())}>NONE</button>
+                      </div>
+                    )}
+                  </div>
+                  <ul className="flex-1 min-h-0 overflow-y-auto divide-y divide-[#E3E9F4] px-4">
+                    {places.map((p) => (
+                      <li key={p.external_id} className="py-2 flex gap-2 items-start text-sm">
+                        <input type="checkbox" checked={selected.has(p.external_id)} onChange={() => toggle(p.external_id)} aria-label={`Select ${p.name}`} className="mt-1" />
+                        <button className="text-left min-w-0" onClick={() => map.current.flyTo([p.lat, p.lon], 18, { duration: 1 })}>
+                          <span className="font-medium block truncate">{p.name}</span>
+                          <span className="block text-xs text-[#5F5F5A] truncate">{p.email || p.phone || "no contact published"}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+              {canImport && chosen.length > 0 && (
+                <div className="border-t border-[#D3DBEA] p-3 overflow-y-auto max-h-[50%]">
+                  <ImportPanel selected={chosen} onDone={() => setSelected(new Set())} open={importOpen} onToggle={() => setImportOpen((v) => !v)} onClose={() => setSelected(new Set())} />
+                </div>
+              )}
+              {!canImport && result && <p className="p-3 text-xs text-[#92400E] border-t border-[#D3DBEA]" data-testid="map-import-off">Importing is off: set FEATURE_PROSPECT_IMPORT=true to import the selection.</p>}
+            </div>
+          </aside>
+          <button className={`hidden md:flex absolute z-[501] top-1/2 ${GLASS} !rounded-full p-2 transition-all ${panelOpen ? "right-[24.6rem]" : "right-3"}`}
+            onClick={() => setPanelOpen((o) => !o)} aria-label={panelOpen ? "Hide results" : "Show results"} aria-expanded={panelOpen} data-testid="map-panel-toggle">
+            {panelOpen ? <CaretDoubleRight size={14} /> : <CaretDoubleLeft size={14} />}
+          </button>
+          <button className={`md:hidden absolute z-[501] bottom-1 left-1/2 -translate-x-1/2 ${GLASS} !rounded-full px-4 py-1.5 text-xs font-medium`}
+            onClick={() => setPanelOpen((o) => !o)} aria-expanded={panelOpen} data-testid="map-panel-toggle-mobile">
+            {panelOpen ? "Hide results" : result ? `Results (${places.length})` : "Results"}
+          </button>
+          <p className="absolute z-[400] bottom-1 left-40 text-[10px] text-[#0B1020]/80 bg-white/80 px-2 rounded-full pointer-events-none hidden lg:block">
+            Round: search results (green e-mail, amber phone/site, grey name) · square: my prospects (blue to review, green approved) · double-click a pin to select · H: hide panels
+          </p>
+        </>
+      )}
     </div>
   );
 }

@@ -13,7 +13,7 @@ import LeadDetailDrawer from "@/components/LeadDetailDrawer";
 
 const STAGES = ["new", "contacted", "engaged", "qualified", "won", "lost"];
 const STAGE_COLORS = {
-  new: "#DC2626", contacted: "#475569", engaged: "#0F172A",
+  new: "#4F46E5", contacted: "#475569", engaged: "#0F172A",
   qualified: "#F59E0B", won: "#10B981", lost: "#EF4444",
 };
 
@@ -77,7 +77,7 @@ export default function Leads() {
           <p className="text-[#5F5F5A] mt-1">{leads.length} contacts across the pipeline.</p>
         </div>
         <div className="flex gap-2 items-center">
-          <div className="flex items-center gap-2 px-3 py-1.5 border border-[#D6D3C8] rounded-md bg-[#FFFFFF]">
+          <div className="flex items-center gap-2 px-3 py-1.5 border border-[#D3DBEA] rounded-md bg-[#FFFFFF]">
             <MagnifyingGlass size={14} className="text-[#6B6B66]" />
             <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, email, company" className="bg-transparent outline-none text-sm w-56 font-mono" data-testid="leads-search" />
           </div>
@@ -94,14 +94,14 @@ export default function Leads() {
       {view === "table" ? (
         <div className="surface overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="bg-[#FAFAF7] border-b border-[#D6D3C8]">
+            <thead className="bg-[#F6F8FC] border-b border-[#D3DBEA]">
               <tr className="text-left mono-accent">
                 <th className="p-3 w-10">
                   <input
                     type="checkbox"
                     checked={selected.size > 0 && selected.size === allVisible.length}
                     onChange={toggleAll}
-                    className="accent-[#DC2626]"
+                    className="accent-[#4F46E5]"
                     aria-label="Select all visible leads"
                     data-testid="leads-select-all"
                   />
@@ -123,7 +123,7 @@ export default function Leads() {
                   animate={{ opacity: 1 }}
                   transition={{ delay: i * 0.02 }}
                   onClick={() => setDetailLeadId(l.id)}
-                  className={`border-b border-[#F0F0EA] hover:bg-[#FAFAF7] transition-colors cursor-pointer ${selected.has(l.id) ? "bg-[#FEF2F2]" : ""}`}
+                  className={`border-b border-[#E6ECF6] hover:bg-[#F6F8FC] transition-colors cursor-pointer ${selected.has(l.id) ? "bg-[#FEF2F2]" : ""}`}
                   data-testid={`lead-row-${l.id}`}
                 >
                   <td className="p-3" onClick={(e) => e.stopPropagation()}>
@@ -131,14 +131,14 @@ export default function Leads() {
                       type="checkbox"
                       checked={selected.has(l.id)}
                       onChange={() => toggleOne(l.id)}
-                      className="accent-[#DC2626]"
+                      className="accent-[#4F46E5]"
                       aria-label={`Select ${l.full_name}`}
                       data-testid={`lead-check-${l.id}`}
                     />
                   </td>
                   <td className="p-3">
                     <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#DC2626]/30 to-[#0F172A]/30 flex items-center justify-center text-xs font-bold">
+                      <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#4F46E5]/30 to-[#0F172A]/30 flex items-center justify-center text-xs font-bold">
                         {(l.full_name || "?").charAt(0)}
                       </div>
                       <div>
@@ -154,7 +154,7 @@ export default function Leads() {
                     <select
                       value={l.stage}
                       onChange={(e) => updateStage(l.id, e.target.value)}
-                      className="bg-transparent border border-[#D6D3C8] rounded px-2 py-1 text-xs font-mono uppercase"
+                      className="bg-transparent border border-[#D3DBEA] rounded px-2 py-1 text-xs font-mono uppercase"
                       style={{ color: STAGE_COLORS[l.stage] }}
                       aria-label={`Stage of ${l.full_name}`}
                       data-testid={`stage-select-${l.id}`}
@@ -164,8 +164,8 @@ export default function Leads() {
                   </td>
                   <td className="p-3">
                     <div className="flex items-center gap-2">
-                      <div className="w-16 h-1 bg-[#F0F0EA] rounded overflow-hidden">
-                        <div className="h-full bg-gradient-to-r from-[#DC2626] to-[#0F172A]" style={{ width: `${l.score}%` }} />
+                      <div className="w-16 h-1 bg-[#E6ECF6] rounded overflow-hidden">
+                        <div className="h-full bg-gradient-to-r from-[#4F46E5] to-[#0F172A]" style={{ width: `${l.score}%` }} />
                       </div>
                       <span className="font-mono text-xs w-6 text-right">{l.score}</span>
                     </div>
@@ -192,7 +192,7 @@ export default function Leads() {
             const items = leads.filter((l) => l.stage === s);
             return (
               <div key={s} className="kanban-column p-3 min-h-[400px]" data-testid={`kanban-${s}`}>
-                <div className="flex items-center justify-between mb-3 pb-2 border-b border-[#D6D3C8]">
+                <div className="flex items-center justify-between mb-3 pb-2 border-b border-[#D3DBEA]">
                   <span className="mono-accent" style={{ color: STAGE_COLORS[s] }}>{s}</span>
                   <span className="font-mono text-xs text-[#5F5F5A]">{items.length}</span>
                 </div>
@@ -203,7 +203,7 @@ export default function Leads() {
                       initial={{ opacity: 0, y: 4 }}
                       animate={{ opacity: 1, y: 0 }}
                       onClick={() => setDetailLeadId(l.id)}
-                      className="surface p-3 text-xs cursor-pointer hover:border-[#DC2626]/40 transition"
+                      className="surface p-3 text-xs cursor-pointer hover:border-[#4F46E5]/40 transition"
                       data-testid={`kanban-card-${l.id}`}
                     >
                       <div className="font-semibold text-sm text-[#0A0A0A]">{l.full_name}</div>

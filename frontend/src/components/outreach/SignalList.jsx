@@ -66,7 +66,7 @@ export default function SignalList({ signals, prospectId, canReview = false, onC
   return (
     <ul className="grid md:grid-cols-2 gap-3" data-testid="signal-list">
       {signals.map((s) => (
-        <li key={s.key} className="border border-[#D6D3C8] rounded-md p-3 bg-white" data-testid={`signal-${s.key}`}>
+        <li key={s.key} className="border border-[#D3DBEA] rounded-md p-3 bg-white" data-testid={`signal-${s.key}`}>
           <div className="flex items-center justify-between gap-2">
             <span className="font-display font-semibold text-sm">{s.label}</span>
             <StateChip state={s.state} />

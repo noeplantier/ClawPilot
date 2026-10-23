@@ -61,7 +61,7 @@ function TownSearch({ onPick }) {
       {towns.length > 0 && (
         <ul className="absolute z-10 left-0 right-0 mt-1 surface max-h-48 overflow-auto">
           {towns.map((t) => (
-            <li key={t.label}><button type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-[#F4F2E7]" onClick={() => { onPick(t); setQuery(""); setTowns([]); }}>{t.label}</button></li>
+            <li key={t.label}><button type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-[#F1F5FB]" onClick={() => { onPick(t); setQuery(""); setTowns([]); }}>{t.label}</button></li>
           ))}
         </ul>
       )}
@@ -97,12 +97,12 @@ function Results({ run, offset, onPage, selected, toggle, onSelectPage, flags, c
         <>
           <div className="surface overflow-x-auto">
             <table className="w-full text-sm" data-testid="source-table">
-              <thead className="bg-[#FAFAF7] border-b border-[#D6D3C8]">
+              <thead className="bg-[#F6F8FC] border-b border-[#D3DBEA]">
                 <tr className="text-left mono-accent"><th className="p-3 w-10"><input type="checkbox" aria-label="Select this page" onChange={(e) => onSelectPage(e.target.checked)} /></th><th className="p-3">name</th><th className="p-3">where</th><th className="p-3">contact (as published)</th><th className="p-3">signals</th></tr>
               </thead>
               <tbody>
                 {run.places.map((p) => (
-                  <tr key={p.external_id} className="border-b border-[#F0F0EA] align-top" data-testid={`place-${p.external_id}`}>
+                  <tr key={p.external_id} className="border-b border-[#E6ECF6] align-top" data-testid={`place-${p.external_id}`}>
                     <td className="p-3"><input type="checkbox" checked={selected.has(p.external_id)} onChange={() => toggle(p.external_id)} aria-label={`Select ${p.name}`} /></td>
                     <td className="p-3"><span className="font-medium">{p.name}</span><a className="block text-xs underline text-[#5F5F5A]" href={p.source_url.startsWith("http") ? p.source_url : undefined} rel="noopener noreferrer" target="_blank">{p.source_name}</a></td>
                     <td className="p-3 text-xs">{[p.city, p.postcode].filter(Boolean).join(" ") || <i>not published</i>}</td>

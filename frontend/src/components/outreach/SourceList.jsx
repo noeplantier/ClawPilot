@@ -10,7 +10,7 @@ export default function SourceList({ sources }) {
       {sources.map((s) => {
         const fields = Object.entries(s.fields || {}).filter(([, v]) => v !== null && v !== "");
         return (
-          <li key={s.id} className="border border-[#D6D3C8] rounded-md p-3 bg-white" data-testid="source-item">
+          <li key={s.id} className="border border-[#D3DBEA] rounded-md p-3 bg-white" data-testid="source-item">
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
               <span className="font-display font-semibold text-sm">{s.source_name}</span>
               <span className="mono-accent">listing {s.external_id}</span>

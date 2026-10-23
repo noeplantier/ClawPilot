@@ -34,14 +34,14 @@ export default function Register() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#EDEBE0] grid-bg px-6 py-12 relative">
+    <div className="min-h-screen flex items-center justify-center bg-[#E9EEF7] grid-bg px-6 py-12 relative">
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-md surface p-10 relative z-10"
       >
         <Link to="/" className="flex items-center gap-2 mb-8" data-testid="brand-logo">
-          <Lightning size={22} weight="fill" className="text-[#DC2626]" />
+          <Lightning size={22} weight="fill" className="text-[#4F46E5]" />
           <span className="font-display font-black tracking-tight text-xl">OutreachOS</span>
         </Link>
 
@@ -74,7 +74,7 @@ export default function Register() {
 
         <p className="mt-6 text-sm text-[#5F5F5A]">
           Existing operator?{" "}
-          <Link to="/login" className="text-[#B91C1C] underline" data-testid="goto-login-link">
+          <Link to="/login" className="text-[#4338CA] underline" data-testid="goto-login-link">
             Sign in →
           </Link>
         </p>

@@ -83,7 +83,7 @@ export default function Campaigns() {
             <div className="flex items-start justify-between gap-3">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <Target size={16} weight="duotone" className="text-[#DC2626]" />
+                  <Target size={16} weight="duotone" className="text-[#4F46E5]" />
                   <h3 className="font-display font-bold text-lg truncate">{c.name}</h3>
                   <span className={`chip ${STATUS_CHIP[c.status]}`}>{c.status}</span>
                 </div>
@@ -106,7 +106,7 @@ export default function Campaigns() {
             </div>
 
             <div className="grid grid-cols-4 gap-3 mt-5">
-              <Metric icon={PaperPlaneTilt} value={c.sent} label="sent" color="#DC2626" />
+              <Metric icon={PaperPlaneTilt} value={c.sent} label="sent" color="#4F46E5" />
               <Metric icon={Eye} value={c.opened} label="opened" color="#0F172A" />
               <Metric icon={ChatCircleDots} value={c.replied} label="replied" color="#475569" />
               <Metric icon={Target} value={c.converted} label="won" color="#10B981" />
@@ -125,7 +125,7 @@ export default function Campaigns() {
 
         {list.length === 0 && (
           <div className="surface p-10 text-center col-span-full text-[#5F5F5A]">
-            No campaigns yet. <button onClick={() => setOpen(true)} className="text-[#DC2626] hover:underline">Create your first.</button>
+            No campaigns yet. <button onClick={() => setOpen(true)} className="text-[#4F46E5] hover:underline">Create your first.</button>
           </div>
         )}
       </div>

@@ -330,3 +330,72 @@ test("the system page reports the real database and migrations, and probes OpenS
   await expect(page.getByTestId("probe-result")).toContainText("overpass-api.de: OSError: Network is unreachable");
   await expect(page.getByTestId("probe-result")).toContainText("None answered");
 });
+
+test("the sidebar folds and remembers it; the map has one real basemap and every panel can be closed or minimised", async ({ page }) => {
+  await register(page);
+  await MAP_STUBS(page);
+  await page.route(/\/api\/map\/search(\?.*)?$/, (route) =>
+    route.fulfill(route.request().method() === "POST" ? { status: 202, json: JOB("succeeded", { id: "j9", result_count: 1 }) } : { json: [] }));
+  await page.route("**/api/map/search/j9/places", (route) => route.fulfill({ json: ONE_PLACE }));
+
+  await expect(page.getByTestId("sidebar")).toHaveAttribute("data-folded", "false");
+  await page.getByTestId("sidebar-toggle").click();
+  await expect(page.getByTestId("sidebar")).toHaveAttribute("data-folded", "true");
+  await page.reload();
+  await expect(page.getByTestId("sidebar")).toHaveAttribute("data-folded", "true"); // remembered
+  await page.getByTestId("nav-map-search").click(); // still reachable by its icon
+
+  await expect(page.getByTestId("map")).toBeVisible();
+  await expect(page.getByTestId("map-base-dark")).toHaveCount(0); // no light / dark variants
+  await expect(page.getByTestId("map-base-light")).toHaveCount(0);
+
+  await page.getByTestId("map-search").click();
+  await expect(page.getByTestId("map-results")).toBeVisible();
+  // minimise the search card to a pill: the search stays one click away
+  await page.getByTestId("map-search-minimise").click();
+  await expect(page.getByTestId("map-search-card")).toHaveCount(0);
+  await expect(page.getByTestId("map-search-pill")).toBeVisible();
+  await page.getByTestId("map-search-expand").click();
+  await expect(page.getByTestId("map-search-card")).toBeVisible();
+  // close the results panel, then bring it back
+  await page.getByTestId("map-panel-close").click();
+  await expect(page.getByTestId("map-panel-toggle")).toHaveAttribute("aria-expanded", "false");
+  await page.getByTestId("map-panel-toggle").click();
+  await expect(page.getByTestId("map-panel-toggle")).toHaveAttribute("aria-expanded", "true");
+  // the whole map: every panel hidden with the button and with the H key
+  await page.getByTestId("map-hide-panels").click();
+  await expect(page.getByTestId("map-search-card")).toHaveCount(0);
+  await expect(page.getByTestId("map-results")).toHaveCount(0);
+  await page.getByTestId("map-hide-panels").click();
+  await expect(page.getByTestId("map-search-card")).toBeVisible();
+  await page.keyboard.press("h");
+  await expect(page.getByTestId("map-search-card")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("map-search-card")).toBeVisible();
+});
+
+test("the import form of a map selection can be minimised and closed, so the whole map stays visible", async ({ page }) => {
+  await register(page);
+  await page.route("**/api/prospects/settings", async (route) => {
+    const real = await (await route.fetch()).json();
+    await route.fulfill({ json: { ...real, flags: { ...real.flags, external_sources: true, prospect_import: true } } });
+  });
+  await page.route(/(tile\.openstreetmap\.org)/, (route) =>
+    route.fulfill({ contentType: "image/png", body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64") }));
+  await page.route("**/api/map/prospects", (route) => route.fulfill({ json: [] }));
+  await page.route(/\/api\/map\/search(\?.*)?$/, (route) =>
+    route.fulfill(route.request().method() === "POST" ? { status: 202, json: JOB("succeeded", { id: "j9", result_count: 1 }) } : { json: [] }));
+  await page.route("**/api/map/search/j9/places", (route) => route.fulfill({ json: ONE_PLACE }));
+  await page.goto("/app/map");
+  await page.getByTestId("map-search").click();
+  await page.getByTestId("map-select-all").click();
+  await expect(page.getByTestId("map-import")).toContainText("Import 1 selected place");
+  await expect(page.getByTestId("map-attest")).toBeVisible();
+  await page.getByTestId("import-minimise").click();
+  await expect(page.getByTestId("map-attest")).toHaveCount(0); // minimised: only its title bar remains
+  await expect(page.getByTestId("map-import")).toBeVisible();
+  await page.getByTestId("import-minimise").click();
+  await expect(page.getByTestId("map-attest")).toBeVisible();
+  await page.getByTestId("import-close").click(); // closing clears the selection
+  await expect(page.getByTestId("map-import")).toHaveCount(0);
+});

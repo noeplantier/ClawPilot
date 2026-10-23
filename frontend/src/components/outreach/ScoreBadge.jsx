@@ -3,8 +3,8 @@ import { coverageLabel, scoreBand } from "@/lib/outreachFormat";
 const BAND_STYLE = {
   high: "bg-[#0F172A] text-white border-[#0F172A]",
   medium: "bg-[#F1F5F9] text-[#0F172A] border-[#0F172A]/30",
-  low: "bg-white text-[#475569] border-[#D6D3C8]",
-  none: "bg-white text-[#6B6B66] border-dashed border-[#D6D3C8]",
+  low: "bg-white text-[#475569] border-[#D3DBEA]",
+  none: "bg-white text-[#6B6B66] border-dashed border-[#D3DBEA]",
 };
 
 // The number is always printed: colour only reinforces it. `null` means "never scored", not zero.
