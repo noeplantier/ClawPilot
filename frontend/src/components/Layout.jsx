@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   SquaresFour, Target, Users, Robot, ChatsCircle, ChartLine, Gear, SignOut, Lightning, MagnifyingGlass, Sparkle,
-  ListChecks, PaperPlaneTilt, MapTrifold, Database,
+  ListChecks, PaperPlaneTilt, MapTrifold, Database, Heartbeat,
 } from "@phosphor-icons/react";
 import { useState } from "react";
 import AIComposerModal from "@/components/AIComposerModal";
@@ -21,6 +21,7 @@ const NAV = [
   { to: "/app/agents", icon: Robot, label: "Agents" },
   { to: "/app/messages", icon: ChatsCircle, label: "Messages" },
   { to: "/app/analytics", icon: ChartLine, label: "Analytics" },
+  { to: "/app/system", icon: Heartbeat, label: "System health" },
   { to: "/app/settings", icon: Gear, label: "Settings" },
 ];
 

@@ -9,13 +9,33 @@ Les prospects déjà importés qui ont une position (importés depuis la carte, 
 dessinés en **carrés** (bleu : à valider, vert : approuvé, rouge : refusé), cliquables vers leur fiche. Un lieu déjà importé n'est
 plus proposé comme résultat de recherche (reconnu par son identifiant OpenStreetMap). Endpoint : `GET /api/map/prospects`.
 
-## D'où part la requête Overpass
-Les serveurs Overpass publics répondent mal à l'adresse partagée de l'hébergeur de l'API (délais, « network unreachable »). La recherche
-passe donc **par le navigateur** : `POST /api/map/query` (le serveur construit et valide la requête, limite 6/min/organisation), le
-navigateur interroge lui-même un serveur Overpass public (CORS ouvert, 15 s par serveur), puis `POST /api/map/parse` (12/min) renvoie
-la réponse au **même analyseur** que la recherche côté serveur : seuls les champs publiés sont gardés, rien n'est complété. Si le
-navigateur n'atteint aucun serveur, la recherche côté serveur (`POST /api/map/search`) sert de repli et le message d'erreur nomme
-les deux causes. La réponse transmise à `/map/parse` n'est conservée nulle part ; l'import reste attesté et audité.
+## Une recherche = un job enregistré
+`POST /api/map/search` crée un job (`map_search_jobs` : zone, catégorie, statut, source, nombre de résultats, erreur, durée,
+auteur, organisation) et répond tout de suite (`202`). Un exécutant en arrière-plan du processus de l'API :
+1. lit le **cache** (`source_cache`, clé = version de la requête + zone arrondie à 0,005° + catégorie, TTL 6 h) ;
+2. sinon envoie **une** requête Overpass (une à la fois dans tout le processus, serveurs essayés à tour de rôle, 15 s chacun, IPv4,
+   User-Agent identifié) ;
+3. normalise, **dédoublonne** (même identifiant OSM, ou même nom au même endroit : on garde l'entrée la plus complète) et enregistre
+   les lieux dans `map_search_results` ;
+4. passe le job à `succeeded` ou `failed` avec un code (`overpass_timeout`, `overpass_busy`, `overpass_unreachable`,
+   `overpass_bad_answer`, `overpass_too_large`, `job_lost`, `internal_error`) et un message qui nomme chaque serveur.
+
+La page interroge `GET /api/map/search/{id}` toutes les 1,5 s puis lit `GET /api/map/search/{id}/places`. Au rechargement (ou depuis un
+autre appareil) la dernière recherche réussie de l'organisation revient depuis la base (`GET /api/map/search`). Un job resté
+`queued/running` plus de 3 minutes (redémarrage de l'instance) est déclaré `job_lost`. Les jobs de plus de 30 jours et leurs lieux
+sont supprimés à la création d'une nouvelle recherche.
+
+**Les lieux enregistrés ne sont pas des prospects** : c'est une zone de travail. Un lieu ne devient prospect que par l'import attesté
+(origine, base légale, liste de suppression, audit), conformément à la conformité du projet.
+
+**Repli navigateur, explicite** : quand l'échec vient des serveurs publics, la réponse du job contient `fallback` (la requête et les
+serveurs) et la page propose « Retry from my browser » : le navigateur interroge lui-même un serveur Overpass, puis
+`POST /api/map/search/{id}/ingest` envoie la réponse au **même analyseur** ; seul un job `failed` peut être complété ainsi
+(12/min/organisation, 1000 éléments au plus). Ce n'est jamais automatique.
+
+**Diagnostic** : la page *System health* (`/app/system`, `GET /api/system/health`) montre la base, les migrations, le cache et les
+recherches des dernières 24 h ; le bouton « Check from the server » (`POST /api/system/health/overpass`, 3/min) interroge la page de
+statut de chaque serveur Overpass depuis l'API elle-même.
 
 ## Ce qui est affiché, et ce qui ne l'est pas
 - Uniquement les champs publiés dans OpenStreetMap (`phone`, `email`/`contact:email`, `website`, `addr:*`). Un champ absent s'affiche
