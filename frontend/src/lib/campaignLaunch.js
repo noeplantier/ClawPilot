@@ -7,6 +7,7 @@ const BLOCK_REASON = {
   limit_daily: "Daily send limit reached",
   limit_hourly: "Hourly send limit reached",
   limit_delay: "Minimum delay between messages not elapsed",
+  provider_not_configured: "No provider is configured for this channel (Settings > Integrations)",
 };
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;

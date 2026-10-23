@@ -45,11 +45,11 @@ def _is_opt_out_message(body: str) -> bool:
 
 
 def _reject_or_warn_unverifiable(provider: str, setting: str) -> None:
-    """No verification secret configured: refuse in production, tolerate in local mock mode."""
+    """No verification secret configured: refuse in production, tolerate in local development."""
     if os.environ.get("APP_ENV", "").lower() == "production":
         logger.error("%s webhook rejected: %s is not set in production", provider, setting)
         raise HTTPException(status_code=403, detail="Webhook signature cannot be verified")
-    logger.warning("%s webhook accepted UNSIGNED: %s unset (non-production mock mode)", provider, setting)
+    logger.warning("%s webhook accepted UNSIGNED: %s unset (non-production)", provider, setting)
 
 
 async def require_sendgrid_signature(request: Request) -> None:
@@ -153,7 +153,7 @@ async def require_twilio_signature(request: Request) -> None:
     must never reach the handler. Fails closed:
     - auth token set        → signature must verify (403 otherwise);
     - token unset, production → 403 (nothing to verify against);
-    - token unset, non-production → allowed, for local mock mode only.
+    - token unset, non-production → allowed, for local development only.
 
     Behind a proxy the URL the app sees can differ from the one Twilio signed, so set
     TWILIO_WEBHOOK_URL to the exact public URL configured in the Twilio console.

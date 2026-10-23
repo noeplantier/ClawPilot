@@ -1,6 +1,6 @@
 import {
   auditLabel, blockText, coverageLabel, describeApiError, detailSummary, domainOf, explainTotal, formatRetry,
-  limitsPatch, mergeTimeline, scoreBand, validateLimits, describeTestSend, describeInboxSync,
+  limitsPatch, mergeTimeline, scoreBand, validateLimits, describeTestSend, describeWhatsappTest, describeInboxSync,
 } from "./outreachFormat";
 
 const NOW = new Date("2026-06-01T14:00:00Z");
@@ -149,5 +149,33 @@ describe("describeInboxSync", () => {
   });
   test("mail that changed nothing says so", () => {
     expect(describeInboxSync({ fetched: 1, replies: 0 })).toBe("Mailbox read: 1 new message. Nothing to record.");
+  });
+});
+
+describe("describeWhatsappTest", () => {
+  test("a sent test says Twilio accepted it, not that it was read", () => {
+    const out = describeWhatsappTest({ status: "sent", to: "+33666167788" });
+    expect(out.tone).toBe("ok");
+    expect(out.text).toContain("Accepted by Twilio for +33666167788");
+  });
+  test("a failure gives the provider's own reason and never a success tone", () => {
+    const out = describeWhatsappTest({ status: "failed", to: "+33666167788", error: "Twilio refused the message: unverified number" });
+    expect(out.tone).toBe("danger");
+    expect(out.text).toContain("unverified number");
+  });
+});
+
+describe("refusals that replace the old pretend sends", () => {
+  const refused = (code, message = "server text") => ({ response: { status: 409, data: { detail: { code, message, retry_at: null } } } });
+  test("no provider configured is explained, with where to fix it", () => {
+    expect(describeApiError(refused("provider_not_configured"))).toContain("Settings > Integrations");
+  });
+  test("a sandbox refusal names both allowlists", () => {
+    const text = describeApiError(refused("sandbox_recipient"));
+    expect(text).toContain("OUTREACH_LIVE_ALLOWLIST");
+    expect(text).toContain("OUTREACH_LIVE_PHONES");
+  });
+  test("the AI composer being off is a refusal, not a canned text", () => {
+    expect(describeApiError(refused("ai_not_configured"))).toContain("AI composer is off");
   });
 });

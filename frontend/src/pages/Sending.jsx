@@ -5,7 +5,7 @@ import { ArrowsClockwise, Pause, Play, Warning } from "@phosphor-icons/react";
 import { useAuth } from "@/contexts/AuthContext";
 import { canDecide, outboundApi, prospectsApi, useAsync } from "@/lib/outreach";
 import {
-  LIMIT_RANGES, MESSAGE_STATUS_CHIP, describeApiError, describeInboxSync, describeTestSend, formatDateTime, formatRetry, limitsPatch,
+  LIMIT_RANGES, MESSAGE_STATUS_CHIP, describeApiError, describeInboxSync, describeTestSend, describeWhatsappTest, formatDateTime, formatRetry, limitsPatch,
   validateLimits,
 } from "@/lib/outreachFormat";
 import HistoryTimeline from "@/components/outreach/HistoryTimeline";
@@ -273,6 +273,46 @@ function SmtpTestPanel({ onDone }) {
   );
 }
 
+function WhatsappTestPanel({ onDone }) {
+  const [to, setTo] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState(null);
+
+  const send = async () => {
+    setBusy(true);
+    setResult(null);
+    setError(null);
+    try {
+      setResult(describeWhatsappTest(await outboundApi.testWhatsapp(to.trim())));
+      onDone();
+    } catch (e) {
+      setError(describeApiError(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="surface p-5 space-y-3" data-testid="whatsapp-test">
+      <h2 className="font-display text-xl font-bold">Test the real WhatsApp connection</h2>
+      <p className="text-sm text-[#5F5F5A]">
+        Sends one technical message (not prospecting) to a number listed in <code>OUTREACH_LIVE_PHONES</code> (your own phone), through the same
+        limits and kill switch. Needs the Twilio settings; otherwise it is refused and nothing is sent.
+      </p>
+      <div className="flex gap-2 flex-wrap items-center">
+        <input className="neo-input !w-72" type="tel" placeholder="+33612345678" value={to}
+          onChange={(e) => setTo(e.target.value)} data-testid="whatsapp-test-to" />
+        <button className="btn-ghost" disabled={busy || !to.trim()} onClick={send} data-testid="whatsapp-test-send">
+          {busy ? "SENDING…" : "SEND TEST WHATSAPP"}
+        </button>
+      </div>
+      {result && <div role="status" className={`text-sm ${TONE_TEXT[result.tone]}`} data-testid="whatsapp-test-result">{result.text}</div>}
+      {error && <div role="alert" className="text-sm text-[#991B1B]" data-testid="whatsapp-test-error">{error}</div>}
+    </section>
+  );
+}
+
 export default function Sending() {
   const { user } = useAuth();
   const edit = canDecide(user);
@@ -302,6 +342,7 @@ export default function Sending() {
           <StatusPanel status={page.data.status} settings={page.data.settings} />
           <LimitsForm key={JSON.stringify(page.data.limits)} limits={page.data.limits} canEdit={edit} onSaved={page.reload} />
           {edit && <SmtpTestPanel onDone={page.reload} />}
+          {edit && <WhatsappTestPanel onDone={page.reload} />}
           {edit && <InboxSyncPanel onDone={page.reload} />}
           <section className="space-y-3" data-testid="messages-panel">
             <h2 className="font-display text-xl font-bold">Dispatched messages</h2>

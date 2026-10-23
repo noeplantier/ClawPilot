@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
+import { describeApiError } from "@/lib/outreachFormat";
 import { Sparkle, X, Copy, Translate, ArrowClockwise, Stack, Check } from "@phosphor-icons/react";
 
 const LANGUAGES = [
@@ -47,7 +48,7 @@ export default function AIComposerModal({ open, onClose, defaults }) {
       const { data } = await api.post("/ai/generate", form);
       setResult(data);
     } catch (err) {
-      toast.error(err?.response?.data?.detail || "Generation failed");
+      toast.error(describeApiError(err));
     } finally {
       setLoading(false);
     }
@@ -64,7 +65,7 @@ export default function AIComposerModal({ open, onClose, defaults }) {
       const { data } = await api.post("/ai/generate/variants", form);
       setVariants(data.variants);
     } catch (err) {
-      toast.error("Variants generation failed");
+      toast.error(describeApiError(err));
     } finally {
       setVariantsLoading(false);
     }

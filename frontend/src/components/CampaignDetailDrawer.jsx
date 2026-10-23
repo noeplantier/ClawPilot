@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 import { describeLaunch, sendErrorText } from "@/lib/campaignLaunch";
+import { blockText } from "@/lib/outreachFormat";
 import {
   X, Rocket, Users, Plus, Check, CircleNotch, Envelope, WhatsappLogo, Play, ChartBar, ArrowsClockwise,
 } from "@phosphor-icons/react";
@@ -161,13 +162,13 @@ export default function CampaignDetailDrawer({ open, campaignId, onClose, onUpda
                         <ChartBar size={16} className="text-[#10B981] mt-0.5" />
                         <div className="text-xs font-mono flex-1">
                           <div className="font-display font-bold text-sm text-[#0A0A0A] mb-1">Step executed</div>
-                          <div className="grid grid-cols-5 gap-2">
-                            <Mini label="dispatched" value={stepResult.dispatched} color="#0F172A" />
+                          <div className="grid grid-cols-4 gap-2">
                             <Mini label="sent" value={stepResult.sent} color="#10B981" />
-                            <Mini label="mocked" value={stepResult.mocked} color="#F59E0B" />
                             <Mini label="failed" value={stepResult.failed} color="#DC2626" />
                             <Mini label="skipped" value={stepResult.skipped} color="#595955" />
+                            <Mini label="not attempted" value={stepResult.not_attempted || 0} color="#F59E0B" />
                           </div>
+                          {stepResult.blocked && <div className="mt-2 text-[11px] text-[#92400E]" role="alert" data-testid="step-blocked">{blockText(stepResult.blocked.code) || stepResult.blocked.message}</div>}
                         </div>
                       </motion.div>
                     )}

@@ -68,6 +68,7 @@ export const outboundApi = {
   dispatch: (draftId) => api.post("/outbound/dispatch", { draft_id: draftId }).then((r) => r.data),
   syncInbox: () => api.post("/outbound/sync-inbox").then((r) => r.data),
   testSend: (to) => api.post("/outbound/test-send", { to }).then((r) => r.data),
+  testWhatsapp: (to) => api.post("/outbound/test-whatsapp", { to }).then((r) => r.data),
   simulate: (id, event, text) => api.post(`/outbound/${id}/simulate`, { event, text: text || null }).then((r) => r.data),
 };
 

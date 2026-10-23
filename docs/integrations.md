@@ -11,7 +11,7 @@ La page se relit seule toutes les 30 s (onglet visible) : après un redéploieme
 | `ready` | fonctionne tel que configuré (ou : le test a réussi, affiché `VERIFIED · n ms`) |
 | `unchecked` | rien ne manque, mais seul un test réel peut le prouver : bouton **TEST NOW** |
 | `partial` | fonctionne avec une limite, ou posé mais inutilisable tel quel (ex. `TWILIO_ACCOUNT_SID` qui ne commence pas par `AC`) |
-| `missing` | non configuré : le produit retombe sur son mode mock / modèle fixe |
+| `missing` | non configuré : le produit refuse d'agir et dit quoi configurer (aucun envoi simulé, aucun texte tout fait) |
 | `blocked` | arrêt de sécurité ou configuration qui fait échouer envois ou liens (kill switch, live sans SMTP, URL publique locale en production) |
 | `off` | désactivé volontairement (drapeau, dry-run) ou pas encore utile (signature d'un webhook dont le fournisseur n'est pas configuré) |
 
@@ -67,7 +67,7 @@ Sans clé. Source réseau : demande `FEATURE_EXTERNAL_SOURCES=true` (voir `docs/
 
 <a id="sending_mode"></a>
 ### Mode d'envoi
-`FEATURE_LIVE_SENDING`, `SEND_KILL_SWITCH`, `OUTREACH_SANDBOX`, `OUTREACH_LIVE_ALLOWLIST`. Dry-run par défaut ; `LIVE · SANDBOX` n'atteint que la liste
+`FEATURE_LIVE_SENDING`, `SEND_KILL_SWITCH`, `OUTREACH_SANDBOX`, `OUTREACH_LIVE_ALLOWLIST`, `OUTREACH_LIVE_PHONES`. Dry-run par défaut ; `LIVE · SANDBOX` n'atteint que la liste
 autorisée ; le kill switch arrête tout. Procédure : `docs/go-live-email.md`.
 
 <a id="smtp"></a>
@@ -81,11 +81,11 @@ autorisée ; le kill switch arrête tout. Procédure : `docs/go-live-email.md`.
 
 <a id="sendgrid"></a>
 ### SendGrid (facultatif)
-`SENDGRID_API_KEY`, `SENDGRID_FROM_EMAIL`. Chemins historiques (campagnes, compositeur) ; sans clé : envoi simulé (`mock`).
+`SENDGRID_API_KEY`, `SENDGRID_FROM_EMAIL`. Alternative à SMTP pour les messages CRM et les campagnes (SMTP passe en premier quand il est complet). Sans clé : refus explicite, rien n'est envoyé ni enregistré comme envoyé.
 
 <a id="twilio"></a>
 ### Twilio WhatsApp (facultatif)
-`TWILIO_ACCOUNT_SID` (commence par `AC`), `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM`. Opt-in explicite requis pour chaque contact.
+`TWILIO_ACCOUNT_SID` (commence par `AC`), `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM`. Opt-in explicite requis pour chaque contact ; pendant le sandbox, seuls les numéros de `OUTREACH_LIVE_PHONES` reçoivent un message. Test : page *Sending* → « Send test WhatsApp ».
 
 <a id="twilio_webhook"></a>
 ### Signature des webhooks Twilio
@@ -99,4 +99,4 @@ Les deux signatures sont `off` (« NOT NEEDED YET ») tant que leur fournisseur 
 <a id="ai"></a>
 ### Compositeur IA
 `EMERGENT_LLM_KEY` et le paquet optionnel `emergentintegrations` (index privé, hors `requirements.txt`). Tant que les deux ne sont pas là, le
-compositeur renvoie un **modèle de texte fixe** et la page affiche `TEMPLATE ONLY` avec la raison ; il n'affiche `LIVE · MODEL CALLED` que si le modèle est réellement appelable.
+compositeur **refuse** (HTTP 503, aucun texte tout fait qui ferait semblant d'être un message) et la page affiche `OFF · NOTHING IS GENERATED` avec la raison ; il n'affiche `LIVE · MODEL CALLED` que si le modèle est réellement appelable.

@@ -37,14 +37,14 @@ def test_variables_named_by_an_entry_are_all_tracked():
 
 def test_a_bare_server_reports_what_is_missing_and_fakes_nothing():
     items = by_id(NOTHING)
-    assert items["ai"]["status"] == "missing" and items["ai"]["label"] == "TEMPLATE ONLY"
+    assert items["ai"]["status"] == "missing" and items["ai"]["label"] == "OFF · NOTHING IS GENERATED"
     assert items["ai"]["needs"] == ["EMERGENT_LLM_KEY"]
     assert items["smtp"]["status"] == "missing" and items["smtp"]["needs"] == [
         "SMTP_HOST",
         "SMTP_USERNAME",
         "SMTP_PASSWORD",
     ]
-    assert items["sendgrid"]["status"] == "missing" and "MOCK" in items["sendgrid"]["label"]
+    assert items["sendgrid"]["status"] == "missing" and "NOTHING IS SENT" in items["sendgrid"]["label"]
     assert items["twilio"]["status"] == "missing" and items["twilio"]["needs"] == [
         "TWILIO_ACCOUNT_SID",
         "TWILIO_AUTH_TOKEN",

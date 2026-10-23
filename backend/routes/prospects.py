@@ -222,7 +222,19 @@ async def put_score_config(
 async def run_discovery(
     payload: DiscoveryRunIn, user: dict = Depends(decider), session: AsyncSession = Depends(get_db_session)
 ):
-    """Run discovery in dry-run mode against a local fixture source. No network access, nothing is sent."""
+    """Run discovery in dry-run mode against the local demo directory (fictional businesses). Needs FEATURE_DEMO_DATA.
+
+    Real prospects come from the map, the sources and list imports; this is only for demos and automated tests.
+    """
+    if not feature_flags.is_enabled("demo_data"):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "demo_disabled",
+                "message": "The demo directory is off (FEATURE_DEMO_DATA): use the map or import a list",
+                "retry_at": None,
+            },
+        )
     if payload.source != DEMO_SOURCE_NAME:
         raise HTTPException(
             status_code=400,

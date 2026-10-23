@@ -513,12 +513,13 @@ test("settings lists every integration from the server, tests the database live 
   await expect(page.getByTestId("int-database")).toHaveAttribute("data-status", "ready");
   await expect(page.getByTestId("int-database-facts")).toContainText("latency");
   // Nothing is configured on the test server: each of these says so and names the variables to set, with no field to type a secret.
-  await expect(page.getByTestId("int-ai-status")).toHaveText("TEMPLATE ONLY");
+  await expect(page.getByTestId("int-ai-status")).toHaveText("OFF · NOTHING IS GENERATED");
   await expect(page.getByTestId("int-ai-needs")).toContainText("EMERGENT_LLM_KEY");
   await expect(page.getByTestId("int-smtp-needs")).toContainText("SMTP_PASSWORD");
-  await expect(page.getByTestId("int-sendgrid-status")).toContainText("MOCK DISPATCH");
-  await expect(page.getByTestId("int-twilio-status")).toContainText("MOCK DISPATCH");
-  await expect(page.getByTestId("int-sending_mode-status")).toContainText("DRY-RUN");
+  await expect(page.getByTestId("int-sendgrid-status")).toContainText("NOTHING IS SENT");
+  await expect(page.getByTestId("int-twilio-status")).toContainText("NOTHING IS SENT");
+  // The CI server records sends in-process (OUTREACH_TEST_SINK) and says so; a real server is in dry-run or live.
+  await expect(page.getByTestId("int-sending_mode-status")).toContainText(/DRY-RUN|TEST SINK/);
   await expect(page.locator("input")).toHaveCount(0);
 
   // A live test of the database: real round trip, measured.

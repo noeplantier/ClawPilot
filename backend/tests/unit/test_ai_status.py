@@ -23,9 +23,9 @@ def _library(monkeypatch, present):
 @pytest.mark.parametrize(
     "key,library,active,mode,reason",
     [
-        (None, False, False, "template", "EMERGENT_LLM_KEY is not set"),
-        ("", True, False, "template", "EMERGENT_LLM_KEY is not set"),
-        ("k", False, False, "template", "the emergentintegrations package is not installed"),
+        (None, False, False, "off", "EMERGENT_LLM_KEY is not set"),
+        ("", True, False, "off", "EMERGENT_LLM_KEY is not set"),
+        ("k", False, False, "off", "the emergentintegrations package is not installed"),
         ("k", True, True, "live", None),
     ],
 )

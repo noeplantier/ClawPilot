@@ -9,15 +9,16 @@ pour l'installation et `docs/cloud-sessions.md` pour la feuille de route en cour
 - Backend : Python 3.12, FastAPI, SQLAlchemy 2.0 async + Alembic, PostgreSQL 16
 - Jobs : Celery 5 + Redis (3 files : `sends`, `automation`, `webhooks`), planification via Celery beat
 - Frontend : React 19 en **JavaScript** (CRA/craco, Tailwind, Radix/shadcn) — ne pas migrer vers TypeScript
-- Envoi : SendGrid (email), Twilio (WhatsApp). Chaque intégration externe a un mode « mock » sans clé.
+- Envoi : SMTP puis SendGrid (email), Twilio (WhatsApp). Une intégration non configurée **refuse et dit quoi configurer** : jamais de
+  statut « mock », d'envoi simulé ni de texte tout fait (`services/mail_provider.py`). Seul `OUTREACH_TEST_SINK` (tests, jamais en production) enregistre sans envoyer.
 - Ne pas introduire Next.js, Prisma ou Drizzle : la stack est tranchée (option A).
 
 ## Architecture — règles à respecter
 
 - `backend/repositories/` est la **seule** couche qui touche SQLAlchemy. Les routes sont fines et appellent les repos.
 - `backend/models.py` (Pydantic) = contrat HTTP. `backend/db/models/` (ORM) = stockage. Ne pas les mélanger.
-- Une intégration externe = un module `backend/services/<nom>_svc.py` avec `is_configured()` et un repli propre
-  (statut `not_configured` / `mock`) quand la clé est absente ou que le plan du fournisseur refuse l'appel.
+- Une intégration externe = un module `backend/services/<nom>_svc.py` avec `is_configured()` et un refus explicite
+  (`not_configured`, jamais un faux succès) quand la clé est absente ou que le plan du fournisseur refuse l'appel.
 - Settings > Integrations : le statut de chaque intégration est calculé côté serveur (`services/integrations_status.py`, pur) et ne renvoie que des
   **noms** de variables, jamais une valeur. Une nouvelle intégration = une entrée du catalogue + ses variables dans `TRACKED_ENV` + une fiche dans
   `docs/integrations.md` ; son test réel (`services/integration_checks.py`) est en lecture seule et n'envoie rien à une personne.

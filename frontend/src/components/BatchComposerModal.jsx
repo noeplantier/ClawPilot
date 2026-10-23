@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
+import { blockText, describeApiError } from "@/lib/outreachFormat";
 import {
   X, PaperPlaneTilt, Sparkle, Envelope, WhatsappLogo, CheckCircle, Warning, CircleNotch, Users,
 } from "@phosphor-icons/react";
@@ -77,7 +78,7 @@ export default function BatchComposerModal({ open, onClose, defaultChannel = "em
       setBody(tokenized.replace(new RegExp(sample?.company || "###", "g"), "{{company}}"));
       toast.success("AI draft ready — tokens inserted");
     } catch (e) {
-      toast.error("AI generation failed");
+      toast.error(describeApiError(e));
     } finally {
       setAiLoading(false);
     }
@@ -105,10 +106,10 @@ export default function BatchComposerModal({ open, onClose, defaultChannel = "em
         body,
       });
       setResult(data);
-      const where = data.sent > 0 ? `${data.sent} live sends` : `${data.mocked} mocked dispatches`;
-      toast.success(`Batch complete · ${data.dispatched} dispatched (${where})`);
+      if (data.sent > 0) toast.success(`${data.sent} sent${data.failed ? `, ${data.failed} failed` : ""}${data.skipped ? `, ${data.skipped} skipped` : ""}`);
+      else toast.error(data.blocked ? blockText(data.blocked.code) || data.blocked.message : "Nothing was sent. See the details below.");
     } catch (e) {
-      toast.error(e?.response?.data?.detail || "Batch send failed");
+      toast.error(describeApiError(e));
     } finally {
       setLoading(false);
     }
@@ -247,18 +248,18 @@ export default function BatchComposerModal({ open, onClose, defaultChannel = "em
                 {result && (
                   <div className="surface bg-[#F4FDF9] border-[#10B981]/40 p-4" data-testid="batch-result">
                     <div className="flex items-center gap-2 font-display font-bold text-sm">
-                      <CheckCircle size={16} weight="fill" className="text-[#10B981]" /> Dispatch complete
+                      <CheckCircle size={16} weight="fill" className="text-[#10B981]" /> {result.sent > 0 ? "Dispatch complete" : "Nothing was sent"}
                     </div>
                     <div className="grid grid-cols-4 gap-2 mt-3 text-center">
-                      <Stat label="dispatched" value={result.dispatched} color="#0F172A" />
                       <Stat label="sent" value={result.sent} color="#10B981" />
-                      <Stat label="mocked" value={result.mocked} color="#F59E0B" />
-                      <Stat label="failed/skip" value={(result.failed || 0) + (result.skipped || 0)} color="#DC2626" />
+                      <Stat label="failed" value={result.failed || 0} color="#DC2626" />
+                      <Stat label="skipped" value={result.skipped || 0} color="#595955" />
+                      <Stat label="not attempted" value={result.not_attempted || 0} color="#F59E0B" />
                     </div>
-                    {result.mocked > 0 && (
-                      <div className="mt-3 text-xs text-[#595955] flex gap-1.5 items-start">
+                    {result.blocked && (
+                      <div className="mt-3 text-xs text-[#595955] flex gap-1.5 items-start" role="alert" data-testid="batch-blocked">
                         <Warning size={12} className="text-[#F59E0B] flex-shrink-0 mt-0.5" />
-                        {result.mocked} mocked — add a verified SendGrid sender / Twilio Account SID in Settings to go live.
+                        {blockText(result.blocked.code) || result.blocked.message}
                       </div>
                     )}
                   </div>

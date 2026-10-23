@@ -16,7 +16,7 @@ UTC = timezone.utc
 BACKEND = Path(__file__).resolve().parents[2]
 PROVIDER_CALLS = {"send_email", "send_whatsapp"}
 # The provider modules define the senders; the Celery impls and routes are the call sites to guard.
-EXEMPT = {Path("services/sendgrid_svc.py"), Path("services/twilio_svc.py")}
+EXEMPT = {Path("services/sendgrid_svc.py"), Path("services/twilio_svc.py"), Path("services/mail_provider.py")}
 
 
 # ---- static guard ---------------------------------------------------------------------------------------
@@ -165,7 +165,7 @@ def _wire_impl(monkeypatch, blocked, provider_calls):
     def record(name):
         def fake(*a, **k):
             provider_calls.append(name)
-            return {"status": "mock"}
+            return {"status": "sent"}
 
         return fake
 
@@ -174,7 +174,7 @@ def _wire_impl(monkeypatch, blocked, provider_calls):
 
     monkeypatch.setattr(send_tasks.legacy_email, "prepare", prepare)
     monkeypatch.setattr(send_tasks, "send_email", record("email"))
-    monkeypatch.setattr("services.twilio_svc.send_whatsapp", record("whatsapp"))
+    monkeypatch.setattr("services.mail_provider.send_whatsapp", record("whatsapp"))
 
 
 @pytest.mark.parametrize(
@@ -208,5 +208,18 @@ def test_an_unblocked_task_reaches_the_provider_once(monkeypatch, impl, channel)
     monkeypatch.setattr(send_tasks.campaign_repo, "increment_counters", ok)
 
     result = asyncio.run(impl(None, _Task(), uuid.uuid4(), "c1", "s1", "l1"))
-    assert result["status"] == "mock"
+    assert result["status"] == "sent"
     assert calls == [channel]
+
+
+@pytest.mark.parametrize(
+    "impl, channel", [(send_tasks._send_email_impl, "email"), (send_tasks._send_whatsapp_impl, "whatsapp")]
+)
+def test_a_task_without_a_provider_fails_with_the_reason_instead_of_retrying_forever(monkeypatch, impl, channel):
+    calls: list[str] = []
+    _wire_impl(monkeypatch, send_gate.SendBlocked("provider_not_configured", "no provider"), calls)
+
+    result = asyncio.run(impl(None, _Task(), uuid.uuid4(), "c1", "s1", "l1"))
+
+    assert result == {"status": "failed", "reason": "provider_not_configured"}
+    assert calls == []
