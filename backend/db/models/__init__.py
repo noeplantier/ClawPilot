@@ -6,6 +6,7 @@ from db.models.agent import Agent
 from db.models.campaign import Campaign, CampaignLead, CampaignStep, SendPolicy
 from db.models.consent import ConsentCurrent, ConsentRecord
 from db.models.lead import Contact, Lead, LeadScore, LeadSource
+from db.models.map_jobs import MapSearchJob, MapSearchResult, SourceCache
 from db.models.outbound import OutboundEvent, OutboundMessage
 from db.models.outreach import EmailSend, OutreachEvent, WhatsappSend
 from db.models.prospect import (
@@ -24,6 +25,9 @@ from db.models.webhook import WebhookEvent
 from db.models.workspace import AuditLog, Note, Task
 
 __all__ = [
+    "MapSearchJob",
+    "MapSearchResult",
+    "SourceCache",
     "Account",
     "User",
     "Agent",

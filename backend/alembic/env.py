@@ -18,7 +18,8 @@ config = context.config
 # DATABASE_URL env var always wins over alembic.ini (keeps one source of truth
 # across local/Docker/CI/Render — see backend/db/session.py).
 if os.environ.get("DATABASE_URL"):
-    config.set_main_option("sqlalchemy.url", async_database_url())
+    # ConfigParser treats "%" as interpolation: a URL-encoded password (e.g. %40) must be escaped as "%%".
+    config.set_main_option("sqlalchemy.url", async_database_url().replace("%", "%%"))
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.

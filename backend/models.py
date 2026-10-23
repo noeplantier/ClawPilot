@@ -696,9 +696,30 @@ class MapSearchIn(BaseModel):
     category: str = Field(min_length=1, max_length=40)
 
 
-class MapQueryOut(BaseModel):
-    query: str
+class MapFallbackOut(BaseModel):
+    query: str  # the Overpass query for this job, to be sent by the browser to one of `endpoints`
     endpoints: List[str]
+
+
+class MapJobOut(BaseModel):
+    id: str
+    status: Literal["queued", "running", "succeeded", "failed"]
+    category: str
+    south: float
+    west: float
+    north: float
+    east: float
+    source: Literal["overpass", "overpass_browser", "cache"]
+    result_count: int
+    truncated: bool
+    cache_hit: bool
+    error_code: Optional[str] = None
+    error: Optional[str] = None
+    duration_ms: Optional[int] = None
+    created_at: datetime
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+    fallback: Optional[MapFallbackOut] = None  # only on a failed search whose cause is the public servers
 
 
 class MapParseIn(BaseModel):

@@ -132,23 +132,28 @@ test("the map shows real places from the search, marks what is published and nev
         { id: "p2", name: "Déjà prospect", city: "Lyon", lat: 45.762, lon: 4.83, review_status: "approved", has_email: false, external_id: null },
       ],
     }));
-  // The browser asks a public Overpass server itself (faked here); the server's parser turns the answer into places.
-  await page.route("**/api/map/query", (route) => route.fulfill({ json: { query: "[out:json];", endpoints: ["https://overpass.test/api/interpreter"] } }));
-  await page.route("https://overpass.test/**", (route) => route.fulfill({ headers: { "access-control-allow-origin": "*" }, json: { elements: [] } }));
-  await page.route("**/api/map/parse", (route) =>
-    route.fulfill({
-      json: {
-        attribution: "© OpenStreetMap contributors (ODbL)", license_note: "ODbL", truncated: false,
-        places: [
-          { external_id: "node/1", name: "Chez Marcel", category: "restaurant", lat: 45.7641, lon: 4.8358, address: "12 Rue Merciere", postcode: "69002", city: "Lyon", phone: "+33 4 78 12 34 56", email: "contact@chez-marcel.example", website: "https://chez-marcel.example", source_url: "https://www.openstreetmap.org/node/1" },
-          { external_id: "way/2", name: "Boulangerie Martin", category: "bakery", lat: 45.7601, lon: 4.8401, address: null, postcode: null, city: null, phone: null, email: null, website: null, source_url: "https://www.openstreetmap.org/way/2" },
-        ],
-      },
-    }));
+  // The search is a persisted job: create, poll (queued -> running -> succeeded), read the places. The API is faked at the network edge.
+  const PLACES = {
+    attribution: "© OpenStreetMap contributors (ODbL)", license_note: "ODbL", truncated: false,
+    places: [
+      { external_id: "node/1", name: "Chez Marcel", category: "restaurant", lat: 45.7641, lon: 4.8358, address: "12 Rue Merciere", postcode: "69002", city: "Lyon", phone: "+33 4 78 12 34 56", email: "contact@chez-marcel.example", website: "https://chez-marcel.example", source_url: "https://www.openstreetmap.org/node/1" },
+      { external_id: "way/2", name: "Boulangerie Martin", category: "bakery", lat: 45.7601, lon: 4.8401, address: null, postcode: null, city: null, phone: null, email: null, website: null, source_url: "https://www.openstreetmap.org/way/2" },
+    ],
+  };
+  const job = (status, extra = {}) => ({ id: "j1", status, category: "restaurants", south: 45.75, west: 4.82, north: 45.77, east: 4.85, source: "overpass", result_count: 0, truncated: false, cache_hit: false, error_code: null, error: null, duration_ms: null, created_at: "2026-10-23T10:00:00Z", started_at: null, finished_at: null, fallback: null, ...extra });
+  let polls = 0;
+  await page.route(/\/api\/map\/search(\?.*)?$/, (route) =>
+    route.fulfill(route.request().method() === "POST" ? { status: 202, json: job("queued") } : { json: [] }));
+  await page.route("**/api/map/search/j1", (route) => {
+    polls += 1;
+    return route.fulfill({ json: polls < 2 ? job("running") : job("succeeded", { result_count: 2, duration_ms: 900 }) });
+  });
+  await page.route("**/api/map/search/j1/places", (route) => route.fulfill({ json: PLACES }));
   await page.goto("/app/map");
   await expect(page.getByTestId("map")).toBeVisible();
   await expect(page.getByTestId("map-empty")).toBeVisible();
   await page.getByTestId("map-search").click();
+  await expect(page.getByTestId("map-job")).toContainText("2 places saved from OpenStreetMap");
   // "Chez Marcel" is already one of my prospects: it is drawn as a prospect (square), not offered again as a search result.
   await expect(page.getByTestId("map-mine-toggle")).toContainText("2 prospects on the map: 1 to review, 1 approved, 0 rejected");
   await expect(page.getByTestId("map-summary")).toHaveText("1 place: 0 with a published e-mail, 0 with a phone, 0 with a website.");
@@ -255,4 +260,73 @@ test("a reviewer dismisses a wrong signal: it reads as unknown, the score is rec
   expect(after).not.toEqual(before); // the 30 points of this signal are gone
   await page.getByTestId("restore-no_website").click();
   await expect(page.getByTestId("signal-no_website").getByTestId("state-detected")).toBeVisible();
+});
+
+const MAP_STUBS = async (page) => {
+  await page.route("**/api/prospects/settings", async (route) => {
+    const real = await (await route.fetch()).json();
+    await route.fulfill({ json: { ...real, flags: { ...real.flags, external_sources: true, prospect_import: false } } });
+  });
+  await page.route(/(tile\.openstreetmap\.org|basemaps\.cartocdn\.com)/, (route) =>
+    route.fulfill({ contentType: "image/png", body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64") }));
+  await page.route("**/api/map/prospects", (route) => route.fulfill({ json: [] }));
+};
+const JOB = (status, extra = {}) => ({ id: "j9", status, category: "bakeries", south: 45.75, west: 4.82, north: 45.77, east: 4.85, source: "overpass", result_count: 0, truncated: false, cache_hit: false, error_code: null, error: null, duration_ms: null, created_at: "2026-10-23T10:00:00Z", started_at: null, finished_at: null, fallback: null, ...extra });
+const ONE_PLACE = {
+  attribution: "© OpenStreetMap contributors (ODbL)", license_note: "ODbL", truncated: false,
+  places: [{ external_id: "node/7", name: "Boulangerie Sept", category: "bakery", lat: 45.76, lon: 4.835, address: null, postcode: null, city: "Lyon", phone: null, email: null, website: null, source_url: "https://www.openstreetmap.org/node/7" }],
+};
+
+test("when the server cannot reach OpenStreetMap the failed search is explained and the browser can complete it on request", async ({ page }) => {
+  await register(page);
+  await MAP_STUBS(page);
+  let ingested = null;
+  await page.route(/\/api\/map\/search(\?.*)?$/, (route) =>
+    route.fulfill(route.request().method() === "POST" ? { status: 202, json: JOB("queued") } : { json: [] }));
+  await page.route("**/api/map/search/j9", (route) =>
+    route.fulfill({ json: ingested ? JOB("succeeded", { source: "overpass_browser", result_count: 1 }) : JOB("failed", {
+      error_code: "overpass_timeout", error: "The public OpenStreetMap servers did not answer in time. (overpass-api.de: TimeoutError)",
+      fallback: { query: "[out:json];", endpoints: ["https://overpass.test/api/interpreter"] },
+    }) }));
+  await page.route("https://overpass.test/**", (route) =>
+    route.fulfill({ headers: { "access-control-allow-origin": "*" }, json: { elements: [{ type: "node", id: 7, lat: 45.76, lon: 4.835, tags: { name: "Boulangerie Sept" } }] } }));
+  await page.route("**/api/map/search/j9/ingest", (route) => { ingested = route.request().postDataJSON(); return route.fulfill({ json: JOB("succeeded", { source: "overpass_browser", result_count: 1 }) }); });
+  await page.route("**/api/map/search/j9/places", (route) => route.fulfill({ json: ONE_PLACE }));
+
+  await page.goto("/app/map");
+  await page.getByTestId("map-search").click();
+  await expect(page.getByTestId("map-job-failed")).toContainText("did not answer in time");
+  await expect(page.getByTestId("map-job-failed")).toContainText("overpass_timeout"); // the cause is visible, not a blank 502
+  await page.getByTestId("map-retry-browser").click();
+  await expect(page.getByTestId("map-job")).toContainText("1 place saved through your browser");
+  expect(ingested.data.elements).toHaveLength(1); // the browser's answer went to the server, which stores it
+  await expect(page.getByTestId("map-summary")).toContainText("1 place");
+});
+
+test("the last finished search comes back from the database after a reload, without searching again", async ({ page }) => {
+  await register(page);
+  await MAP_STUBS(page);
+  await page.route(/\/api\/map\/search(\?.*)?$/, (route) =>
+    route.fulfill({ json: [JOB("failed", { id: "jx" }), JOB("succeeded", { result_count: 1, duration_ms: 500 })] }));
+  await page.route("**/api/map/search/j9/places", (route) => route.fulfill({ json: ONE_PLACE }));
+  await page.goto("/app/map");
+  await expect(page.getByTestId("map-job")).toContainText("1 place saved from OpenStreetMap in 0.5 s");
+  await expect(page.getByTestId("map-summary")).toContainText("1 place");
+  await expect(page.getByTestId("map-cat-bakeries")).toHaveAttribute("aria-pressed", "true");
+  await page.reload();
+  await expect(page.getByTestId("map-job")).toContainText("1 place saved");
+});
+
+test("the system page reports the real database and migrations, and probes OpenStreetMap on request", async ({ page }) => {
+  await register(page);
+  await page.route("**/api/system/health/overpass", (route) =>
+    route.fulfill({ json: { ok: false, servers: [{ host: "overpass-api.de", ok: false, error: "OSError: Network is unreachable", ms: 3 }] } }));
+  await page.getByText("System health").first().click();
+  await expect(page.getByTestId("system-page")).toBeVisible();
+  await expect(page.getByTestId("health-database")).toHaveAttribute("data-ok", "true");
+  await expect(page.getByTestId("health-migrations")).toHaveAttribute("data-ok", "true");
+  await expect(page.getByTestId("health-jobs")).toContainText("No map search in the last 24 hours");
+  await page.getByTestId("probe-run").click();
+  await expect(page.getByTestId("probe-result")).toContainText("overpass-api.de: OSError: Network is unreachable");
+  await expect(page.getByTestId("probe-result")).toContainText("None answered");
 });

@@ -108,7 +108,8 @@ SendGrid/Twilio/AI all fall back to graceful mocks when unconfigured.
 
 | Variable | Purpose |
 |---|---|
-| `DATABASE_URL` | PostgreSQL (`postgres://` / `postgresql://` are auto-converted to the asyncpg driver) |
+| `DATABASE_URL` | PostgreSQL (`postgres://` / `postgresql://` are auto-converted to the asyncpg driver; `sslmode=` is translated to asyncpg's `ssl=`). On Supabase use the **session pooler** address, see `docs/supabase.md` |
+| `OVERPASS_ENDPOINTS` | Optional, comma separated Overpass URLs replacing the public servers (a self-hosted instance). Empty = the built-in public list |
 | `JWT_SECRET` | Signs access tokens — generate with `openssl rand -hex 32` |
 | `APP_ENV` | `production` makes `scripts/seed_demo.py` refuse to run |
 | `CORS_ORIGINS` | Comma-separated allowed origins (default `http://localhost:3000`; never `*`) |

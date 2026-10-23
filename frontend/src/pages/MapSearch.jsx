@@ -12,6 +12,8 @@ import {
   CATEGORY_LABELS, IMPORT_ORIGIN, MAX_SITES_CHECKED, STATUS_COLOR, STATUS_LABEL, areaTooLarge, importRows, knownIds, markerColor,
   mineSummary, summaryText,
 } from "@/lib/mapSearch";
+import { fetchOverpass } from "@/lib/overpassBrowser";
+import { canRetryInBrowser, jobLine, runSearch } from "@/lib/mapJobs";
 import {
   EMPTY_FILTER, POLL_MS, applyFilter, campaignPick, clusterPoints, clusterSize, facets, filterSummary, hasFilter, newIds, signalLabel,
 } from "@/lib/mapCluster";
@@ -119,6 +121,8 @@ function MapView({ canImport }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
+  const [job, setJob] = useState(null); // the persisted search shown on the map (running, failed or done)
+  const [retrying, setRetrying] = useState(false);
   const [selected, setSelected] = useState(new Set());
   const [tooLarge, setTooLarge] = useState(false);
   const [panelOpen, setPanelOpen] = useState(() => window.innerWidth >= 768);
@@ -263,20 +267,58 @@ function MapView({ canImport }) {
     });
   }, [places, selected, toggle]);
 
+  const show = useCallback((out) => {
+    setResult(out);
+    setSelected(new Set());
+    setPanelOpen(true);
+  }, []);
+
   const search = useCallback(async () => {
     setBusy(true);
     setError(null);
+    setJob(null);
     try {
-      const out = await mapApi.find({ ...bounds(map.current), category });
-      setResult(out);
-      setSelected(new Set());
-      setPanelOpen(true);
+      const out = await runSearch(mapApi, { ...bounds(map.current), category }, { onUpdate: setJob });
+      setJob(out.job);
+      if (out.places) show(out.places);
     } catch (e) {
       setError(describeApiError(e));
     } finally {
       setBusy(false);
     }
-  }, [category]);
+  }, [category, show]);
+
+  // After a refresh, a sign-in elsewhere or another device: the last finished search of the organisation comes back from the database.
+  useEffect(() => {
+    let alive = true;
+    mapApi.recent(5).then(async (jobs) => {
+      const last = jobs.find((j) => j.status === "succeeded");
+      if (!last || !alive) return;
+      const places = await mapApi.places(last.id);
+      if (!alive) return;
+      setJob(last);
+      setCategory(last.category);
+      show(places);
+      map.current.fitBounds([[last.south, last.west], [last.north, last.east]]);
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, [show]);
+
+  // Explicit fallback when the server could not reach OpenStreetMap: this browser asks a public server, the server stores the answer.
+  const retryInBrowser = async () => {
+    setRetrying(true);
+    setError(null);
+    try {
+      const data = await fetchOverpass(job.fallback.query, job.fallback.endpoints);
+      const done = await mapApi.ingest(job.id, data);
+      setJob(done);
+      show(await mapApi.places(done.id));
+    } catch (e) {
+      setError(e && e.failures ? e.message : describeApiError(e));
+    } finally {
+      setRetrying(false);
+    }
+  };
 
   const chosen = places.filter((p) => selected.has(p.external_id));
 
@@ -358,6 +400,18 @@ function MapView({ canImport }) {
           <MagnifyingGlass size={14} /> {busy ? "SEARCHING…" : "SEARCH THIS AREA"}
         </button>
         {tooLarge && <p className="text-xs text-[#92400E]" data-testid="map-zoom-hint">Zoom in on a town or a neighbourhood to search.</p>}
+        {job && job.status !== "failed" && <p className="text-xs" role="status" aria-live="polite" data-testid="map-job">{jobLine(job)}{job.truncated ? " The area holds more places: zoom in to see the rest." : ""}</p>}
+        {job && job.status === "failed" && (
+          <div role="alert" className="text-sm text-[#991B1B] space-y-2" data-testid="map-job-failed">
+            <p>{job.error}</p>
+            <p className="text-[11px] text-[#5F5F5A]">Code: {job.error_code}. This search is saved with its error.</p>
+            {canRetryInBrowser(job) && (
+              <button className="btn-ghost" onClick={retryInBrowser} disabled={retrying} data-testid="map-retry-browser">
+                {retrying ? "ASKING OPENSTREETMAP…" : "RETRY FROM MY BROWSER"}
+              </button>
+            )}
+          </div>
+        )}
         {error && <div role="alert" className="text-sm text-[#991B1B]" data-testid="map-error">{error}</div>}
       </div>
 
