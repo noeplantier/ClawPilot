@@ -10,6 +10,7 @@ so origin, legal basis, suppression list and audit apply. Needs FEATURE_EXTERNAL
 
 from __future__ import annotations
 
+import json
 import time
 import uuid
 
@@ -18,16 +19,33 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.session import get_db_session
 from deps import get_current_user, require_roles
-from models import MapFallbackOut, MapJobOut, MapParseIn, MapPlaceOut, MapProspectOut, MapSearchIn, MapSearchOut
-from repositories import map_job_repo, prospect_repo
+from models import (
+    ImportIn,
+    MapAddIn,
+    MapAddOut,
+    MapFallbackOut,
+    MapJobOut,
+    MapParseIn,
+    MapPlaceOut,
+    MapProspectOut,
+    MapSearchIn,
+    MapSearchOut,
+)
+from repositories import audit_repo, map_job_repo, prospect_repo, suppression_repo
+from routes import prospect_imports
+from routes.prospects import heat_out
 from services import feature_flags, map_job_runner, overpass_svc
-from services.outreach_os import map_jobs, osm
+from services.outreach_os import importer, map_jobs, osm
+from services.outreach_os.dedupe import build_candidate
+from services.outreach_os.normalize import normalize_domain, normalize_email, normalize_phone
 from services.rate_limit import AttemptLimiter
 
 router = APIRouter(prefix="/map", tags=["map"])
 decider = require_roles("owner", "admin")
 _limiter = AttemptLimiter(6, 60.0)
 _ingest_limiter = AttemptLimiter(12, 60.0)
+_add_limiter = AttemptLimiter(60, 60.0)
+IMPORT_ORIGIN = "OpenStreetMap contributors (ODbL), read live through the Overpass API from the map of this application"
 MAX_PARSED_ELEMENTS = 1000
 
 
@@ -183,3 +201,114 @@ async def ingest_browser_answer(
         started=time.monotonic(),
     )
     return _job_out(job)
+
+
+def _refuse(status: int, code: str, message: str) -> HTTPException:
+    return HTTPException(status_code=status, detail={"code": code, "message": message, "retry_at": None})
+
+
+@router.post("/places/add", response_model=MapAddOut)
+async def add_place(payload: MapAddIn, user: dict = Depends(decider), session: AsyncSession = Depends(get_db_session)):
+    """One click on a map point: the business becomes a prospect, and (by default) joins the CRM.
+
+    The same attested import as the bulk form (origin = the OpenStreetMap page of the place, legal basis, suppression
+    list, audit), for ONE place; optionally the business's own homepage (and its contact page) is read for a public
+    e-mail, with robots.txt respected. `approve` records the person's own decision to add it to the CRM, in the audit
+    trail; without it the prospect waits in the review queue. Nothing is sent: contacting still needs an approved draft
+    and the send rules.
+    """
+    account_id = uuid.UUID(user["org_id"])
+    if not feature_flags.is_enabled("prospect_import"):
+        raise _refuse(403, "feature_disabled", "Adding places needs FEATURE_PROSPECT_IMPORT (off by default)")
+    if payload.check_website and not feature_flags.is_enabled("external_sources"):
+        raise _refuse(409, "external_sources_disabled", "Reading the business's website needs FEATURE_EXTERNAL_SOURCES")
+    if not payload.attestation:
+        raise _refuse(
+            422,
+            "attestation_required",
+            "Confirm that you may use these professional contact details for B2B prospecting",
+        )
+    key = str(account_id)
+    wait = _add_limiter.retry_after(key)
+    if wait:
+        raise HTTPException(
+            status_code=429, detail="Too many additions: wait a minute", headers={"Retry-After": str(wait)}
+        )
+    _add_limiter.record(key)
+
+    place = payload.place
+    row = {
+        "name": place.name,
+        "address": place.address,
+        "postcode": place.postcode,
+        "city": place.city,
+        "phone": place.phone,
+        "email": place.email,
+        "website": place.website,
+        "category": place.category,
+        "external_id": place.external_id,
+        "source_url": place.source_url,
+        "lat": place.lat,
+        "lon": place.lon,
+    }
+    content = json.dumps([{k: v for k, v in row.items() if v not in (None, "")}], ensure_ascii=False)
+    imported = await prospect_imports.import_prospects(
+        ImportIn(
+            format="json",
+            content=content,
+            filename="map-place.json",
+            origin=IMPORT_ORIGIN,
+            legal_basis="legitimate_interest_b2b",
+            country=payload.country,
+            language="fr",
+            vertical="local business",
+            preview=False,
+            attestation=True,
+            check_websites=payload.check_website and bool(place.website),
+        ),
+        user,
+        session,
+    )
+    parsed = importer.parse_import(content, "json", source_name="map-place", default_source_url="import://map-place")
+    lead = None
+    if parsed.listings:
+        lead = await prospect_repo.find_by_keys(session, account_id, build_candidate(parsed.listings[0]).match_keys)
+    if lead is None:
+        if imported.suppressed:
+            raise _refuse(409, "suppressed", "This business is on your suppression list: it was not added")
+        raise _refuse(422, "place_unreadable", "This place could not be read: it was not added")
+
+    if payload.approve and lead.review_status != "approved":
+        if await suppression_repo.is_suppressed(
+            session,
+            account_id,
+            email=normalize_email(lead.email),
+            phone=normalize_phone(lead.phone),
+            domain=normalize_domain(lead.website),
+        ):
+            raise _refuse(409, "suppressed", "This business is on your suppression list: it cannot join the CRM")
+        previous = lead.review_status
+        await prospect_repo.set_review(session, lead, status="approved", user_id=uuid.UUID(user["id"]))
+        await audit_repo.log(
+            session,
+            account_id,
+            action="prospect.approved",
+            resource_type="prospect",
+            resource_id=lead.id,
+            actor_user_id=uuid.UUID(user["id"]),
+            diff={"from": previous, "to": "approved", "has_note": False, "via": "map_quick_add"},
+        )
+    score_row = await prospect_repo.latest_score(session, lead.id)
+    return MapAddOut(
+        lead_id=str(lead.id),
+        name=lead.full_name,
+        created=imported.created > 0,
+        review_status=lead.review_status,
+        in_crm=lead.review_status == "approved",
+        email=lead.email,
+        phone=lead.phone,
+        website=lead.website,
+        email_found_on_site=bool(lead.email) and not (place.email or "").strip(),
+        website_checked=imported.sites_checked > 0,
+        heat=heat_out(lead, score_row.score if score_row else None),
+    )

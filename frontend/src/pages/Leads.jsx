@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
+import { Link } from "react-router-dom";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 import {
@@ -14,6 +15,9 @@ import HeatBadge from "@/components/outreach/HeatBadge";
 import { TIERS, TIER_LABEL, inLane, laneCounts } from "@/lib/heat";
 import { LIVE_MS, useLive } from "@/lib/live";
 
+// Where a prospect from discovery (map, sources, import) stands in the human review; a CRM lead has none.
+const REVIEW_LABEL = { pending: "to review", approved: "approved", rejected: "rejected" };
+const REVIEW_CHIP = { pending: "chip-warn", approved: "chip-success", rejected: "chip-danger" };
 const STAGES = ["new", "contacted", "engaged", "qualified", "won", "lost"];
 const STAGE_COLORS = {
   new: "#4F46E5", contacted: "#475569", engaged: "#0F172A",
@@ -167,7 +171,15 @@ export default function Leads() {
                         {(l.full_name || "?").charAt(0)}
                       </div>
                       <div>
-                        <div className="font-medium">{l.full_name}{live.fresh.has(l.id) && <span className="chip chip-cyan ml-2" data-testid="lead-new">new</span>}</div>
+                        <div className="font-medium">
+                          {l.full_name}
+                          {live.fresh.has(l.id) && <span className="chip chip-cyan ml-2" data-testid="lead-new">new</span>}
+                          {l.review_status && (
+                            <Link to={`/app/prospects/${l.id}`} className={`chip ml-2 ${REVIEW_CHIP[l.review_status]}`} data-testid={`lead-review-${l.id}`} title="Open the prospect: its sources, signals and review">
+                              {REVIEW_LABEL[l.review_status]}
+                            </Link>
+                          )}
+                        </div>
                         <div className="mono-accent text-[#6B6B66] text-[10px]">{l.title || "—"}</div>
                       </div>
                     </div>

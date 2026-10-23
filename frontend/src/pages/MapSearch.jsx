@@ -1,5 +1,6 @@
 /* global ResizeObserver, AbortController */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import L from "leaflet";
@@ -11,7 +12,7 @@ import { describeApiError } from "@/lib/outreachFormat";
 import { isTypingTarget, readPref, writePref } from "@/lib/uiPrefs";
 import {
   CATEGORY_LABELS, IMPORT_ORIGIN, MAX_SITES_CHECKED, STATUS_COLOR, STATUS_LABEL, areaTooLarge, importRows, knownIds, markerColor,
-  mineSummary, summaryText,
+  mineSummary, panelPadding, summaryText,
 } from "@/lib/mapSearch";
 import { fetchOverpass } from "@/lib/overpassBrowser";
 import { canRetryInBrowser, jobLine, runSearch } from "@/lib/mapJobs";
@@ -19,6 +20,8 @@ import {
   EMPTY_FILTER, POLL_MS, applyFilter, campaignPick, clusterPoints, clusterSize, facets, filterSummary, hasFilter, newIds, signalLabel,
 } from "@/lib/mapCluster";
 import { EmptyBlock, ErrorBlock, LoadingBlock } from "@/components/outreach/States";
+import PlacePopup from "@/components/outreach/PlacePopup";
+import AddedCard from "@/components/outreach/AddedCard";
 
 const START = { center: [45.764, 4.8357], zoom: 14 }; // Lyon; move the map anywhere in the world
 // One real map: the standard OpenStreetMap style (no light/dark variants).
@@ -40,7 +43,7 @@ const minePin = (p, fresh) =>
 function minePopup(p) {
   const esc = (v) => String(v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   return `<strong>${esc(p.name)}</strong><div>${p.city ? esc(p.city) : "<i>city not set</i>"}</div><div><b>status</b> ${STATUS_LABEL[p.review_status]} · <b>e-mail</b> ${p.has_email ? "known" : "<i>not known</i>"}</div>` +
-    `<div><a href="/app/prospects/${esc(p.id)}">Open the prospect</a></div>`;
+    `<div><a href="/app/prospects/${esc(p.id)}">Open the prospect</a>${p.review_status === "approved" ? ` · <a href="/app/leads">in your CRM</a>` : ""}</div>`;
 }
 
 const pin = (p, active) =>
@@ -54,15 +57,6 @@ const bounds = (map) => {
   const b = map.getBounds();
   return { south: b.getSouth(), west: b.getWest(), north: b.getNorth(), east: b.getEast() };
 };
-
-function popupHtml(p) {
-  const esc = (v) => String(v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-  const line = (label, value) => `<div><b>${label}</b> ${value ? esc(value) : "<i>not published</i>"}</div>`;
-  const place = [p.address, p.postcode, p.city].filter(Boolean).join(", ");
-  const site = p.website ? `<a href="${esc(p.website)}" target="_blank" rel="noopener noreferrer">${esc(p.website)}</a>` : "";
-  return `<strong>${esc(p.name)}</strong>${line("address", place)}${line("phone", p.phone)}${line("e-mail", p.email)}<div><b>site</b> ${site || "<i>not published</i>"}</div>` +
-    `<div><a href="${esc(p.source_url)}" target="_blank" rel="noopener noreferrer">source on OpenStreetMap</a></div>`;
-}
 
 function ImportPanel({ selected, onDone, open, onToggle, onClose }) {
   const [attest, setAttest] = useState(false);
@@ -152,7 +146,15 @@ function MapView({ canImport }) {
   const [stale, setStale] = useState(false);
   const [starting, setStarting] = useState(false);
   const previous = useRef(null);
+  const pullRef = useRef(null);
+  const hosts = useRef(new Map()); // one stable DOM node per place: the popup content is rendered into it
+  const markers = useRef(new Map());
   const navigate = useNavigate();
+  const hostFor = (id) => {
+    let host = hosts.current.get(id);
+    if (!host) { host = document.createElement("div"); hosts.current.set(id, host); }
+    return host;
+  };
 
   useEffect(() => {
     const m = L.map(el.current, {
@@ -226,6 +228,7 @@ function MapView({ canImport }) {
         setUpdatedAt(new Date());
         setStale(false);
       }).catch(() => { if (alive) setStale(true); });
+    pullRef.current = pull;
     pull();
     const id = setInterval(() => { if (!document.hidden) pull(); }, POLL_MS);
     return () => { alive = false; clearInterval(id); };
@@ -278,6 +281,8 @@ function MapView({ canImport }) {
   const pickInfo = campaignPick(mine, picked);
 
   const known = useMemo(() => knownIds(mine), [mine]);
+  // A popup must never open under a panel: keep the map's auto-pan away from the search card and the results drawer.
+  const pad = useMemo(() => panelPadding({ narrow: window.innerWidth < 768, searchOpen, panelOpen, hidden: overlaysHidden }), [searchOpen, panelOpen, overlaysHidden]);
   // A place already in the prospects is shown by its prospect pin, not offered again.
   const places = useMemo(() => (result ? result.places.filter((p) => !known.has(p.external_id)) : []), [result, known]);
   const toggle = useCallback((id) => setSelected((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; }), []);
@@ -285,12 +290,30 @@ function MapView({ canImport }) {
   useEffect(() => {
     if (!layer.current) return;
     layer.current.clearLayers();
+    markers.current = new Map();
     places.forEach((p) => {
-      const marker = L.marker([p.lat, p.lon], { icon: pin(p, selected.has(p.external_id)), title: p.name }).bindPopup(popupHtml(p), { className: "map-popup" });
+      const marker = L.marker([p.lat, p.lon], { icon: pin(p, selected.has(p.external_id)), title: p.name }).bindPopup(hostFor(p.external_id), {
+        className: "map-popup", minWidth: 250, maxWidth: 300, autoPanPaddingTopLeft: pad.topLeft, autoPanPaddingBottomRight: pad.bottomRight,
+      });
       marker.on("dblclick", () => toggle(p.external_id));
       marker.addTo(layer.current);
+      markers.current.set(p.external_id, marker);
     });
-  }, [places, selected, toggle]);
+  }, [places, selected, toggle, pad]);
+
+  // A place was added: show it at once among "my prospects" (the next poll confirms it) and say what happened.
+  const [added, setAdded] = useState(null); // the answer of the last addition, kept until closed
+  const onAdded = useCallback((out, place, ctx) => {
+    setAdded({ out, siteAsked: Boolean(ctx && ctx.siteAsked) });
+    if (pullRef.current) pullRef.current();
+    setSelected((s) => { const n = new Set(s); n.delete(place.external_id); return n; });
+  }, []);
+  const addOff = canImport ? null : "Adding places is off: set FEATURE_PROSPECT_IMPORT=true on the server.";
+  const openPlace = (p) => {
+    map.current.flyTo([p.lat, p.lon], 18, { duration: 0.8 });
+    const marker = markers.current.get(p.external_id);
+    if (marker) setTimeout(() => marker.openPopup(), 850);
+  };
 
   const show = useCallback((out) => {
     setResult(out);
@@ -350,6 +373,8 @@ function MapView({ canImport }) {
   return (
     <div ref={root} className="relative w-full h-[calc(100svh-9.5rem)] md:h-[calc(100vh-4.25rem)] min-h-[28rem] overflow-hidden bg-[#E9EEF7]" data-testid="map-page">
       <div ref={el} className="absolute inset-0 z-0" data-testid="map" aria-label="Interactive map" />
+      {added && <AddedCard out={added.out} siteAsked={added.siteAsked} onClose={() => setAdded(null)} className="absolute z-[502] bottom-12 left-3 md:left-1/2 md:-translate-x-1/2" />}
+      {places.map((p) => createPortal(<PlacePopup key={p.external_id} place={p} canAdd={canImport} offReason={addOff} onAdded={onAdded} />, hostFor(p.external_id)))}
 
       {/* always visible: hide every panel to see the whole map, or go full screen */}
       <div className={`absolute z-[503] top-3 left-1/2 -translate-x-1/2 flex gap-1 p-1 ${GLASS} !rounded-full`} role="toolbar" aria-label="Map view">
@@ -520,7 +545,7 @@ function MapView({ canImport }) {
                     {places.map((p) => (
                       <li key={p.external_id} className="py-2 flex gap-2 items-start text-sm">
                         <input type="checkbox" checked={selected.has(p.external_id)} onChange={() => toggle(p.external_id)} aria-label={`Select ${p.name}`} className="mt-1" />
-                        <button className="text-left min-w-0" onClick={() => map.current.flyTo([p.lat, p.lon], 18, { duration: 1 })}>
+                        <button className="text-left min-w-0 flex-1" onClick={() => openPlace(p)} data-testid="place-row" title="Show on the map and add to the CRM">
                           <span className="font-medium block truncate">{p.name}</span>
                           <span className="block text-xs text-[#5F5F5A] truncate">{p.email || p.phone || "no contact published"}</span>
                         </button>
@@ -546,7 +571,7 @@ function MapView({ canImport }) {
             {panelOpen ? "Hide results" : result ? `Results (${places.length})` : "Results"}
           </button>
           <p className="absolute z-[400] bottom-1 left-40 text-[10px] text-[#0B1020]/80 bg-white/80 px-2 rounded-full pointer-events-none hidden lg:block">
-            Round: search results (green e-mail, amber phone/site, grey name) · square: my prospects (blue to review, green approved) · double-click a pin to select · H: hide panels
+            Round: search results (green e-mail, amber phone/site, grey name) · square: my prospects (blue to review, green approved) · click a pin to add it to the CRM · double-click to select several · H: hide panels
           </p>
         </>
       )}

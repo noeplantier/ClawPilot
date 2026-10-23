@@ -97,6 +97,8 @@ class Lead(BaseModel):
     website: Optional[str] = None
     vertical: Optional[str] = None
     heat: Optional[HeatOut] = None
+    # A prospect found by discovery (map, sources, import) says where it stands in the human review; a CRM lead: none.
+    review_status: Optional[Literal["pending", "approved", "rejected"]] = None
 
 
 class LeadCreate(BaseModel):
@@ -792,6 +794,47 @@ class MapPlaceOut(BaseModel):
     email: Optional[str] = None  # idem; null means "not published", not "none exists"
     website: Optional[str] = None
     source_url: str
+
+
+class MapPlaceIn(BaseModel):
+    """One place exactly as the map showed it (only what contributors published); the server re-validates it."""
+
+    external_id: str = Field(min_length=3, max_length=60)
+    name: str = Field(min_length=1, max_length=200)
+    lat: float = Field(ge=-90, le=90)
+    lon: float = Field(ge=-180, le=180)
+    category: Optional[str] = Field(default=None, max_length=60)
+    address: Optional[str] = Field(default=None, max_length=300)
+    postcode: Optional[str] = Field(default=None, max_length=20)
+    city: Optional[str] = Field(default=None, max_length=120)
+    phone: Optional[str] = Field(default=None, max_length=60)
+    email: Optional[str] = Field(default=None, max_length=200)
+    website: Optional[str] = Field(default=None, max_length=300)
+    source_url: str = Field(min_length=10, max_length=300)
+
+
+class MapAddIn(BaseModel):
+    place: MapPlaceIn
+    attestation: bool = False  # "I may use these professional contact details for B2B prospecting"
+    check_website: bool = True  # look for a public e-mail on the business's OWN site (robots.txt respected)
+    approve: bool = True  # the person adding it decides now: it joins the CRM; false = waits in the review queue
+    country: str = Field(default="FR", pattern="^[A-Z]{2}$")
+
+
+class MapAddOut(BaseModel):
+    lead_id: str
+    name: str
+    created: bool  # false: it was already one of your prospects (details completed, nothing duplicated)
+    review_status: Literal["pending", "approved", "rejected"]
+    in_crm: (
+        bool  # approved: the person decided it joins the CRM pipeline (a pending one is listed too, marked "to review")
+    )
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    website: Optional[str] = None
+    email_found_on_site: bool = False  # the address came from the business's own site, not from the map
+    website_checked: bool = False  # the homepage was really fetched (never "not found" when it was not read)
+    heat: Optional[HeatOut] = None
 
 
 class MapSearchOut(BaseModel):

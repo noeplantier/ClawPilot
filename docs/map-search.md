@@ -44,10 +44,24 @@ statut de chaque serveur Overpass depuis l'API elle-même.
   prospect (page OpenStreetMap de l'élément, en provenance).
 - Zone limitée à ~22 × 33 km, 300 résultats au plus, 6 recherches par minute et par organisation, cache de 10 minutes.
 
+## Un clic sur un point : l'établissement entre dans le CRM
+Cliquer un point ouvre sa fiche (ce que la carte publie, « not published » pour le reste). Après avoir coché une fois l'attestation
+(mémorisée dans ce navigateur : « j'ai le droit d'utiliser ces coordonnées professionnelles pour de la prospection B2B, intérêt légitime,
+et je respecterai les oppositions »), **ADD TO CRM** fait en une action ce que faisait le formulaire d'import pour un seul lieu :
+import attesté (origine = page OpenStreetMap du lieu, base légale, liste de suppression, audit), lecture facultative du site propre pour un
+e-mail public, puis **votre décision d'approuver** ce prospect (tracée dans l'audit : `prospect.approved`, `via: map_quick_add`).
+**FOR REVIEW** laisse la décision à la file de revue. Le résultat reste affiché (e-mail trouvé sur le site ou publié sur la carte,
+téléphone, site lu ou non) avec les liens vers le CRM et la fiche. Un lieu déjà ajouté est complété, jamais dupliqué ; un contact sur la
+liste de suppression est refusé (`409 suppressed`). **Rien n'est envoyé** : contacter exige toujours un brouillon approuvé et les règles
+d'envoi. API : `POST /api/map/places/add` (owner/admin, `FEATURE_PROSPECT_IMPORT`, 60 par minute et par organisation).
+Les prospects ajoutés apparaissent dans **Leads** (avec leur statut de revue), la file de revue, les suggestions de campagne et la carte.
+
 ## Trouver l'e-mail quand OSM n'en a pas
-À l'import de la sélection, l'option « look for a public contact e-mail » lit la page d'accueil **du site propre** de chaque
-établissement (`robots.txt` respecté, 25 sites au plus) et ne retient qu'un lien `mailto:` du **même domaine** que le site. Rien n'est
-déduit d'un nom, rien n'est lu dans le texte ou les scripts, adresses techniques (`noreply@`…) refusées. L'origine est dans
+Avec l'option « look for a public contact e-mail » (import de la sélection, ou ajout d'un point), le serveur lit la page d'accueil **du
+site propre** de chaque établissement (`robots.txt` respecté, 25 sites au plus) ; si elle ne publie pas d'adresse, il lit **une seule page
+de plus : la page contact que l'accueil lui-même désigne** (même site, adresse de type `/contact`, `/nous-contacter`, `/contact-us`…).
+Il ne retient qu'un lien `mailto:` du **même domaine** que le site. Rien n'est déduit d'un nom, rien n'est lu dans le texte ou les
+scripts, aucune autre page n'est parcourue, adresses techniques (`noreply@`…) refusées. L'origine (accueil ou page contact) est dans
 l'historique d'audit (`prospect.email_found`). Les réseaux sociaux, Google, LinkedIn, annuaires d'avis ne sont jamais consultés.
 
 ## Activer

@@ -1,4 +1,4 @@
-import { areaTooLarge, importRows, summarize, summaryText, markerColor, knownIds, mineSummary } from "@/lib/mapSearch";
+import { areaTooLarge, importRows, summarize, summaryText, markerColor, knownIds, mineSummary, panelPadding } from "@/lib/mapSearch";
 
 const A = { external_id: "node/1", name: "A", lat: 45.7, lon: 4.8, email: "a@a.fr", phone: "+33 1", website: "https://a.fr", source_url: "u" };
 const B = { external_id: "node/2", name: "B", lat: 45.7, lon: 4.8, email: null, phone: "+33 2", website: null, source_url: "u" };
@@ -38,4 +38,17 @@ test("already imported places are recognised by their source id and the layer is
   expect([...knownIds(mine)].sort()).toEqual(["node/1", "way/9"]);
   expect(mineSummary(mine)).toBe("3 prospects on the map: 1 to review, 1 approved, 1 rejected.");
   expect(mineSummary([])).toBe("No prospect with a position yet.");
+});
+
+describe("panelPadding", () => {
+  it("keeps a popup clear of the search card on the left and the results drawer on the right", () => {
+    expect(panelPadding({ narrow: false, searchOpen: true, panelOpen: true, hidden: false })).toEqual({ topLeft: [440, 70], bottomRight: [400, 50] });
+  });
+  it("frees the room of a panel that is minimised or closed, and of every panel when they are hidden", () => {
+    expect(panelPadding({ narrow: false, searchOpen: false, panelOpen: false, hidden: false })).toEqual({ topLeft: [20, 70], bottomRight: [20, 50] });
+    expect(panelPadding({ narrow: false, searchOpen: true, panelOpen: true, hidden: true })).toEqual({ topLeft: [20, 70], bottomRight: [20, 50] });
+  });
+  it("on a phone the panels are above and below the map, not beside it", () => {
+    expect(panelPadding({ narrow: true, searchOpen: true, panelOpen: true, hidden: false })).toEqual({ topLeft: [20, 360], bottomRight: [20, 280] });
+  });
 });
