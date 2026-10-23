@@ -73,6 +73,7 @@ async def health(user: dict = Depends(get_current_user), session: AsyncSession =
         },
         "overpass": {
             "endpoints": [e.split("//", 1)[1].split("/", 1)[0] for e in overpass_svc.endpoints()],
+            "cooling_down": overpass_svc.cooling_hosts(),
             "probe": "POST /api/system/health/overpass (owner/admin)",
         },
         "flags": {

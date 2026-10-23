@@ -14,7 +14,7 @@ plus proposé comme résultat de recherche (reconnu par son identifiant OpenStre
 auteur, organisation) et répond tout de suite (`202`). Un exécutant en arrière-plan du processus de l'API :
 1. lit le **cache** (`source_cache`, clé = version de la requête + zone arrondie à 0,005° + catégorie, TTL 6 h) ;
 2. sinon envoie **une** requête Overpass (une à la fois dans tout le processus, serveurs essayés à tour de rôle, 15 s chacun, IPv4,
-   User-Agent identifié) ;
+   User-Agent identifié ; un serveur qui vient d'échouer est essayé en dernier pendant 5 minutes, jamais écarté) ;
 3. normalise, **dédoublonne** (même identifiant OSM, ou même nom au même endroit : on garde l'entrée la plus complète) et enregistre
    les lieux dans `map_search_results` ;
 4. passe le job à `succeeded` ou `failed` avec un code (`overpass_timeout`, `overpass_busy`, `overpass_unreachable`,
@@ -61,3 +61,10 @@ selon les garde-fous habituels (liste blanche, désinscription, limites).
 - Pas de collecte depuis Google Maps, Pages Jaunes, LinkedIn ou réseaux sociaux : leurs conditions l'interdisent.
 - Un e-mail nominatif (personne physique) trouvé sur un site reste une donnée personnelle : base légale, information et
   désinscription s'appliquent, voir `docs/compliance.md`.
+
+## Mesure faite depuis l'hébergeur de l'API (23 octobre 2026)
+Page *System health* → « Check from the server », depuis Render (Francfort, offre gratuite) : `overpass-api.de` **connexion refusée**,
+`overpass.private.coffee` et `overpass.kumi.systems` **délai de lecture dépassé (6 s)**, `maps.mail.ru` **HTTP 504**. Les serveurs publics
+refusent ou ralentissent cette adresse partagée : ce n'est pas un défaut de la requête. Le repli navigateur fonctionne indépendamment
+(l'adresse du visiteur n'est pas celle de l'hébergeur). Solutions durables : un autre serveur public qui répond (`overpass.openstreetmap.fr`
+est ajouté, à vérifier avec la même mesure), un Overpass auto-hébergé (`OVERPASS_ENDPOINTS`), ou une API hébergée ailleurs.

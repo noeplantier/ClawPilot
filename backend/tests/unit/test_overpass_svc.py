@@ -7,6 +7,7 @@ import urllib.error
 import pytest
 
 from services import overpass_svc
+from services.outreach_os import map_jobs
 
 
 class _Answer(io.BytesIO):
@@ -29,7 +30,8 @@ def test_every_public_server_is_tried_and_the_failures_are_named(monkeypatch):
         overpass_svc.http_fetch("[out:json];")
     assert [u for u, _ in seen] == list(overpass_svc.ENDPOINTS)
     assert all(t == overpass_svc.TIMEOUT_SECONDS for _, t in seen)
-    assert len(overpass_svc.ENDPOINTS) * overpass_svc.TIMEOUT_SECONDS <= 70  # fits under the host's request limit
+    # runs in the background: the total only has to stay under the time after which a job counts as lost
+    assert len(overpass_svc.ENDPOINTS) * overpass_svc.TIMEOUT_SECONDS < map_jobs.JOB_STALE_SECONDS
     assert "overpass-api.de: TimeoutError" in str(err.value) and "private.coffee: TimeoutError" in str(err.value)
 
 
@@ -129,3 +131,60 @@ def test_probe_reports_facts_without_raising(monkeypatch):
 
     monkeypatch.setattr(overpass_svc, "_open", lambda r, t: _Status(b"Connected as: 1"))
     assert overpass_svc.probe("https://overpass.example/api/interpreter")["ok"] is True
+
+
+def test_a_server_that_just_failed_is_tried_last_then_first_again_after_the_cooldown(monkeypatch):
+    clock = {"now": 1000.0}
+    monkeypatch.setattr(overpass_svc, "_clock", lambda: clock["now"])
+    monkeypatch.setenv("OVERPASS_ENDPOINTS", "https://a.example/i,https://b.example/i,https://c.example/i")
+    order = []
+
+    def fake(request, timeout):
+        order.append(request.full_url)
+        if "a.example" in request.full_url:
+            raise TimeoutError()
+        return _Answer(json.dumps({"elements": []}).encode())
+
+    monkeypatch.setattr(overpass_svc, "_open", fake)
+    overpass_svc.http_fetch("q")
+    assert order == ["https://a.example/i", "https://b.example/i"] and overpass_svc.cooling_hosts() == ["a.example"]
+    order.clear()
+    overpass_svc.http_fetch("q")
+    assert order == ["https://b.example/i"]  # the cooling server is not waited on again
+    clock["now"] += overpass_svc.COOLDOWN_SECONDS + 1
+    order.clear()
+    overpass_svc.http_fetch("q")
+    assert order[0] == "https://a.example/i" and overpass_svc.cooling_hosts() == [
+        "a.example"
+    ]  # tried again, fails again
+
+
+def test_when_every_server_is_cooling_all_of_them_are_still_tried(monkeypatch):
+    monkeypatch.setenv("OVERPASS_ENDPOINTS", "https://a.example/i,https://b.example/i")
+    monkeypatch.setattr(overpass_svc, "_open", lambda r, t: (_ for _ in ()).throw(TimeoutError()))
+    for _ in range(2):
+        with pytest.raises(overpass_svc.Unavailable) as err:
+            overpass_svc.http_fetch("q")
+        assert len(err.value.failures) == 2
+    monkeypatch.setattr(overpass_svc, "_open", _answering({"elements": []}))
+    assert overpass_svc.http_fetch("q") == {"elements": []}  # a recovered server answers even while "cooling"
+    assert overpass_svc.cooling_hosts() == ["b.example"]  # only the one that answered is cleared
+
+
+def test_a_success_clears_the_cooldown_and_a_client_error_never_starts_one(monkeypatch):
+    monkeypatch.setenv("OVERPASS_ENDPOINTS", "https://a.example/i")
+    monkeypatch.setattr(
+        overpass_svc,
+        "_open",
+        lambda r, t: (_ for _ in ()).throw(urllib.error.HTTPError(r.full_url, 400, "bad", {}, None)),
+    )
+    with pytest.raises(overpass_svc.Unavailable):
+        overpass_svc.http_fetch("q")
+    assert overpass_svc.cooling_hosts() == []
+    monkeypatch.setattr(overpass_svc, "_open", lambda r, t: (_ for _ in ()).throw(TimeoutError()))
+    with pytest.raises(overpass_svc.Unavailable):
+        overpass_svc.http_fetch("q")
+    assert overpass_svc.cooling_hosts() == ["a.example"]
+    monkeypatch.setattr(overpass_svc, "_open", _answering({"elements": []}))
+    overpass_svc.http_fetch("q")
+    assert overpass_svc.cooling_hosts() == []

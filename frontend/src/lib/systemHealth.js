@@ -27,3 +27,7 @@ export function probeLine(server) {
   if (server.status) return `${server.host}: answered HTTP ${server.status} (${server.ms} ms)`;
   return `${server.host}: ${server.error || "no answer"} (${server.ms} ms)`;
 }
+
+// Servers that failed recently are tried last for a few minutes: say so instead of hiding it.
+export const coolingLine = (hosts) =>
+  hosts && hosts.length > 0 ? `Failed recently, now tried last: ${hosts.join(", ")}.` : "";

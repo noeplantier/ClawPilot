@@ -3,7 +3,7 @@ import { CheckCircle, WarningCircle } from "@phosphor-icons/react";
 import { useAuth } from "@/contexts/AuthContext";
 import { canDecide, systemApi, useAsync } from "@/lib/outreach";
 import { describeApiError } from "@/lib/outreachFormat";
-import { checks, jobsLine, probeLine } from "@/lib/systemHealth";
+import { checks, coolingLine, jobsLine, probeLine } from "@/lib/systemHealth";
 import { ErrorBlock, LoadingBlock } from "@/components/outreach/States";
 
 export default function SystemHealth() {
@@ -49,6 +49,7 @@ export default function SystemHealth() {
           <section className="surface p-5 space-y-3" data-testid="health-overpass">
             <h2 className="font-display text-lg font-bold">OpenStreetMap servers</h2>
             <p className="text-sm text-[#5F5F5A]">Public servers used for the map search: {d.overpass.endpoints.join(", ")}. The probe asks each one for its status page from this server.</p>
+            {coolingLine(d.overpass.cooling_down) && <p className="text-sm text-[#92400E]" data-testid="health-cooling">{coolingLine(d.overpass.cooling_down)}</p>}
             {canDecide(user) && <button className="btn-ink" onClick={runProbe} disabled={probing} data-testid="probe-run">{probing ? "PROBING…" : "CHECK FROM THE SERVER"}</button>}
             {probeError && <p role="alert" className="text-sm text-[#991B1B]">{probeError}</p>}
             {probe && (
