@@ -399,3 +399,71 @@ test("the import form of a map selection can be minimised and closed, so the who
   await page.getByTestId("import-close").click(); // closing clears the selection
   await expect(page.getByTestId("map-import")).toHaveCount(0);
 });
+
+async function apiPost(page, path, body) {
+  const token = await page.evaluate(() => localStorage.getItem("outreachos_token"));
+  const res = await page.request.post(`${process.env.E2E_API_URL || "http://localhost:8000"}/api${path}`, { headers: { Authorization: `Bearer ${token}` }, data: body });
+  expect(res.status(), await res.text()).toBeLessThan(300);
+  return res.json();
+}
+
+test("leads come hottest first with the real information behind the heat, and a new lead appears live", async ({ page }) => {
+  await page.clock.install();
+  await register(page);
+  await apiPost(page, "/leads", { full_name: "A Name Only" });
+  await apiPost(page, "/leads", { full_name: "B Rich Lead", email: "b@rich-lead.example", phone: "+33 4 78 00 00 01", company: "Rich SAS", title: "CEO", country: "FR" });
+  await page.goto("/app/leads");
+  const rows = page.locator('[data-testid^="lead-row-"]');
+  await expect(rows).toHaveCount(2);
+  await expect(rows.first()).toContainText("B Rich Lead"); // the lead with the most real information is first
+  await expect(rows.first().getByTestId("heat-badge")).toHaveAttribute("title", /5 of 8 real fields known/);
+  await expect(rows.first().getByTestId("heat-badge")).toHaveAttribute("title", /Missing: website, city, category/);
+  await expect(rows.last()).toContainText("e-mail not known"); // an unknown is shown as unknown
+  await expect(page.getByTestId("leads-live")).toContainText("Live · updated");
+
+  // filter by tier
+  const cold = page.getByTestId("lane-cold");
+  const coldCount = Number((await cold.innerText()).replace(/\D/g, ""));
+  expect(coldCount).toBeGreaterThanOrEqual(1);
+  await cold.click();
+  await expect(rows.first()).toContainText("A Name Only");
+  await page.getByTestId("lane-all").click();
+
+  // a lead created elsewhere shows up on the next refresh, flagged as new, and ranks by its information
+  await apiPost(page, "/leads", { full_name: "C New Arrival", email: "c@arrival.example", phone: "+33 4 78 00 00 02", company: "Arrival SAS", title: "CTO", country: "FR" });
+  await page.clock.fastForward(16000);
+  await expect(page.getByTestId("lead-new")).toHaveCount(1);
+  await expect(page.locator('[data-testid^="lead-row-"]', { hasText: "C New Arrival" })).toContainText("new");
+  await expect(rows).toHaveCount(3);
+});
+
+test("the review queue is split into heat lanes counted by the server, hottest first, and says what is known", async ({ page }) => {
+  await register(page);
+  await apiPost(page, "/prospects/discovery/run", { source: "fixture_directory" });
+  await page.goto("/app/prospects/review");
+  await expect(page.getByTestId("queue-card")).toBeVisible();
+  const n = async (key) => Number((await page.getByTestId(`queue-lane-${key}`).innerText()).replace(/\D/g, ""));
+  const [all, hot, warm, cold] = [await n("all"), await n("hot"), await n("warm"), await n("cold")];
+  expect(hot + warm + cold).toBe(all); // counted, never estimated
+  expect(all).toBeGreaterThan(2);
+  await expect(page.getByTestId("queue-live")).toContainText("Live · updated");
+  await expect(page.getByTestId("queue-known")).toContainText("Known:");
+  // the first card is the hottest one
+  const firstTier = await page.getByTestId("queue-card").getByTestId("heat-badge").getAttribute("data-tier");
+  const order = ["hot", "warm", "cold"];
+  for (const lane of order.slice(0, order.indexOf(firstTier))) expect(await n(lane)).toBe(0); // nothing hotter is waiting
+  // pick a lane that has prospects: the card follows
+  for (const lane of ["hot", "warm", "cold"]) {
+    if ((await n(lane)) === 0) continue;
+    await page.getByTestId(`queue-lane-${lane}`).click();
+    await expect(page.getByTestId("queue-card").getByTestId("heat-badge")).toHaveAttribute("data-tier", lane);
+  }
+  await page.getByTestId("queue-lane-all").click();
+  if (all > 1) {
+    await expect(page.getByTestId("queue-next")).toBeVisible();
+    const next = page.getByTestId("queue-next-row").first();
+    const name = (await next.locator(".font-medium").innerText()).replace(/\s*new$/i, "").trim();
+    await page.getByTestId("queue-open-next").first().click(); // "review now" pins that prospect
+    await expect(page.getByTestId("queue-name")).toHaveText(name);
+  }
+});
