@@ -1,27 +1,39 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { ArrowRight, Check, SkipForward, X } from "@phosphor-icons/react";
 import { useAuth } from "@/contexts/AuthContext";
 import { canDecide, prospectsApi, useAsync } from "@/lib/outreach";
+import { LIVE_MS, useLive } from "@/lib/live";
+import { FIELD_LABEL, TIERS, TIER_LABEL, inLane, laneCounts } from "@/lib/heat";
+import HeatBadge from "@/components/outreach/HeatBadge";
 import { describeApiError, domainOf } from "@/lib/outreachFormat";
 import ScoreBadge from "@/components/outreach/ScoreBadge";
 import ScoreBreakdown from "@/components/outreach/ScoreBreakdown";
 import SourceList from "@/components/outreach/SourceList";
 import { EmptyBlock, ErrorBlock, LoadingBlock } from "@/components/outreach/States";
 
-// One pending prospect at a time, best score first, with the evidence needed to decide.
+// One pending prospect at a time, hottest first (real information + score), with the evidence needed to decide.
+// The queue refreshes in the background; the card you are reading stays put, new arrivals join the lanes.
 // Approve/reject records a human decision (audited); skip just moves on without deciding.
 export default function ReviewQueue() {
   const { user } = useAuth();
   const [skipped, setSkipped] = useState([]);
+  const [lane, setLane] = useState("all"); // all | hot | warm | cold
+  const [pinned, setPinned] = useState(null); // the prospect being reviewed: a refresh never swaps it under your eyes
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
-  const queue = useAsync(() => prospectsApi.list({ review_status: "pending", limit: 100 }), []);
-  const pending = queue.data ? queue.data.items.filter((p) => !skipped.includes(p.id)) : [];
-  const current = pending[0];
+  const queue = useLive(() => prospectsApi.list({ review_status: "pending", order: "heat", limit: 100 }), [], { itemsOf: (d) => d.items });
+  const counts = useLive(() => prospectsApi.queues("pending"), [], { idOf: () => "counts", itemsOf: (d) => [d] });
+  const everyPending = useMemo(() => (queue.data ? queue.data.items.filter((p) => !skipped.includes(p.id)) : []), [queue.data, skipped]);
+  const pending = useMemo(() => inLane(everyPending, lane), [everyPending, lane]);
+  const loaded = laneCounts(everyPending);
+  const server = counts.data || null; // counted by the server over the whole queue (the list holds the first 100)
+  const current = pending.find((p) => p.id === pinned) || pending[0];
+  useEffect(() => { setPinned(pending[0] ? pending[0].id : null); }, [lane]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!pinned || !pending.some((p) => p.id === pinned)) setPinned(pending[0] ? pending[0].id : null); }, [pending, pinned]);
   const detail = useAsync(() => (current ? prospectsApi.get(current.id) : Promise.resolve(null)), [current && current.id]);
 
   const decide = async (decision) => {
@@ -32,6 +44,7 @@ export default function ReviewQueue() {
       toast.success(decision === "approve" ? `${current.name} approved` : `${current.name} rejected`);
       setNote("");
       queue.reload();
+      counts.reload();
     } catch (e) {
       setError(describeApiError(e));
     } finally {
@@ -52,8 +65,29 @@ export default function ReviewQueue() {
       {queue.loading && !queue.data && <LoadingBlock label="Loading the queue…" />}
       {queue.error && <ErrorBlock message={queue.error} onRetry={queue.reload} />}
 
+      {queue.data && (
+        <div className="space-y-2" data-testid="queue-lanes-bar">
+          <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Queues by heat">
+            {[["all", `All ${server ? server.total : loaded.total}`], ...TIERS.map((t) => [t, `${TIER_LABEL[t]} ${server ? server[t] : loaded[t]}`])].map(([key, label]) => (
+              <button key={key} onClick={() => setLane(key)} aria-pressed={lane === key} data-testid={`queue-lane-${key}`}
+                className={`px-3 py-1 rounded-full text-xs border transition-colors ${lane === key ? "bg-[#0B1020] text-white border-[#0B1020] shadow-[0_0_14px_-2px_rgba(99,102,241,0.7)]" : "bg-white/80 border-[#D3DBEA] hover:bg-white"}`}>
+                {label}
+              </button>
+            ))}
+            <span className="text-xs inline-flex items-center gap-2 text-[#4338CA]" role="status" aria-live="polite" data-testid="queue-live">
+              <span className="pos-live-dot" aria-hidden="true" />
+              {queue.stale ? "Refresh failed: showing the last data. " : ""}
+              {queue.updatedAt ? `Live · updated ${queue.updatedAt.toLocaleTimeString()} · every ${LIVE_MS / 1000} s` : ""}
+            </span>
+          </div>
+          {queue.fresh.size > 0 && (
+            <p className="text-xs text-[#0E7490]" data-testid="queue-new">{queue.fresh.size} new prospect{queue.fresh.size === 1 ? "" : "s"} joined the queue (hottest first).</p>
+          )}
+        </div>
+      )}
+
       {queue.data && !current && (
-        <EmptyBlock title={queue.data.total === 0 ? "The review queue is empty" : "You skipped every pending prospect"} testId="queue-empty">
+        <EmptyBlock title={queue.data.total === 0 ? "The review queue is empty" : lane !== "all" && everyPending.length > 0 ? `No ${TIER_LABEL[lane].toLowerCase()} prospect waiting` : "You skipped every pending prospect"} testId="queue-empty">
           {queue.data.total === 0 ? (
             <p>No prospect is waiting for a decision. Run discovery on the Prospects page to find more.</p>
           ) : (
@@ -86,8 +120,17 @@ export default function ReviewQueue() {
                   {[current.city, domainOf(current.website) || "no own website listed"].filter(Boolean).join(" · ")}
                 </p>
               </div>
-              <ScoreBadge score={current.score} coverage={current.coverage} showCoverage />
+              <div className="flex flex-col items-end gap-2">
+                <HeatBadge heat={current.heat} />
+                <ScoreBadge score={current.score} coverage={current.coverage} showCoverage />
+              </div>
             </div>
+            {current.heat && (
+              <p className="text-xs text-[#5F5F5A]" data-testid="queue-known">
+                Known: {current.heat.known.map((k) => FIELD_LABEL[k]).join(", ") || "nothing yet"}
+                {current.heat.missing.length > 0 && <> · <span className="text-[#6B6B66]">not known: {current.heat.missing.map((k) => FIELD_LABEL[k]).join(", ")}</span></>}
+              </p>
+            )}
 
             {detail.loading && <LoadingBlock label="Loading evidence…" />}
             {detail.error && <ErrorBlock message={detail.error} onRetry={detail.reload} />}
@@ -125,6 +168,25 @@ export default function ReviewQueue() {
               </div>
             </div>
           </section>
+          {pending.length > 1 && (
+            <section className="surface p-4" data-testid="queue-next">
+              <h3 className="font-display font-bold mb-2">Up next</h3>
+              <ul className="divide-y divide-[#E3E9F4]">
+                {pending.filter((p) => p.id !== current.id).slice(0, 6).map((p) => (
+                  <li key={p.id} className={`py-2 flex items-center justify-between gap-3 ${queue.fresh.has(p.id) ? "bg-cyan-50" : ""}`} data-testid="queue-next-row">
+                    <span className="min-w-0">
+                      <span className="font-medium block truncate">{p.name}{queue.fresh.has(p.id) && <span className="chip chip-cyan ml-2">new</span>}</span>
+                      <span className="text-xs text-[#5F5F5A]">{[p.city, domainOf(p.website) || "no own website listed"].filter(Boolean).join(" · ")}</span>
+                    </span>
+                    <span className="flex items-center gap-2 shrink-0">
+                      <HeatBadge heat={p.heat} compact />
+                      <button className="btn-ghost !py-1 !px-2 text-xs" onClick={() => setPinned(p.id)} data-testid="queue-open-next">REVIEW NOW</button>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
         </>
       )}
     </div>

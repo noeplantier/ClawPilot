@@ -273,7 +273,8 @@ function MapView({ canImport }) {
     }
   };
   const togglePick = (id) => setPicked((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
-  const list = group || shown.slice(0, 30);
+  const byHeat = (a, b) => ((b.heat && b.heat.value) || 0) - ((a.heat && a.heat.value) || 0);
+  const list = group ? [...group].sort(byHeat) : [...shown].sort(byHeat).slice(0, 30); // hottest first
   const pickInfo = campaignPick(mine, picked);
 
   const known = useMemo(() => knownIds(mine), [mine]);
@@ -483,7 +484,7 @@ function MapView({ canImport }) {
                         <input type="checkbox" checked={picked.has(p.id)} onChange={() => togglePick(p.id)} aria-label={`Select ${p.name}`} className="mt-1" />
                         <button className="text-left min-w-0 flex-1" onClick={() => map.current.flyTo([p.lat, p.lon], 17, { duration: 1 })}>
                           <span className="font-medium block truncate">{p.name}</span>
-                          <span className="block text-xs text-[#5F5F5A] truncate">{STATUS_LABEL[p.review_status]} · {p.score === null || p.score === undefined ? "not scored" : `score ${p.score}`}{p.city ? ` · ${p.city}` : ""}</span>
+                          <span className="block text-xs text-[#5F5F5A] truncate">{p.heat ? `${p.heat.tier} ${p.heat.value} · ` : ""}{STATUS_LABEL[p.review_status]} · {p.score === null || p.score === undefined ? "not scored" : `score ${p.score}`}{p.city ? ` · ${p.city}` : ""}</span>
                         </button>
                         <Link to={`/app/prospects/${p.id}`} className="text-xs underline shrink-0">open</Link>
                       </li>

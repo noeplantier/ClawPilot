@@ -62,6 +62,18 @@ LeadStage = Literal["new", "contacted", "engaged", "qualified", "won", "lost"]
 ConsentStatus = Literal["opted_in", "opted_out", "unknown"]
 
 
+class HeatOut(BaseModel):
+    """Why a lead ranks where it does: real information and the score, never an invented figure."""
+
+    value: int  # 0..100
+    tier: Literal["hot", "warm", "cold"]
+    info_pct: int  # share of the 8 tracked fields that are really known
+    known: List[str]
+    missing: List[str]
+    scored: bool  # False: never scored, ranked on information alone
+    score: Optional[int] = None
+
+
 class Lead(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=_uid)
@@ -81,6 +93,10 @@ class Lead(BaseModel):
     email_consent: ConsentStatus = "unknown"
     whatsapp_consent: ConsentStatus = "unknown"
     created_at: datetime = Field(default_factory=_now)
+    city: Optional[str] = None
+    website: Optional[str] = None
+    vertical: Optional[str] = None
+    heat: Optional[HeatOut] = None
 
 
 class LeadCreate(BaseModel):
@@ -377,6 +393,13 @@ class SettingsUpdate(BaseModel):
 
 
 # ------------------------ OutreachOS prospects ------------------------
+class QueueCountsOut(BaseModel):
+    hot: int
+    warm: int
+    cold: int
+    total: int
+
+
 class ProspectSummary(BaseModel):
     id: str
     name: str
@@ -387,6 +410,7 @@ class ProspectSummary(BaseModel):
     score: Optional[int] = None  # None = never scored
     coverage: Optional[float] = None  # share of weighted signals that could be observed
     created_at: datetime
+    heat: Optional[HeatOut] = None
 
 
 class ProspectList(BaseModel):
@@ -762,6 +786,7 @@ class MapProspectOut(BaseModel):
     score: Optional[int] = None  # None = not scored (never 0)
     signals: List[str] = Field(default_factory=list)  # keys detected now; a dismissed signal does not count
     created_at: Optional[datetime] = None
+    heat: Optional[dict] = None  # {value, tier, info_pct}: the hottest prospects are listed first on the map
 
 
 class SourceInfo(BaseModel):

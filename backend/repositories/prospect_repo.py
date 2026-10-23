@@ -29,7 +29,8 @@ from db.models import (
     ScoreVersion,
     SignalDismissal,
 )
-from repositories import consent_repo, lead_repo, suppression_repo
+from repositories import consent_repo, heat_sql, lead_repo, suppression_repo
+from services.outreach_os import heat as heat_rules
 from services.outreach_os.normalize import normalize_email, normalize_phone
 from services.outreach_os.scoring import ScoreConfig, ScoreResult
 from services.outreach_os.types import Candidate, RawListing, SignalResult, SignalState
@@ -332,9 +333,11 @@ async def list_prospects(
     *,
     review_status: Optional[str] = None,
     min_score: Optional[int] = None,
+    order: str = "heat",
     limit: int = 50,
     offset: int = 0,
 ) -> tuple[list[tuple[Lead, Optional[int], Optional[float]]], int]:
+    """`order`: "heat" (hottest first: real information and score), "score" or "recent"."""
     latest = _latest_scores_subquery()
     conditions = [Lead.account_id == account_id, ACTIVE, IN_DISCOVERY]
     if review_status:
@@ -342,18 +345,46 @@ async def list_prospects(
     if min_score is not None:
         conditions.append(latest.c.score >= min_score)
     base = select(Lead, latest.c.score, latest.c.coverage).outerjoin(latest, latest.c.lead_id == Lead.id)
-    rows = await session.execute(
-        base.where(*conditions)
-        .order_by(latest.c.score.desc().nulls_last(), Lead.created_at.desc(), Lead.id)
-        .limit(limit)
-        .offset(offset)
-    )
+    if order == "recent":
+        ordering = [Lead.created_at.desc(), Lead.id]
+    elif order == "score":
+        ordering = [latest.c.score.desc().nulls_last(), Lead.created_at.desc(), Lead.id]
+    else:
+        ordering = [
+            heat_sql.heat_sql(latest.c.score).desc(),
+            latest.c.score.desc().nulls_last(),
+            Lead.created_at.desc(),
+            Lead.id,
+        ]
+    rows = await session.execute(base.where(*conditions).order_by(*ordering).limit(limit).offset(offset))
     total = (
         await session.execute(
             select(func.count()).select_from(Lead).outerjoin(latest, latest.c.lead_id == Lead.id).where(*conditions)
         )
     ).scalar_one()
     return [(lead, score, coverage) for lead, score, coverage in rows.all()], int(total)
+
+
+async def tier_counts(
+    session: AsyncSession, account_id: uuid.UUID, review_status: Optional[str] = None
+) -> dict[str, int]:
+    """How many prospects sit in each heat tier (the queues of the review page)."""
+    latest = _latest_scores_subquery()
+    conditions = [Lead.account_id == account_id, ACTIVE, IN_DISCOVERY]
+    if review_status:
+        conditions.append(Lead.review_status == review_status)
+    tier = heat_sql.tier_sql(heat_sql.heat_sql(latest.c.score)).label("tier")
+    rows = await session.execute(
+        select(tier, func.count())
+        .select_from(Lead)
+        .outerjoin(latest, latest.c.lead_id == Lead.id)
+        .where(*conditions)
+        .group_by(tier)
+    )
+    counts = {"hot": 0, "warm": 0, "cold": 0}
+    for name, n in rows.all():
+        counts[name] = int(n)
+    return {**counts, "total": sum(counts.values())}
 
 
 async def get(session: AsyncSession, account_id: uuid.UUID, lead_id: str) -> Optional[Lead]:
@@ -389,6 +420,14 @@ async def fill_email(session: AsyncSession, account_id: uuid.UUID, lead: Lead, e
     lead.email = email
     await session.flush()
     return True
+
+
+def _heat_value(lead: Lead, score: Optional[int]) -> dict:
+    h = heat_rules.heat_of(
+        {f: getattr(lead, f) for f in heat_rules.INFO_FIELDS},
+        score,
+    )
+    return {"value": h.value, "tier": h.tier, "info_pct": h.info_pct}
 
 
 async def detected_by_lead(session: AsyncSession, account_id: uuid.UUID) -> dict[uuid.UUID, list[str]]:
@@ -458,6 +497,7 @@ async def list_positions(session: AsyncSession, account_id: uuid.UUID, limit: in
                     "vertical": lead.vertical,
                     "country": lead.country,
                     "score": score,  # None = not scored, never 0
+                    "heat": _heat_value(lead, score),
                     "signals": sorted(detected.get(lead.id, [])),
                     "created_at": lead.created_at,
                 }

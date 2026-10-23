@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from db.models import Contact, Lead, LeadScore, LeadSource, OutreachEvent
-from repositories import consent_repo
+from repositories import consent_repo, heat_sql
 from services import feature_flags, scoring
 
 ACTIVE = Lead.deleted_at.is_(None)
@@ -135,15 +135,22 @@ async def list_leads(
     *,
     stage: Optional[str] = None,
     search: Optional[str] = None,
+    sort: str = "heat",
     limit: int = 500,
 ) -> list[tuple[Lead, LeadExtra]]:
+    """`sort`: "heat" (hottest first: real information and score; a CRM score of 0 means not scored) or "recent"."""
     stmt = select(Lead).options(selectinload(Lead.contacts)).where(Lead.account_id == account_id, ACTIVE)
     if stage:
         stmt = stmt.where(Lead.stage == stage)
     if search:
         pattern = f"%{search}%"
         stmt = stmt.where(or_(Lead.full_name.ilike(pattern), Lead.email.ilike(pattern), Lead.company.ilike(pattern)))
-    stmt = stmt.order_by(Lead.created_at.desc()).limit(limit)
+    if sort == "recent":
+        stmt = stmt.order_by(Lead.created_at.desc(), Lead.id)
+    else:
+        crm_score = func.nullif(Lead.score, 0)
+        stmt = stmt.order_by(heat_sql.heat_sql(crm_score).desc(), Lead.score.desc(), Lead.created_at.desc(), Lead.id)
+    stmt = stmt.limit(limit)
     result = await session.execute(stmt)
     leads = result.scalars().all()
     return [(lead, await load_extra(session, lead)) for lead in leads]
