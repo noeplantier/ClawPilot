@@ -126,3 +126,8 @@ Le Blueprint (`render.yaml`, *New → Blueprint*) est la voie recommandée : il 
 4. Netlify : `REACT_APP_BACKEND_URL` = URL publique de l'API, puis relancer le build.
 5. Offre gratuite : l'API se met en veille après inactivité et la base gratuite expire au bout de 30 jours ; pas de worker ni de beat
    (planification et envois différés exigent les offres payantes du Blueprint).
+
+## Un service Render « Node » qui échoue à chaque fusion
+Un déploiement qui affiche `Running 'yarn start'` puis `Couldn't find a package.json file` appartient à un **ancien service de type Node**
+(le projet se déploie en Docker, voir plus haut). Il n'a aucun effet sur l'API, mais il échoue et envoie un e-mail à chaque fusion sur `main` :
+le supprimer (*Settings → Delete Web Service*) après avoir vérifié qu'il n'est pas celui qui porte l'URL publique de l'API.

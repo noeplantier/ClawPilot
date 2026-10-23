@@ -28,3 +28,13 @@ adresses (à faire avant l'expiration ; les deux adresses restent chez vous).
 ## Retour arrière
 Remettre l'ancienne `DATABASE_URL` dans Render et redéployer (la base Render doit exister encore). Les migrations sont réversibles sauf
 la RLS, qui reste active volontairement.
+
+## Serveur MCP Supabase (assistants IA, lecture seule)
+`.mcp.json` déclare le serveur MCP du projet (`project_ref=ltsshwkxuidhtwarglpe`). Il ne contient aucun secret : l'accès se donne par OAuth, une fois,
+dans un terminal normal (`claude /mcp` → *supabase* → *Authenticate*), avec le compte propriétaire du projet.
+- **Lecture seule** (`read_only=true`) et fonctions `docs`, `database`, `debugging`, `development` : un assistant peut lire les tables, les
+  journaux et les alertes de sécurité, **pas écrire**. Les fonctions `account` (création de projets, coûts), `functions` et `branching`
+  (payante) ne sont volontairement pas activées.
+- **Le schéma reste dans Alembic.** Appliquer une migration par le MCP créerait un écart avec `alembic_version` : toute modification de schéma
+  passe par une migration du dépôt, appliquée au démarrage de l'API.
+- Pour accorder l'écriture ponctuellement, retirer `read_only=true` de l'URL en local, pas dans le dépôt.
