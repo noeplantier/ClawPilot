@@ -502,3 +502,35 @@ test("suggestions for discovery prospects say why no campaign can start yet inst
   await expect(first.getByTestId("suggestion-create")).toBeDisabled();
   await expect(first.getByTestId("suggestion-create")).toContainText("NOT READY");
 });
+
+test("settings lists every integration from the server, tests the database live and never fakes a configured key", async ({ page }) => {
+  await register(page);
+  await page.goto("/app/settings");
+  await expect(page.getByTestId("int-database")).toHaveAttribute("data-status", "ready");
+  await expect(page.getByTestId("int-database-facts")).toContainText("latency");
+  // Nothing is configured on the test server: each of these says so and names the variables to set, with no field to type a secret.
+  await expect(page.getByTestId("int-ai-status")).toHaveText("TEMPLATE ONLY");
+  await expect(page.getByTestId("int-ai-needs")).toContainText("EMERGENT_LLM_KEY");
+  await expect(page.getByTestId("int-smtp-needs")).toContainText("SMTP_PASSWORD");
+  await expect(page.getByTestId("int-sendgrid-status")).toContainText("MOCK DISPATCH");
+  await expect(page.getByTestId("int-twilio-status")).toContainText("MOCK DISPATCH");
+  await expect(page.getByTestId("int-sending_mode-status")).toContainText("DRY-RUN");
+  await expect(page.locator("input")).toHaveCount(0);
+
+  // A live test of the database: real round trip, measured.
+  await page.getByTestId("int-database-test").click();
+  await expect(page.getByTestId("int-database-status")).toContainText("VERIFIED");
+  await expect(page.getByTestId("int-database-result")).toContainText("A query ran against the database.");
+
+  // A service that is not configured is skipped with the reason, and keeps its real status.
+  await page.getByTestId("int-smtp-test").click();
+  await expect(page.getByTestId("int-smtp-result")).toContainText("are not all set");
+  await expect(page.getByTestId("int-smtp")).toHaveAttribute("data-status", "missing");
+
+  // The city search is called from the browser, so it is tested from the browser (stubbed here: no real network in tests).
+  await page.route("https://api-adresse.data.gouv.fr/**", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ features: [{ properties: { label: "Lyon" } }] }) }),
+  );
+  await page.getByTestId("int-geocoder-test").click();
+  await expect(page.getByTestId("int-geocoder-status")).toContainText("VERIFIED");
+});

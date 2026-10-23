@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
-from typing import List, Literal, Optional
+from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
@@ -377,6 +377,32 @@ class WebhookStatus(BaseModel):
     sendgrid_signature_ready: bool = False  # SENDGRID_WEBHOOK_PUBLIC_KEY is set
 
 
+class IntegrationItem(BaseModel):
+    """One integration, computed from the real configuration: names of variables only, never a value."""
+
+    id: str
+    name: str
+    group: Literal["data", "sources", "sending", "inbound", "ai"]
+    status: Literal["ready", "unchecked", "partial", "missing", "blocked", "off"]
+    label: str
+    summary: str
+    env: List[str] = Field(default_factory=list)  # every variable that controls it
+    needs: List[str] = Field(default_factory=list)  # the ones still to set
+    facts: List[List[str]] = Field(default_factory=list)  # [key, value] pairs, never secret
+    test: Optional[Literal["server", "browser"]] = None  # where its live test runs
+    hint: Optional[str] = None
+    docs: str
+
+
+class IntegrationTestOut(BaseModel):
+    id: str
+    ok: bool
+    outcome: Literal["passed", "failed", "skipped"]
+    latency_ms: Optional[int] = None
+    detail: str
+    checked_at: datetime
+
+
 class IntegrationSettings(BaseModel):
     sendgrid_from_email: Optional[str] = None
     twilio_whatsapp_from: Optional[str] = None
@@ -385,6 +411,9 @@ class IntegrationSettings(BaseModel):
     ai: AIStatus = Field(default_factory=AIStatus)
     outreach: OutreachStatus = Field(default_factory=OutreachStatus)
     webhooks: WebhookStatus = Field(default_factory=WebhookStatus)
+    items: List[IntegrationItem] = Field(default_factory=list)
+    counts: Dict[str, int] = Field(default_factory=dict)
+    generated_at: Optional[datetime] = None
 
 
 class SettingsUpdate(BaseModel):

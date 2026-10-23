@@ -18,6 +18,9 @@ pour l'installation et `docs/cloud-sessions.md` pour la feuille de route en cour
 - `backend/models.py` (Pydantic) = contrat HTTP. `backend/db/models/` (ORM) = stockage. Ne pas les mélanger.
 - Une intégration externe = un module `backend/services/<nom>_svc.py` avec `is_configured()` et un repli propre
   (statut `not_configured` / `mock`) quand la clé est absente ou que le plan du fournisseur refuse l'appel.
+- Settings > Integrations : le statut de chaque intégration est calculé côté serveur (`services/integrations_status.py`, pur) et ne renvoie que des
+  **noms** de variables, jamais une valeur. Une nouvelle intégration = une entrée du catalogue + ses variables dans `TRACKED_ENV` + une fiche dans
+  `docs/integrations.md` ; son test réel (`services/integration_checks.py`) est en lecture seule et n'envoie rien à une personne.
 - Tâches Celery : wrappers synchrones autour des repos async via `tasks/_bridge.run_async`. Toute nouvelle
   tâche doit être déclarée dans `include=[...]` de `celery_app.py` (pas d'autodiscover).
 - Tout changement de schéma = migration Alembic. `alembic check` doit rester vert.
