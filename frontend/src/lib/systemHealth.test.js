@@ -1,4 +1,4 @@
-import { checks, jobsLine, probeLine } from "@/lib/systemHealth";
+import { checks, coolingLine, jobsLine, probeLine } from "@/lib/systemHealth";
 
 const REPORT = (over = {}) => ({
   database: { ok: true, kind: "supabase_session_pooler", port: "5432", latency_ms: 12 },
@@ -36,4 +36,10 @@ test("job counts and probe results are read as they are", () => {
   expect(probeLine({ host: "a.example", ok: true, status: 200, ms: 40 })).toBe("a.example: reachable (HTTP 200, 40 ms)");
   expect(probeLine({ host: "b.example", ok: false, status: 429, ms: 9 })).toBe("b.example: answered HTTP 429 (9 ms)");
   expect(probeLine({ host: "c.example", ok: false, error: "OSError: Network is unreachable", ms: 3 })).toBe("c.example: OSError: Network is unreachable (3 ms)");
+});
+
+test("servers that failed recently are named, and nothing is said when all is well", () => {
+  expect(coolingLine([])).toBe("");
+  expect(coolingLine(undefined)).toBe("");
+  expect(coolingLine(["a.example", "b.example"])).toBe("Failed recently, now tried last: a.example, b.example.");
 });

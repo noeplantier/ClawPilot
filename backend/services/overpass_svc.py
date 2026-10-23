@@ -26,15 +26,43 @@ from services.site_fetcher_svc import PRODUCT, user_agent
 
 logger = logging.getLogger(__name__)
 
-# Public, free instances. A shared cloud IP is sometimes throttled by one of them (the connection just hangs), so
-# several are tried in turn; each gets a short timeout so that all fit under the host request limit (4 x 15 s).
+# Public, free instances. A shared cloud IP is often refused or throttled by some of them (measured from the
+# production host: connection refused, read timeouts, 504), so several are tried in turn, each with a short timeout.
+# The job runs in the background: the total (5 x 15 s at worst) only has to stay under the 3 minutes after which a job
+# counts as lost.
 ENDPOINTS = (
     "https://overpass-api.de/api/interpreter",
+    "https://overpass.openstreetmap.fr/api/interpreter",
     "https://overpass.private.coffee/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
     "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
 )
 TIMEOUT_SECONDS = 15.0
+COOLDOWN_SECONDS = (
+    300.0  # a server that just failed is tried last for this long, so the next search does not wait on it
+)
+_cooldown: dict[str, float] = {}
+_clock = time.monotonic
+
+
+def reset_cooldown() -> None:
+    _cooldown.clear()
+
+
+def ordered(candidates: tuple[str, ...]) -> list[str]:
+    """Servers that did not fail recently first (configured order kept), the cooling ones after: none is skipped."""
+    now = _clock()
+    ready = [e for e in candidates if _cooldown.get(e, 0.0) <= now]
+    return ready + [e for e in candidates if e not in ready]
+
+
+def _cool(endpoint: str) -> None:
+    _cooldown[endpoint] = _clock() + COOLDOWN_SECONDS
+
+
+def cooling_hosts() -> list[str]:
+    now = _clock()
+    return sorted(urllib.parse.urlparse(e).hostname or e for e, until in _cooldown.items() if until > now)
 
 
 def endpoints() -> tuple[str, ...]:
@@ -104,7 +132,7 @@ def http_fetch(query: str) -> dict[str, Any]:
     body = urllib.parse.urlencode({"data": query}).encode()
     failures: list[str] = []
     kinds: list[str] = []
-    for endpoint in endpoints():
+    for endpoint in ordered(endpoints()):
         host = urllib.parse.urlparse(endpoint).hostname or endpoint
         request = urllib.request.Request(
             endpoint, data=body, headers={"User-Agent": user_agent() or PRODUCT, "Accept": "application/json"}
@@ -118,21 +146,26 @@ def http_fetch(query: str) -> dict[str, Any]:
             if not isinstance(payload, dict) or not isinstance(payload.get("elements"), list):
                 failures.append(f"{host}: unexpected answer")
                 kinds.append("bad_answer")
+                _cool(endpoint)
                 continue
             if "runtime error" in str(payload.get("remark", "")):
                 # HTTP 200 but the query was cut short on the server: its (partial or empty) elements are not an answer
                 failures.append(f"{host}: query timed out on the server")
                 kinds.append("busy")
+                _cool(endpoint)
                 continue
+            _cooldown.pop(endpoint, None)
             return payload
         except urllib.error.HTTPError as exc:
             failures.append(f"{host}: HTTP {exc.code}")
             kinds.append(_kind_of_http(exc.code))
             if exc.code not in RETRY_STATUS:
-                break
+                break  # our request is at fault (4xx): not the server's health
+            _cool(endpoint)
         except json.JSONDecodeError:
             failures.append(f"{host}: not JSON")
             kinds.append("bad_answer")
+            _cool(endpoint)
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             reason = getattr(exc, "reason", None)  # URLError wraps the socket/SSL/DNS cause: it says what to fix
             failures.append(
@@ -141,6 +174,7 @@ def http_fetch(query: str) -> dict[str, Any]:
             kinds.append(
                 "timeout" if isinstance(exc, TimeoutError) or isinstance(reason, TimeoutError) else "unreachable"
             )
+            _cool(endpoint)
     last = "; ".join(failures) or "no endpoint"
     logger.warning("overpass unavailable (%s)", last)
     raise Unavailable(
