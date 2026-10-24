@@ -103,6 +103,8 @@ npm run e2e                    # Playwright, API réelle démarrée + build avec
   `components/outreach/`, appels API dans `lib/outreach.js`, formatage pur dans `lib/outreachFormat.js` (testé).
 - Aucune donnée inventée : un chiffre vient de l'API, sinon un état vide explicite (« not scored » ≠ 0). Un état
   `unknown` s'affiche comme tel et ne vaut jamais un défaut. Ne pas coder en dur un statut d'intégration.
+- Chaleur : TOP (≥ 80) et lead vide (ni e-mail, ni téléphone, ni site) sont décidés par le serveur (`heat.top`, `heat.has_contact`, jumeau SQL dans
+  `heat_sql.py`) ; l'interface ne recalcule rien et ne masque un lead que sur `has_contact === false`. Voir `docs/scoring.md`.
 - Tests Jest sans dépendance ajoutée (`react-dom/client` + `act`, API mockée) ; l'alias `@/` et react-router v7 sont
   mappés dans `craco.config.js` (le Jest 27 de CRA ignore le champ `exports`).
 

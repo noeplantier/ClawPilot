@@ -12,8 +12,10 @@ import BatchComposerModal from "@/components/BatchComposerModal";
 import LeadsBulkBar from "@/components/LeadsBulkBar";
 import LeadDetailDrawer from "@/components/LeadDetailDrawer";
 import HeatBadge from "@/components/outreach/HeatBadge";
-import { TIERS, TIER_LABEL, inLane, laneCounts } from "@/lib/heat";
+import EmptyToggle from "@/components/outreach/EmptyToggle";
+import { LANES, LANE_LABEL, inLane, laneCounts, splitEmpty } from "@/lib/heat";
 import { LIVE_MS, useLive } from "@/lib/live";
+import { readPref, writePref } from "@/lib/uiPrefs";
 
 // Where a prospect from discovery (map, sources, import) stands in the human review; a CRM lead has none.
 const REVIEW_LABEL = { pending: "to review", approved: "approved", rejected: "rejected" };
@@ -27,7 +29,8 @@ const STAGE_COLORS = {
 export default function Leads() {
   const [view, setView] = useState("table");
   const [search, setSearch] = useState("");
-  const [lane, setLane] = useState("all"); // heat filter: all | hot | warm | cold
+  const [lane, setLane] = useState("all"); // heat filter: all | top | hot | warm | cold
+  const [showEmpty, setShowEmpty] = useState(() => readPref("leads.showEmpty", false)); // leads with no e-mail, phone or website
   const [showCreate, setShowCreate] = useState(false);
   const [showBulk, setShowBulk] = useState(false);
   const [showBatch, setShowBatch] = useState(false);
@@ -39,8 +42,10 @@ export default function Leads() {
   // Real leads, hottest first (real information + score), refreshed in the background.
   const live = useLive(() => api.get("/leads", { params: { search, sort: "heat" } }).then((r) => r.data), [search]);
   const everyLead = useMemo(() => live.data || [], [live.data]);
-  const counts = useMemo(() => laneCounts(everyLead), [everyLead]);
-  const leads = useMemo(() => inLane(everyLead, lane), [everyLead, lane]);
+  const { shown: reachable, empty } = useMemo(() => splitEmpty(everyLead, showEmpty), [everyLead, showEmpty]);
+  const counts = useMemo(() => laneCounts(reachable), [reachable]);
+  const leads = useMemo(() => inLane(reachable, lane), [reachable, lane]);
+  const toggleEmpty = () => setShowEmpty((v) => { writePref("leads.showEmpty", !v); return !v; });
 
   const allVisible = leads.map((l) => l.id);
   const toggleOne = (id) =>
@@ -84,7 +89,7 @@ export default function Leads() {
           <div className="mono-accent">// crm.pipeline</div>
           <h1 className="text-4xl font-black tracking-tighter">Leads</h1>
           <p className="text-[#5F5F5A] mt-1">
-            {leads.length}{lane !== "all" ? ` ${TIER_LABEL[lane].toLowerCase()}` : ""} contact{leads.length === 1 ? "" : "s"} across the pipeline, hottest first.
+            {leads.length}{lane !== "all" ? ` ${LANE_LABEL[lane].toLowerCase()}` : ""} contact{leads.length === 1 ? "" : "s"} across the pipeline, hottest first.
           </p>
           <p className="text-xs mt-1 inline-flex items-center gap-2 text-[#4338CA]" role="status" aria-live="polite" data-testid="leads-live">
             <span className="pos-live-dot" aria-hidden="true" />
@@ -108,13 +113,14 @@ export default function Leads() {
       </div>
 
       <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filter by heat" data-testid="leads-lanes">
-        {[["all", `All ${counts.total}`], ...TIERS.map((t) => [t, `${TIER_LABEL[t]} ${counts[t]}`])].map(([key, label]) => (
+        {LANES.map((k) => [k, `${LANE_LABEL[k]} ${k === "all" ? counts.total : counts[k]}`]).map(([key, label]) => (
           <button key={key} onClick={() => setLane(key)} aria-pressed={lane === key} data-testid={`lane-${key}`}
             className={`px-3 py-1 rounded-full text-xs border transition-colors ${lane === key ? "bg-[#0B1020] text-white border-[#0B1020] shadow-[0_0_14px_-2px_rgba(99,102,241,0.7)]" : "bg-white/80 border-[#D3DBEA] hover:bg-white"}`}>
             {label}
           </button>
         ))}
-        <span className="text-xs text-[#5F5F5A]">Heat = real information known + score. Hover a badge to see what is missing.</span>
+        <span className="text-xs text-[#5F5F5A]">Heat = real information known + score; TOP = 80 or more. Hover a badge to see what is missing.</span>
+        <EmptyToggle empty={empty} showEmpty={showEmpty} onToggle={toggleEmpty} testId="leads-empty-toggle" />
       </div>
 
       {live.error && <div role="alert" className="text-sm text-[#991B1B]" data-testid="leads-error">{live.error}</div>}
@@ -204,12 +210,16 @@ export default function Leads() {
                   </td>
                   <td className="p-3"><HeatBadge heat={l.heat} /></td>
                   <td className="p-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-16 h-1 bg-[#E6ECF6] rounded overflow-hidden">
-                        <div className="h-full bg-gradient-to-r from-[#4F46E5] to-[#0F172A]" style={{ width: `${l.score}%` }} />
+                    {l.heat && !l.heat.scored ? (
+                      <span className="text-xs text-[#6B6B66]" data-testid="lead-not-scored">not scored</span>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <div className="w-16 h-1 bg-[#E6ECF6] rounded overflow-hidden">
+                          <div className="h-full bg-gradient-to-r from-[#4F46E5] to-[#0F172A]" style={{ width: `${l.score}%` }} />
+                        </div>
+                        <span className="font-mono text-xs w-6 text-right">{l.score}</span>
                       </div>
-                      <span className="font-mono text-xs w-6 text-right">{l.score}</span>
-                    </div>
+                    )}
                   </td>
                   <td className="p-3" onClick={(e) => e.stopPropagation()}>
                     <div className="flex justify-end gap-1">
@@ -222,7 +232,9 @@ export default function Leads() {
                 </motion.tr>
               ))}
               {leads.length === 0 && (
-                <tr><td colSpan="9" className="p-10 text-center text-[#5F5F5A]">{everyLead.length === 0 ? "No leads. Add your first or import." : "No lead in this heat tier."}</td></tr>
+                <tr><td colSpan="9" className="p-10 text-center text-[#5F5F5A]" data-testid="leads-none">
+                  {everyLead.length === 0 ? "No leads. Add your first or import." : reachable.length === 0 ? "Every lead is empty (no e-mail, phone or website): they are hidden. Show them above, or add contact details." : "No lead in this heat tier."}
+                </td></tr>
               )}
             </tbody>
           </table>
@@ -252,7 +264,7 @@ export default function Leads() {
                       <div className="mt-2"><HeatBadge heat={l.heat} compact /></div>
                       <div className="mono-accent text-[#6B6B66] mt-2 flex items-center justify-between">
                         <span>{l.country}</span>
-                        <span>score · {l.score}</span>
+                        <span>{l.heat && !l.heat.scored ? "not scored" : `score · ${l.score}`}</span>
                       </div>
                     </motion.div>
                   ))}

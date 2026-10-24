@@ -269,6 +269,7 @@
 .chip-purple  { color: #5B21B6; border-color: rgba(124, 58, 237, 0.4); background: #F5F3FF; }
 .chip-ink     { color: var(--accent-ink); border-color: rgba(15, 23, 42, 0.3); background: #F1F5F9; }
 .chip-hot     { color: #9A3412; border-color: rgba(249, 115, 22, 0.55); background: linear-gradient(135deg, #FFF7ED, #FFEDD5); box-shadow: 0 0 14px -6px rgba(249, 115, 22, 0.8); }
+.chip-top     { color: #FFFFFF; border-color: #0B1020; background: linear-gradient(135deg, #0B1020, #3730A3); font-weight: 700; letter-spacing: 0.08em; box-shadow: 0 0 16px -4px rgba(99, 102, 241, 0.9); }
 .chip-warm    { color: #92400E; border-color: rgba(245, 158, 11, 0.45); background: #FFFBEB; }
 .chip-cold    { color: #334155; border-color: rgba(100, 116, 139, 0.4); background: #F1F5F9; }
 .chip-success { color: #065F46; border-color: rgba(16, 185, 129, 0.4); background: #ECFDF5; }

@@ -314,17 +314,7 @@ async def append_score(
 
 # ------------------------------------------------------------------ reads
 def _latest_scores_subquery() -> Subquery:
-    return (
-        select(
-            ProspectScore.lead_id.label("lead_id"),
-            ProspectScore.score.label("score"),
-            ProspectScore.coverage.label("coverage"),
-            ProspectScore.score_version_id.label("score_version_id"),
-        )
-        .distinct(ProspectScore.lead_id)
-        .order_by(ProspectScore.lead_id, ProspectScore.created_at.desc(), ProspectScore.id)
-        .subquery()
-    )
+    return heat_sql.latest_scores()
 
 
 async def list_prospects(
@@ -336,12 +326,16 @@ async def list_prospects(
     order: str = "heat",
     limit: int = 50,
     offset: int = 0,
+    hide_empty: bool = False,
 ) -> tuple[list[tuple[Lead, Optional[int], Optional[float]]], int]:
-    """`order`: "heat" (hottest first: real information and score), "score" or "recent"."""
+    """`order`: "heat" (hottest first: real information and score), "score" or "recent".
+    `hide_empty` leaves out the leads with no e-mail, no phone and no website (nothing to reach them with)."""
     latest = _latest_scores_subquery()
     conditions = [Lead.account_id == account_id, ACTIVE, IN_DISCOVERY]
     if review_status:
         conditions.append(Lead.review_status == review_status)
+    if hide_empty:
+        conditions.append(heat_sql.has_contact_sql())
     if min_score is not None:
         conditions.append(latest.c.score >= min_score)
     base = select(Lead, latest.c.score, latest.c.coverage).outerjoin(latest, latest.c.lead_id == Lead.id)
@@ -366,25 +360,35 @@ async def list_prospects(
 
 
 async def tier_counts(
-    session: AsyncSession, account_id: uuid.UUID, review_status: Optional[str] = None
+    session: AsyncSession, account_id: uuid.UUID, review_status: Optional[str] = None, hide_empty: bool = False
 ) -> dict[str, int]:
-    """How many prospects sit in each heat tier (the queues of the review page)."""
+    """How many prospects sit in each heat tier (the queues of the review page), how many of the hot ones are TOP, and
+    how many leads are empty (no e-mail, phone or website). With `hide_empty` the empty ones are not in the tiers."""
     latest = _latest_scores_subquery()
     conditions = [Lead.account_id == account_id, ACTIVE, IN_DISCOVERY]
     if review_status:
         conditions.append(Lead.review_status == review_status)
-    tier = heat_sql.tier_sql(heat_sql.heat_sql(latest.c.score)).label("tier")
+    heat = heat_sql.heat_sql(latest.c.score)
+    tier = heat_sql.tier_sql(heat).label("tier")
+    reachable = heat_sql.has_contact_sql().label("reachable")
+    is_top = heat_sql.top_sql(heat).label("top")
     rows = await session.execute(
-        select(tier, func.count())
+        select(tier, reachable, is_top, func.count())
         .select_from(Lead)
         .outerjoin(latest, latest.c.lead_id == Lead.id)
         .where(*conditions)
-        .group_by(tier)
+        .group_by(tier, reachable, is_top)
     )
     counts = {"hot": 0, "warm": 0, "cold": 0}
-    for name, n in rows.all():
-        counts[name] = int(n)
-    return {**counts, "total": sum(counts.values())}
+    top = empty = 0
+    for name, has_contact, at_top, n in rows.all():
+        if not has_contact:
+            empty += int(n)
+            if hide_empty:
+                continue
+        counts[name] += int(n)
+        top += int(n) if at_top else 0
+    return {**counts, "total": sum(counts.values()), "top": top, "empty": empty}
 
 
 async def get(session: AsyncSession, account_id: uuid.UUID, lead_id: str) -> Optional[Lead]:

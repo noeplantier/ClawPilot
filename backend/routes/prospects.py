@@ -93,6 +93,8 @@ def heat_out(lead: Lead, score: Optional[int]) -> HeatOut:
         known=list(h.known),
         missing=list(h.missing),
         scored=h.scored,
+        top=h.top,
+        has_contact=h.has_contact,
         score=h.score,
     )
 
@@ -286,6 +288,7 @@ async def list_prospects(
     order: str = Query(default="heat", pattern="^(heat|score|recent)$"),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    hide_empty: bool = Query(default=False, description="leave out leads with no e-mail, phone or website"),
     user: dict = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
@@ -298,6 +301,7 @@ async def list_prospects(
         order=order,
         limit=limit,
         offset=offset,
+        hide_empty=hide_empty,
     )
     return ProspectList(items=[ProspectSummary(**_summary(*row)) for row in rows], total=total)
 
@@ -305,11 +309,13 @@ async def list_prospects(
 @router.get("/queues", response_model=QueueCountsOut)
 async def queue_counts(
     review_status: Optional[str] = Query(default="pending", pattern="^(pending|approved|rejected)$"),
+    hide_empty: bool = Query(default=False, description="leave out leads with no e-mail, phone or website"),
     user: dict = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """The queues of the review page: how many prospects are hot, warm and cold (counted, never estimated)."""
-    return QueueCountsOut(**await prospect_repo.tier_counts(session, _account(user), review_status))
+    """The queues of the review page: how many prospects are hot, warm and cold, how many are TOP, and how many are
+    empty (no e-mail, phone or website): counted, never estimated."""
+    return QueueCountsOut(**await prospect_repo.tier_counts(session, _account(user), review_status, hide_empty))
 
 
 @router.get("/{lead_id}", response_model=ProspectDetail)

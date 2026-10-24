@@ -63,7 +63,14 @@ Un lead est d'autant plus **chaud** qu'il porte d'informations **réelles** et q
   « unknown » ou la valeur par défaut d'un import (« unspecified ») est **inconnu**, jamais compté ni rempli.
 - `heat = (score + information + 1) / 2` (entiers, arrondi vers le haut à .5). Un lead **jamais scoré** est classé sur l'information seule et
   l'affiche (`scored: false`) : « non scoré » n'est pas 0. Pour un lead du CRM, un score de 0 veut dire « pas encore scoré ».
-- Paliers : **hot ≥ 65**, **warm ≥ 40**, **cold** en dessous.
+- Paliers : **hot ≥ 65**, **warm ≥ 40**, **cold** en dessous. Un lead à **80 ou plus** est **TOP** (`heat.top`) : c'est lui qu'on traite en premier. Il a
+  sa pastille « TOP » et sa voie dédiée dans Leads et Review queue (les voies se recouvrent : un TOP est aussi hot).
+- **Lead vide** : ni e-mail, ni téléphone, ni site (`heat.has_contact = false`) : rien pour le joindre. Un bon score ne le rend pas joignable. Les listes
+  le **masquent par défaut** (Leads, Review queue, Prospects, sélecteur de campagne) et disent combien ils sont (« 3 empty leads hidden »), avec un bouton
+  pour les afficher ; le choix est gardé dans le navigateur. Côté API : `GET /api/prospects?hide_empty=true` et `GET /api/prospects/queues?hide_empty=true`
+  (les totaux suivent le filtre ; `empty` est toujours renvoyé, `top` aussi). La page Leads reçoit tous les leads et applique `heat.has_contact`.
+- Un prospect de découverte est classé sur son **dernier score de prospect** (`prospect_scores`), aussi dans `GET /api/leads` : un même lead a la même
+  chaleur sur toutes les pages (test d'égalité).
 - La même arithmétique entière tourne en Python (`services/outreach_os/heat.py`) et en SQL (`repositories/heat_sql.py`) pour trier ; un test
   les compare sur 37 combinaisons de champs × 6 scores.
 - Où : `GET /api/leads` (tri `heat` par défaut, `recent` possible), `GET /api/prospects` (`order=heat|score|recent`), `GET /api/prospects/queues`

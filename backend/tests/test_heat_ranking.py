@@ -87,6 +87,8 @@ def test_prospects_come_hottest_first_with_counted_queues():
         "warm": tiers.count("warm"),
         "cold": tiers.count("cold"),
         "total": len(items),
+        "top": sum(1 for i in items if i["heat"]["top"]),
+        "empty": sum(1 for i in items if not i["heat"]["has_contact"]),
     }
     assert requests.get(f"{API}/prospects/queues", headers=h, params={"review_status": "approved"}).json()["total"] == 0
     by_score = requests.get(f"{API}/prospects", headers=h, params={"order": "score", "limit": 200}).json()["items"]

@@ -13,6 +13,7 @@ export default function HeatBadge({ heat, compact = false }) {
   const { cls, Icon } = STYLE[heat.tier];
   return (
     <span className="inline-flex items-center gap-2" title={heatTitle(heat)} aria-label={heatTitle(heat)} data-testid="heat-badge" data-tier={heat.tier}>
+      {heat.top && <span className="chip chip-top" data-testid="heat-top">TOP</span>}
       <span className={cls}><Icon size={12} weight="fill" aria-hidden="true" /> {TIER_LABEL[heat.tier]} {heat.value}</span>
       {!compact && (
         <span className="inline-flex items-center gap-1" data-testid="heat-info">

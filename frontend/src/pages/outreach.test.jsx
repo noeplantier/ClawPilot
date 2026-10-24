@@ -29,6 +29,7 @@ beforeEach(() => {
   api.get.mockReset();
   api.post.mockReset();
   api.put.mockReset();
+  window.localStorage.clear(); // "show the empty leads" is remembered per browser
   global.__user = owner;
 });
 afterEach(() => {
@@ -71,11 +72,14 @@ const DETAIL = {
   score_detail: { score: 40, coverage: 0.43, version: 1, config_label: "default", config_hash: "abc123", computed_at: "2026-06-01T10:00:00Z", breakdown: BREAKDOWN },
   drafts: [],
 };
+const QUEUES0 = { hot: 0, warm: 0, cold: 0, total: 0, top: 0, empty: 0 };
+const HEAT = (value, over = {}) => ({ value, tier: value >= 65 ? "hot" : value >= 40 ? "warm" : "cold", info_pct: 50, known: ["email", "city"], missing: ["phone"], scored: true, score: 60, top: value >= 80, has_contact: true, ...over });
+const callsOf = (url) => api.get.mock.calls.filter((c) => c[0] === url).map((c) => (c[1] && c[1].params) || {});
 const STATUS = { dry_run: true, kill_switch: false, paused: false, limits: {}, sent_today: 0, sent_last_hour: 0, last_dispatched_at: null, next_allowed_at: null, blocked_by: null };
 
 describe("Prospects list", () => {
   it("shows an explicit empty state, not placeholder numbers, when nothing was discovered", async () => {
-    answer({ "/prospects": { items: [], total: 0 } });
+    answer({ "/prospects": { items: [], total: 0 }, "/prospects/queues": QUEUES0 });
     await show(<Prospects />);
     expect(byId("empty-no-prospects")).toBeTruthy();
     expect(text()).toContain("No prospect yet");
@@ -86,7 +90,7 @@ describe("Prospects list", () => {
   });
 
   it("offers the demo directory only when the server enables FEATURE_DEMO_DATA", async () => {
-    answer({ "/prospects": { items: [], total: 0 }, "/prospects/settings": { flags: { demo_data: true } } });
+    answer({ "/prospects": { items: [], total: 0 }, "/prospects/queues": QUEUES0, "/prospects/settings": { flags: { demo_data: true } } });
     await show(<Prospects />);
     expect(byId("empty-run-discovery")).toBeTruthy();
     expect(byId("run-discovery").textContent).toContain("DEMO");
@@ -101,6 +105,32 @@ describe("Prospects list", () => {
     expect(text()).toContain("il-forno.example");
     expect(text()).toContain("not scored"); // never scored is not "0"
     expect(byId("prospects-total").textContent).toBe("2 prospects");
+  });
+
+  it("leaves out the empty leads (no e-mail, phone or website), says how many, and brings them back on request", async () => {
+    answer({
+      "/prospects": { items: [{ ...SUMMARY, heat: HEAT(70) }], total: 1 },
+      "/prospects/queues": { ...QUEUES0, hot: 1, total: 1, empty: 2 },
+    });
+    await show(<Prospects />);
+    expect(callsOf("/prospects")[0]).toMatchObject({ hide_empty: true });
+    expect(callsOf("/prospects/queues")[0]).toMatchObject({ review_status: "pending", hide_empty: true });
+    expect(byId("prospects-empty-toggle-note").textContent).toBe("6 empty leads hidden (no e-mail, phone or website).");
+    await act(async () => { byId("prospects-empty-toggle").click(); });
+    await act(async () => {});
+    const after = callsOf("/prospects").pop();
+    expect(after.hide_empty).toBeUndefined(); // asked again without the filter
+    expect(byId("prospects-empty-toggle-note").textContent).toBe("Showing 6 empty leads (no e-mail, phone or website).");
+    expect(window.localStorage.getItem("pos.ui.prospects.showEmpty")).toBe("true"); // remembered
+  });
+
+  it("says that every prospect is empty instead of claiming there is none", async () => {
+    answer({ "/prospects": { items: [], total: 0 }, "/prospects/queues": { ...QUEUES0, empty: 3 } });
+    await show(<Prospects />);
+    expect(byId("empty-all-hidden").textContent).toContain("9 prospects have no e-mail, phone or website");
+    expect(byId("empty-no-prospects")).toBeNull();
+    await act(async () => { byId("empty-show-all").click(); });
+    expect(callsOf("/prospects").pop().hide_empty).toBeUndefined();
   });
 
   it("surfaces a server failure with a retry instead of a blank page", async () => {
@@ -170,6 +200,33 @@ describe("Review queue", () => {
     answer({ "/prospects": { items: [], total: 0 } });
     await show(<ReviewQueue />);
     expect(byId("queue-empty").textContent).toContain("The review queue is empty");
+  });
+
+  it("counts the TOP lane on the server, leaves out the empty prospects and says how many", async () => {
+    answer({
+      "/prospects": { items: [{ ...SUMMARY, heat: HEAT(92) }, { ...SUMMARY, id: "p2", name: "Chez Marcel", heat: HEAT(55) }], total: 2 },
+      "/prospects/queues": { hot: 1, warm: 1, cold: 0, total: 2, top: 1, empty: 4 },
+    });
+    await show(<ReviewQueue />);
+    expect(callsOf("/prospects")[0]).toMatchObject({ review_status: "pending", hide_empty: true });
+    expect(callsOf("/prospects/queues")[0]).toMatchObject({ hide_empty: true });
+    expect(byId("queue-lane-top").textContent).toBe("TOP 1");
+    expect(byId("queue-lane-all").textContent).toBe("All 2");
+    expect(byId("queue-empty-toggle-note").textContent).toBe("4 empty leads hidden (no e-mail, phone or website).");
+    expect(container.querySelector('[data-testid="heat-top"]').textContent).toBe("TOP");
+    await act(async () => { byId("queue-lane-top").click(); });
+    expect(byId("queue-name").textContent).toBe("Le Petit Bouchon"); // only the TOP prospect is in this lane
+  });
+
+  it("explains an empty queue whose prospects are all hidden as empty, and shows them on request", async () => {
+    answer({ "/prospects": { items: [], total: 0 }, "/prospects/queues": { ...QUEUES0, empty: 1 } });
+    await show(<ReviewQueue />);
+    expect(byId("queue-empty").textContent).toContain("Every prospect waiting is empty");
+    expect(byId("queue-empty").textContent).toContain("1 prospect waiting has no e-mail, phone or website");
+    await act(async () => { byId("queue-empty-toggle").click(); });
+    await act(async () => {});
+    expect(callsOf("/prospects").pop().hide_empty).toBeUndefined();
+    expect(callsOf("/prospects/queues").pop().hide_empty).toBeUndefined();
   });
 
   it("presents the best pending prospect with its evidence and decision buttons", async () => {
