@@ -7,15 +7,16 @@ entry, replacing the legacy polymorphic `messages` Mongo collection.
 """
 
 import logging
+import os
 import uuid
 from typing import List
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.session import get_db_session
-from deps import db
-from repositories import campaign_repo, consent_repo, lead_repo, outreach_repo
+from repositories import activity_repo, campaign_repo, consent_repo, lead_repo, outreach_repo
+from services import sendgrid_svc, twilio_svc
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
@@ -43,7 +44,33 @@ def _is_opt_out_message(body: str) -> bool:
     return body.strip().strip(".!?").lower() in WHATSAPP_OPT_OUT_KEYWORDS
 
 
-@router.post("/sendgrid")
+def _reject_or_warn_unverifiable(provider: str, setting: str) -> None:
+    """No verification secret configured: refuse in production, tolerate in local development."""
+    if os.environ.get("APP_ENV", "").lower() == "production":
+        logger.error("%s webhook rejected: %s is not set in production", provider, setting)
+        raise HTTPException(status_code=403, detail="Webhook signature cannot be verified")
+    logger.warning("%s webhook accepted UNSIGNED: %s unset (non-production)", provider, setting)
+
+
+async def require_sendgrid_signature(request: Request) -> None:
+    """Reject SendGrid event webhooks without a valid ECDSA signature (fails closed, like Twilio's).
+
+    Forged events could mark mail as bounced/unsubscribed or fake opens. Needs
+    SENDGRID_WEBHOOK_PUBLIC_KEY; the signature covers the raw body, so it is read unparsed.
+    """
+    if not sendgrid_svc.WEBHOOK_PUBLIC_KEY:
+        return _reject_or_warn_unverifiable("sendgrid", "SENDGRID_WEBHOOK_PUBLIC_KEY")
+    ok = sendgrid_svc.verify_event_signature(
+        await request.body(),
+        request.headers.get("X-Twilio-Email-Event-Webhook-Signature"),
+        request.headers.get("X-Twilio-Email-Event-Webhook-Timestamp"),
+    )
+    if not ok:
+        logger.warning("sendgrid webhook rejected: invalid or missing signature")
+        raise HTTPException(status_code=403, detail="Invalid signature")
+
+
+@router.post("/sendgrid", dependencies=[Depends(require_sendgrid_signature)])
 async def sendgrid_webhook(request: Request, session: AsyncSession = Depends(get_db_session)):
     """Handle SendGrid event webhook. Body is a JSON array of events.
 
@@ -119,7 +146,30 @@ async def sendgrid_webhook(request: Request, session: AsyncSession = Depends(get
     return {"ok": True, "processed": processed, "total": len(events)}
 
 
-@router.post("/twilio")
+async def require_twilio_signature(request: Request) -> None:
+    """Reject Twilio webhooks that do not carry a valid `X-Twilio-Signature`.
+
+    Inbound messages and STOP replies change consent state, so an unauthenticated caller
+    must never reach the handler. Fails closed:
+    - auth token set        → signature must verify (403 otherwise);
+    - token unset, production → 403 (nothing to verify against);
+    - token unset, non-production → allowed, for local development only.
+
+    Behind a proxy the URL the app sees can differ from the one Twilio signed, so set
+    TWILIO_WEBHOOK_URL to the exact public URL configured in the Twilio console.
+    """
+    if not twilio_svc.TOKEN:
+        return _reject_or_warn_unverifiable("twilio", "TWILIO_AUTH_TOKEN")
+
+    form = await request.form()
+    params = {k: v for k, v in form.items() if isinstance(v, str)}
+    url = os.environ.get("TWILIO_WEBHOOK_URL") or str(request.url)
+    if not twilio_svc.verify_signature(url, params, request.headers.get("X-Twilio-Signature")):
+        logger.warning("twilio webhook rejected: invalid or missing signature (url=%s)", url)
+        raise HTTPException(status_code=403, detail="Invalid signature")
+
+
+@router.post("/twilio", dependencies=[Depends(require_twilio_signature)])
 async def twilio_webhook(request: Request, session: AsyncSession = Depends(get_db_session)):
     """Handle Twilio message status callbacks AND inbound WhatsApp messages.
 
@@ -165,15 +215,12 @@ async def twilio_webhook(request: Request, session: AsyncSession = Depends(get_d
                 lead_id=lead.get("id") if lead else None,
                 meta={"from": from_, "body": incoming_body[:200]},
             )
-            await db.activity.insert_one(
-                {
-                    "id": f"wh-in-{message_sid or from_}"[:120],
-                    "org_id": org_id,
-                    "kind": "whatsapp.inbound",
-                    "title": f"📩 Reply from {from_}: {incoming_body[:80]}",
-                    "meta": {"lead_id": lead.get("id") if lead else None},
-                    "created_at": "",
-                }
+            await activity_repo.record(
+                session,
+                account_id,
+                "whatsapp.inbound",
+                f"📩 Reply from {from_}: {incoming_body[:80]}",
+                {"lead_id": lead.get("id") if lead else None},
             )
             # Bump the most recent campaign's replied counter if we have lead linkage
             if lead:

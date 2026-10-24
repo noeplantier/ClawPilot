@@ -1,4 +1,4 @@
-# ClawPilot — Outreach SaaS Platform · PRD
+# Plantiers - OutreachOS (ex-ClawPilot) — PRD (historique)
 
 ## Original problem statement
 Build a highly scalable, production-grade SaaS platform for automated global outreach powered by ClawPilot agents. Features: agent orchestration, multi-step campaign builder, lead scraping/enrichment, multi-channel messaging (email + WhatsApp), real-time analytics, AI-powered message generation (multi-language), CRM pipeline. Dark futuristic cyberpunk UI with neon cyan/purple/blue + Framer Motion animations.
@@ -14,7 +14,7 @@ Build a highly scalable, production-grade SaaS platform for automated global out
 - **Backend** (FastAPI, modular): `/app/backend/server.py` mounts routers from `routes/` (auth, leads, campaigns, agents, messages, ai, analytics, settings). Service layer in `services/` (ai_svc, sendgrid_svc, twilio_svc, seed).
 - **Database**: MongoDB via motor. Collections: `organizations`, `users`, `leads`, `campaigns`, `agents`, `messages`, `activity`.
 - **Auth**: JWT (HS256) + bcrypt, multi-tenant org isolation on every query.
-- **AI**: Gemini 3 Flash via `emergentintegrations` LlmChat.
+- **AI**: any OpenAI-compatible provider (Groq, Gemini, Mistral, custom) over HTTPS, chosen with `AI_PROVIDER`.
 - **Frontend**: React 19, React Router 7, Framer Motion, Recharts, Sonner, Phosphor icons. Cyberpunk theme with Chivo / IBM Plex Sans / JetBrains Mono fonts, neon cyan/purple/blue on #050505.
 
 ## Implemented (2026-02)
@@ -34,7 +34,7 @@ Build a highly scalable, production-grade SaaS platform for automated global out
 - Mock statuses for email/whatsapp are expected (user provided SK API key, not AC Account SID; SendGrid sender unverified)
 
 ## Seeded demo account
-- email: demo@clawpilot.io / password: Demo12345! — 12 leads, 4 agents, 4 campaigns, 8+ messages, 6+ activity events
+- email: demo@outreachos.example / password: Demo12345! — 12 leads, 4 agents, 4 campaigns, 8+ messages, 6+ activity events
 
 ## Backlog (P1)
 - Real WhatsApp once user provides Twilio AC Account SID

@@ -11,12 +11,13 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from sqlalchemy import func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from db.models import Contact, Lead, LeadScore, LeadSource, OutreachEvent
-from repositories import consent_repo
-from services import scoring
+from db.models import Contact, Lead, LeadScore, LeadSource, OutreachEvent, ProspectScore
+from repositories import consent_repo, heat_sql
+from services import feature_flags, scoring
 
 ACTIVE = Lead.deleted_at.is_(None)
 
@@ -30,6 +31,7 @@ class LeadExtra:
     contact_id: Optional[uuid.UUID] = None
     email_consent: str = "unknown"
     whatsapp_consent: str = "unknown"
+    prospect_score: Optional[int] = None  # a discovery prospect's latest explainable score; None = not scored (never 0)
 
 
 _SOURCE_NAME_TO_KIND = {
@@ -38,6 +40,7 @@ _SOURCE_NAME_TO_KIND = {
     "csv_import": "csv_import",
     "scraper": "scraper",
     "api": "api",
+    "fixture_directory": "api",
     "enrichment": "enrichment",
 }
 
@@ -114,8 +117,23 @@ async def load_extra(session: AsyncSession, lead: Lead) -> LeadExtra:
         email_consent = await consent_repo.get_status(session, contact_id, "email")
         whatsapp_consent = await consent_repo.get_status(session, contact_id, "whatsapp")
 
+    prospect_score = None
+    if lead.review_status is not None:  # a discovery prospect is scored in `prospect_scores`, not in `Lead.score`
+        prospect_score = (
+            await session.execute(
+                select(ProspectScore.score)
+                .where(ProspectScore.lead_id == lead.id)
+                .order_by(ProspectScore.created_at.desc(), ProspectScore.id)
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+
     return LeadExtra(
-        source=source_name, contact_id=contact_id, email_consent=email_consent, whatsapp_consent=whatsapp_consent
+        source=source_name,
+        contact_id=contact_id,
+        email_consent=email_consent,
+        whatsapp_consent=whatsapp_consent,
+        prospect_score=prospect_score,
     )
 
 
@@ -133,18 +151,47 @@ async def list_leads(
     *,
     stage: Optional[str] = None,
     search: Optional[str] = None,
+    sort: str = "heat",
     limit: int = 500,
 ) -> list[tuple[Lead, LeadExtra]]:
-    stmt = select(Lead).options(selectinload(Lead.contacts)).where(Lead.account_id == account_id, ACTIVE)
+    """`sort`: "heat" (hottest first: real information and score; a CRM score of 0 means not scored, a discovery
+    prospect is ranked on its latest prospect score) or "recent"."""
+    latest = heat_sql.latest_scores()
+    stmt = (
+        select(Lead)
+        .outerjoin(latest, latest.c.lead_id == Lead.id)
+        .options(selectinload(Lead.contacts))
+        .where(Lead.account_id == account_id, ACTIVE)
+    )
     if stage:
         stmt = stmt.where(Lead.stage == stage)
     if search:
         pattern = f"%{search}%"
         stmt = stmt.where(or_(Lead.full_name.ilike(pattern), Lead.email.ilike(pattern), Lead.company.ilike(pattern)))
-    stmt = stmt.order_by(Lead.created_at.desc()).limit(limit)
+    if sort == "recent":
+        stmt = stmt.order_by(Lead.created_at.desc(), Lead.id)
+    else:
+        ranked = heat_sql.ranked_score(latest)
+        stmt = stmt.order_by(heat_sql.heat_sql(ranked).desc(), Lead.score.desc(), Lead.created_at.desc(), Lead.id)
+    stmt = stmt.limit(limit)
     result = await session.execute(stmt)
     leads = result.scalars().all()
     return [(lead, await load_extra(session, lead)) for lead in leads]
+
+
+class DuplicateEmail(Exception):
+    """A lead with this e-mail already exists in the organisation (unique index `uq_leads_account_email`)."""
+
+
+async def _flush_unique_email(session: AsyncSession) -> None:
+    """Flush inside a savepoint so a duplicate e-mail surfaces as `DuplicateEmail`, not as a failed transaction."""
+    try:
+        async with session.begin_nested():
+            await session.flush()
+    except IntegrityError as exc:
+        if "uq_leads_account_email" in str(exc.orig):
+            raise DuplicateEmail(str(exc.orig)) from exc
+        raise
 
 
 async def create_lead(session: AsyncSession, account_id: uuid.UUID, data: dict) -> tuple[Lead, LeadExtra]:
@@ -155,7 +202,7 @@ async def create_lead(session: AsyncSession, account_id: uuid.UUID, data: dict) 
     source_id = await _resolve_source_id(session, account_id, source_name)
     lead = Lead(account_id=account_id, source_id=source_id, **data)
     session.add(lead)
-    await session.flush()
+    await _flush_unique_email(session)
     await _create_primary_contact(
         session,
         account_id,
@@ -257,8 +304,33 @@ async def update_lead(
         updates["source_id"] = await _resolve_source_id(session, account_id, updates.pop("source"))
     for key, value in updates.items():
         setattr(lead, key, value)
-    await session.flush()
+    await _flush_unique_email(session)
     return lead, await load_extra(session, lead)
+
+
+def _sendable_clause():
+    """Leads from the CRM (review_status NULL) behave as before. A prospect from OutreachOS discovery is only
+    reachable by the send paths once a human approved it AND live sending is enabled (never in dry-run)."""
+    if feature_flags.dry_run():
+        return Lead.review_status.is_(None)
+    return or_(Lead.review_status.is_(None), Lead.review_status == "approved")
+
+
+def sendable_clause():
+    """Public name of the send rule (CRM leads; approved prospects once live sending is on)."""
+    return _sendable_clause()
+
+
+async def discovery_send_block(session: AsyncSession, account_id: uuid.UUID, lead_id: uuid.UUID) -> Optional[str]:
+    """Why a single-recipient send must be refused for a discovery prospect, or None if it may proceed."""
+    status = (
+        await session.execute(select(Lead.review_status).where(Lead.id == lead_id, Lead.account_id == account_id))
+    ).scalar_one_or_none()
+    if status is None:
+        return None
+    if status != "approved":
+        return f"prospect review status is '{status}'"
+    return "dry-run mode: live sending is disabled" if feature_flags.dry_run() else None
 
 
 async def get_leads_by_ids(session: AsyncSession, account_id: uuid.UUID, lead_ids: list[str]) -> list[dict]:
@@ -271,7 +343,9 @@ async def get_leads_by_ids(session: AsyncSession, account_id: uuid.UUID, lead_id
         ids = [uuid.UUID(i) for i in lead_ids]
     except ValueError:
         return []
-    result = await session.execute(select(Lead).where(Lead.id.in_(ids), Lead.account_id == account_id, ACTIVE))
+    result = await session.execute(
+        select(Lead).where(Lead.id.in_(ids), Lead.account_id == account_id, ACTIVE, _sendable_clause())
+    )
     leads = result.scalars().all()
     if not leads:
         return []
@@ -288,6 +362,12 @@ async def get_leads_by_ids(session: AsyncSession, account_id: uuid.UUID, lead_id
     email_consents = await consent_repo.get_status_map(session, contact_ids, "email")
     whatsapp_consents = await consent_repo.get_status_map(session, contact_ids, "whatsapp")
 
+    source_ids = {lead.source_id for lead in leads if lead.source_id is not None}
+    source_names: dict[uuid.UUID, str] = {}
+    if source_ids:
+        rows = await session.execute(select(LeadSource.id, LeadSource.name).where(LeadSource.id.in_(source_ids)))
+        source_names = {sid: name for sid, name in rows.all()}
+
     out = []
     for lead in leads:
         contact_id = contact_by_lead.get(lead.id)
@@ -300,6 +380,7 @@ async def get_leads_by_ids(session: AsyncSession, account_id: uuid.UUID, lead_id
                 "company": lead.company,
                 "title": lead.title,
                 "country": lead.country,
+                "source": source_names.get(lead.source_id) if lead.source_id else None,
                 "contact_id": str(contact_id) if contact_id else None,
                 "email_consent": email_consents.get(contact_id, "unknown") if contact_id else "unknown",
                 "whatsapp_consent": whatsapp_consents.get(contact_id, "unknown") if contact_id else "unknown",

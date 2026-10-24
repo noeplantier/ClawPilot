@@ -84,7 +84,7 @@
       {
         "category": "ai_agent_avatar",
         "url": "https://images.unsplash.com/photo-1754738381730-e08d0a402f0e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1OTV8MHwxfHNlYXJjaHwyfHxhYnN0cmFjdCUyMGRhcmslMjB0ZWNobm9sb2d5fGVufDB8fHx8MTc3NjM3MTc2Nnww&ixlib=rb-4.1.0&q=85",
-        "description": "Abstract purple metallic knot - Use as the visual avatar or state indicator for ClawPilot AI instances"
+        "description": "Abstract purple metallic knot - Use as the visual avatar or state indicator for AI agent instances"
       }
     ]
   },

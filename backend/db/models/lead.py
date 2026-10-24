@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 
-from sqlalchemy import CheckConstraint, ForeignKey, Index, Integer, String, Text, text
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy.dialects.postgresql import ARRAY, CITEXT, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -59,6 +60,17 @@ class Lead(Base, UUIDPKMixin, TimestampMixin, SoftDeleteMixin):
             text("score DESC"),
             postgresql_where=text("deleted_at IS NULL"),
         ),
+        CheckConstraint(
+            "review_status IS NULL OR review_status IN ('pending','approved','rejected')",
+            name="review_status",
+        ),
+        Index(
+            "ix_leads_account_review",
+            "account_id",
+            "review_status",
+            postgresql_where=text("deleted_at IS NULL AND review_status IS NOT NULL"),
+        ),
+        Index("ix_leads_match_keys_gin", "match_keys", postgresql_using="gin"),
         Index("ix_leads_tags_gin", "tags", postgresql_using="gin"),
         Index("ix_leads_account_created", "account_id", text("created_at DESC")),
     )
@@ -80,6 +92,17 @@ class Lead(Base, UUIDPKMixin, TimestampMixin, SoftDeleteMixin):
     )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     score: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+
+    # --- OutreachOS discovery (NULL review_status = a lead that never went through discovery) ---
+    vertical: Mapped[str | None] = mapped_column(String, nullable=True)
+    city: Mapped[str | None] = mapped_column(String, nullable=True)
+    website: Mapped[str | None] = mapped_column(String, nullable=True)
+    match_keys: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=False, server_default=text("'{}'"))
+    review_status: Mapped[str | None] = mapped_column(String, nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reviewed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
 
     contacts: Mapped[list["Contact"]] = relationship(back_populates="lead", cascade="all, delete-orphan")
     score_history: Mapped[list["LeadScore"]] = relationship(back_populates="lead", cascade="all, delete-orphan")

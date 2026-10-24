@@ -72,12 +72,12 @@ export default function BulkLeadsModal({ open, onClose, onDone }) {
             onClick={(e) => e.stopPropagation()}
             data-testid="bulk-leads-modal"
           >
-            <button onClick={closeReset} className="absolute top-4 right-4 text-[#595955] hover:text-[#DC2626]" data-testid="close-bulk-leads">
+            <button onClick={closeReset} className="absolute top-4 right-4 text-[#595955] hover:text-[#4F46E5]" data-testid="close-bulk-leads">
               <X size={20} />
             </button>
             <div className="mono-accent">/// leads.bulk.import</div>
             <h2 className="text-2xl font-black tracking-tighter mt-1 flex items-center gap-2">
-              <UploadSimple size={22} weight="duotone" className="text-[#DC2626]" />
+              <UploadSimple size={22} weight="duotone" className="text-[#4F46E5]" />
               Bulk Import Leads
             </h2>
             <p className="text-[#595955] mt-1 text-sm">
@@ -100,9 +100,9 @@ export default function BulkLeadsModal({ open, onClose, onDone }) {
               </div>
               <div>
                 <span className="mono-accent block mb-2">preview</span>
-                <div className="surface bg-[#FAFAF7] max-h-[300px] overflow-y-auto divide-y divide-[#D6D3C8]">
+                <div className="surface bg-[#F6F8FC] max-h-[300px] overflow-y-auto divide-y divide-[#D3DBEA]">
                   {parsed.length === 0 && (
-                    <div className="p-4 text-[#999995] text-sm italic">No valid rows yet.</div>
+                    <div className="p-4 text-[#6B6B66] text-sm italic">No valid rows yet.</div>
                   )}
                   {parsed.slice(0, 50).map((r, i) => (
                     <div key={i} className="p-2.5 text-xs font-mono">
@@ -115,7 +115,7 @@ export default function BulkLeadsModal({ open, onClose, onDone }) {
                   ))}
                 </div>
                 {parsed.length > 50 && (
-                  <div className="mono-accent text-[#999995] mt-2">+ {parsed.length - 50} more…</div>
+                  <div className="mono-accent text-[#6B6B66] mt-2">+ {parsed.length - 50} more…</div>
                 )}
               </div>
             </div>

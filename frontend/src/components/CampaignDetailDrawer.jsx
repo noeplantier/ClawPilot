@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
+import { hasContact } from "@/lib/heat";
 import { motion, AnimatePresence } from "framer-motion";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
+import { describeLaunch, sendErrorText } from "@/lib/campaignLaunch";
+import { blockText } from "@/lib/outreachFormat";
 import {
   X, Rocket, Users, Plus, Check, CircleNotch, Envelope, WhatsappLogo, Play, ChartBar, ArrowsClockwise,
 } from "@phosphor-icons/react";
@@ -32,7 +35,7 @@ export default function CampaignDetailDrawer({ open, campaignId, onClose, onUpda
   useEffect(() => {
     if (open) {
       load();
-      api.get("/leads", { params: { limit: 500 } }).then((r) => setAllLeads(r.data));
+      api.get("/leads", { params: { limit: 500 } }).then((r) => setAllLeads(r.data.filter(hasContact))); // an empty lead cannot be reached: not offered
       setStepResult(null);
     }
   }, [open, campaignId]); // eslint-disable-line
@@ -43,11 +46,12 @@ export default function CampaignDetailDrawer({ open, campaignId, onClose, onUpda
     try {
       const { data } = await api.post(`/campaigns/${campaignId}/run-step/${idx}`);
       setStepResult({ idx, ...data });
-      toast.success(`Step ${idx + 1} dispatched · ${data.dispatched}/${data.total}`);
+      const { level, text } = describeLaunch(data);
+      toast[level](`Step ${idx + 1}: ${text}`);
       load();
       onUpdate?.();
     } catch (e) {
-      toast.error(e?.response?.data?.detail || "Run failed");
+      toast.error(sendErrorText(e, "Run failed"));
     } finally {
       setRunningStep(null);
     }
@@ -69,12 +73,12 @@ export default function CampaignDetailDrawer({ open, campaignId, onClose, onUpda
           onClick={(e) => e.stopPropagation()}
           data-testid="campaign-detail-drawer"
         >
-          <div className="sticky top-0 bg-[#FFFFFF] border-b border-[#D6D3C8] px-6 py-4 flex items-center justify-between z-10">
+          <div className="sticky top-0 bg-[#FFFFFF] border-b border-[#D3DBEA] px-6 py-4 flex items-center justify-between z-10">
             <div>
               <div className="mono-accent">/// campaign · {c.status}</div>
               <h2 className="text-2xl font-black tracking-tighter text-[#0A0A0A]">{c.name}</h2>
             </div>
-            <button onClick={onClose} className="text-[#595955] hover:text-[#DC2626]" data-testid="close-campaign-drawer">
+            <button onClick={onClose} className="text-[#595955] hover:text-[#4F46E5]" data-testid="close-campaign-drawer">
               <X size={22} />
             </button>
           </div>
@@ -83,7 +87,7 @@ export default function CampaignDetailDrawer({ open, campaignId, onClose, onUpda
             {/* metrics */}
             <div className="grid grid-cols-4 gap-3">
               {[
-                ["sent", c.sent, "#DC2626"],
+                ["sent", c.sent, "#4F46E5"],
                 ["opened", c.opened, "#0F172A"],
                 ["replied", c.replied, "#475569"],
                 ["converted", c.converted, "#10B981"],
@@ -107,13 +111,13 @@ export default function CampaignDetailDrawer({ open, campaignId, onClose, onUpda
                 </button>
               </div>
               {leads.length === 0 ? (
-                <div className="text-sm text-[#999995] italic py-4 text-center">
+                <div className="text-sm text-[#6B6B66] italic py-4 text-center">
                   No leads assigned yet — assign some to enable step execution.
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-2 max-h-[160px] overflow-y-auto">
                   {leads.map((l) => (
-                    <div key={l.id} className="surface bg-[#FAFAF7] p-2 text-xs">
+                    <div key={l.id} className="surface bg-[#F6F8FC] p-2 text-xs">
                       <div className="font-semibold text-[#0A0A0A] truncate">{l.full_name}</div>
                       <div className="font-mono text-[#595955] truncate">{l.email || l.phone || "—"}</div>
                     </div>
@@ -159,20 +163,20 @@ export default function CampaignDetailDrawer({ open, campaignId, onClose, onUpda
                         <ChartBar size={16} className="text-[#10B981] mt-0.5" />
                         <div className="text-xs font-mono flex-1">
                           <div className="font-display font-bold text-sm text-[#0A0A0A] mb-1">Step executed</div>
-                          <div className="grid grid-cols-5 gap-2">
-                            <Mini label="dispatched" value={stepResult.dispatched} color="#0F172A" />
+                          <div className="grid grid-cols-4 gap-2">
                             <Mini label="sent" value={stepResult.sent} color="#10B981" />
-                            <Mini label="mocked" value={stepResult.mocked} color="#F59E0B" />
                             <Mini label="failed" value={stepResult.failed} color="#DC2626" />
                             <Mini label="skipped" value={stepResult.skipped} color="#595955" />
+                            <Mini label="not attempted" value={stepResult.not_attempted || 0} color="#F59E0B" />
                           </div>
+                          {stepResult.blocked && <div className="mt-2 text-[11px] text-[#92400E]" role="alert" data-testid="step-blocked">{blockText(stepResult.blocked.code) || stepResult.blocked.message}</div>}
                         </div>
                       </motion.div>
                     )}
                   </div>
                 ))}
                 {(!c.steps || c.steps.length === 0) && (
-                  <div className="surface p-5 text-center text-sm text-[#999995] italic">
+                  <div className="surface p-5 text-center text-sm text-[#6B6B66] italic">
                     No steps configured. Edit the campaign to add automation steps.
                   </div>
                 )}
@@ -240,7 +244,7 @@ function AssignLeadsSheet({ campaign, allLeads, onClose, onSaved }) {
         onClick={(e) => e.stopPropagation()}
         data-testid="assign-leads-modal"
       >
-        <button onClick={onClose} className="absolute top-3 right-3 text-[#595955] hover:text-[#DC2626]"><X size={20} /></button>
+        <button onClick={onClose} className="absolute top-3 right-3 text-[#595955] hover:text-[#4F46E5]"><X size={20} /></button>
         <div className="mono-accent">/// assign.leads</div>
         <h3 className="text-xl font-black tracking-tighter mt-1">Add leads to campaign</h3>
         <input
@@ -250,7 +254,7 @@ function AssignLeadsSheet({ campaign, allLeads, onClose, onSaved }) {
           onChange={(e) => setSearch(e.target.value)}
           data-testid="assign-search-input"
         />
-        <div className="mt-3 max-h-[340px] overflow-y-auto divide-y divide-[#D6D3C8]">
+        <div className="mt-3 max-h-[340px] overflow-y-auto divide-y divide-[#D3DBEA]">
           {candidates.map((l) => {
             const checked = selected.has(l.id);
             return (
@@ -261,7 +265,7 @@ function AssignLeadsSheet({ campaign, allLeads, onClose, onSaved }) {
                     checked ? n.delete(l.id) : n.add(l.id);
                     return n;
                   });
-                }} className="accent-[#DC2626]" />
+                }} className="accent-[#4F46E5]" />
                 <div className="flex-1 min-w-0 text-sm">
                   <div className="font-semibold">{l.full_name}</div>
                   <div className="text-xs font-mono text-[#595955] truncate">{l.email} {l.company && `· ${l.company}`}</div>
@@ -270,7 +274,7 @@ function AssignLeadsSheet({ campaign, allLeads, onClose, onSaved }) {
             );
           })}
           {candidates.length === 0 && (
-            <div className="py-6 text-center text-[#999995] italic text-sm">All leads already assigned or no matches.</div>
+            <div className="py-6 text-center text-[#6B6B66] italic text-sm">All leads already assigned or no matches.</div>
           )}
         </div>
         <div className="flex gap-3 mt-5">

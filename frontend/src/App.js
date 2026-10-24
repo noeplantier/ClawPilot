@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "sonner";
 
@@ -5,17 +6,28 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
 import Layout from "@/components/Layout";
-import Dashboard from "@/pages/Dashboard";
-import Campaigns from "@/pages/Campaigns";
-import Leads from "@/pages/Leads";
-import Agents from "@/pages/Agents";
-import Messages from "@/pages/Messages";
-import Analytics from "@/pages/Analytics";
-import Settings from "@/pages/Settings";
+const Dashboard = lazy(() => import("@/pages/Dashboard"));
+const Campaigns = lazy(() => import("@/pages/Campaigns"));
+const Leads = lazy(() => import("@/pages/Leads"));
+const Agents = lazy(() => import("@/pages/Agents"));
+const Messages = lazy(() => import("@/pages/Messages"));
+const Analytics = lazy(() => import("@/pages/Analytics"));
+const Settings = lazy(() => import("@/pages/Settings"));
+const Prospects = lazy(() => import("@/pages/Prospects"));
+const MapSearch = lazy(() => import("@/pages/MapSearch"));
+const Sources = lazy(() => import("@/pages/Sources"));
+const SystemHealth = lazy(() => import("@/pages/SystemHealth"));
+const ProspectDetail = lazy(() => import("@/pages/ProspectDetail"));
+const ReviewQueue = lazy(() => import("@/pages/ReviewQueue"));
+const Sending = lazy(() => import("@/pages/Sending"));
+const ProspectImport = lazy(() => import("@/pages/ProspectImport"));
+const Legal = lazy(() => import("@/pages/legal/Legal"));
+const Privacy = lazy(() => import("@/pages/legal/Privacy"));
+const Terms = lazy(() => import("@/pages/legal/Terms"));
 
 function Protected({ children }) {
   const { user, loading } = useAuth();
-  if (loading) return <div className="min-h-screen bg-[#EDEBE0] grid-bg flex items-center justify-center text-[#DC2626] font-mono mono-accent">// booting.command.center</div>;
+  if (loading) return <div className="min-h-screen bg-[#E9EEF7] grid-bg flex items-center justify-center text-[#4F46E5] font-mono mono-accent">// booting.command.center</div>;
   if (!user) return <Navigate to="/login" replace />;
   return children;
 }
@@ -32,9 +44,13 @@ function App() {
     <div className="App">
       <BrowserRouter>
         <AuthProvider>
-          <Toaster theme="light" position="top-right" toastOptions={{ style: { background: "#FFFFFF", border: "1px solid #D6D3C8", color: "#0A0A0A", fontFamily: "IBM Plex Sans" } }} />
+          <Toaster theme="light" position="top-right" toastOptions={{ style: { background: "#FFFFFF", border: "1px solid #D3DBEA", color: "#0A0A0A", fontFamily: "IBM Plex Sans" } }} />
+          <Suspense fallback={<div className="p-10 font-mono mono-accent" role="status">// loading</div>}>
           <Routes>
             <Route path="/" element={<Navigate to="/app/dashboard" replace />} />
+            <Route path="/legal" element={<Legal />} />
+            <Route path="/privacy" element={<Privacy />} />
+            <Route path="/terms" element={<Terms />} />
             <Route path="/login" element={<Public><Login /></Public>} />
             <Route path="/register" element={<Public><Register /></Public>} />
             <Route path="/app" element={<Protected><Layout /></Protected>}>
@@ -42,6 +58,14 @@ function App() {
               <Route path="dashboard" element={<Dashboard />} />
               <Route path="campaigns" element={<Campaigns />} />
               <Route path="leads" element={<Leads />} />
+              <Route path="prospects" element={<Prospects />} />
+              <Route path="map" element={<MapSearch />} />
+              <Route path="sources" element={<Sources />} />
+              <Route path="system" element={<SystemHealth />} />
+              <Route path="prospects/import" element={<ProspectImport />} />
+              <Route path="prospects/review" element={<ReviewQueue />} />
+              <Route path="prospects/:id" element={<ProspectDetail />} />
+              <Route path="sending" element={<Sending />} />
               <Route path="agents" element={<Agents />} />
               <Route path="messages" element={<Messages />} />
               <Route path="analytics" element={<Analytics />} />
@@ -49,6 +73,7 @@ function App() {
             </Route>
             <Route path="*" element={<Navigate to="/app/dashboard" replace />} />
           </Routes>
+          </Suspense>
         </AuthProvider>
       </BrowserRouter>
     </div>

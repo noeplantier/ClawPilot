@@ -1,0 +1,31 @@
+From: MAILER-DAEMON@mx.example
+To: founder@plantiers.com
+Subject: Undelivered Mail Returned to Sender
+Message-ID: <dsn2@mx.example>
+MIME-Version: 1.0
+Content-Type: multipart/report; report-type=delivery-status; boundary="B"
+
+--B
+Content-Type: text/plain
+
+Delivery failed.
+--B
+Content-Type: message/delivery-status
+
+Reporting-MTA: dns; mx.example
+
+Final-Recipient: rfc822; Dead.Box@Client.example
+Action: delayed
+Status: 4.2.2
+Diagnostic-Code: smtp; 550 5.1.1 user unknown
+
+--B
+Content-Type: message/rfc822
+
+Message-ID: <orig2@plantiers.com>
+From: founder@plantiers.com
+To: dead.box@client.example
+Subject: A propos
+
+Bonjour
+--B--

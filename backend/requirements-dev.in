@@ -1,0 +1,10 @@
+# Tools for lint, type-check and tests: installed in CI and locally, never in the production image.
+-r requirements.in
+
+pytest==9.0.3             # test runner
+requests==2.33.1          # HTTP client of the integration tests (they talk to a running server)
+httpx==0.28.1             # FastAPI TestClient (unit tests of the webhook guards)
+black==26.3.1             # formatter (line length 120, see CLAUDE.md)
+isort==8.0.1              # import sorter
+flake8==7.3.0             # linter
+mypy==1.20.0              # type check (informative)

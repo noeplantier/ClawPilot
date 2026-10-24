@@ -1,0 +1,103 @@
+# Render Blueprint — web API, Celery worker + beat, Postgres, Redis.
+# Service and database names keep the historical `clawpilot-*` identifiers on purpose: renaming them would create NEW
+# services and an empty database on Render. Rename them as a planned infrastructure migration, not as a text change.
+# Secrets (SENDGRID_*, TWILIO_*, ...) are declared with `sync: false`: set them in the dashboard.
+databases:
+  - name: clawpilot-db
+    plan: basic-256mb
+    databaseName: clawpilot
+    user: clawpilot
+
+services:
+  - type: keyvalue
+    name: clawpilot-redis
+    plan: starter
+    ipAllowList: [] # internal access only
+    maxmemoryPolicy: noeviction # a queue must never silently evict jobs
+
+  - type: web
+    name: clawpilot-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    healthCheckPath: /api/health
+    preDeployCommand: alembic upgrade head # release step: runs before the new version takes traffic
+    envVars: &common-env
+      - key: APP_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase: { name: clawpilot-db, property: connectionString }
+      - key: CELERY_BROKER_URL
+        fromService: { type: keyvalue, name: clawpilot-redis, property: connectionString }
+      - key: CELERY_RESULT_BACKEND
+        fromService: { type: keyvalue, name: clawpilot-redis, property: connectionString }
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CORS_ORIGINS
+        sync: false # frontend origin, e.g. https://app.example.com
+      - key: PUBLIC_BASE_URL
+        sync: false # public API URL (https), used in unsubscribe links
+      - key: SEND_KILL_SWITCH
+        sync: false # leave empty; set to true to halt every send immediately
+      - key: OUTREACH_SENDER_NAME
+        sync: false
+      - key: OUTREACH_SENDER_COMPANY
+        sync: false
+      - key: OUTREACH_SENDER_ADDRESS
+        sync: false
+      - key: OUTREACH_SENDER_EMAIL
+        sync: false
+      - key: FEATURE_LIVE_SENDING
+        sync: false # leave empty (dry-run). true = real e-mail over SMTP, see docs/go-live-email.md
+      - key: FEATURE_PROSPECT_IMPORT
+        sync: false # leave empty; true lets owners/admins import a CSV/JSON list (origin + legal basis recorded)
+      - key: FORWARDED_ALLOW_IPS
+        value: "*" # behind Render's proxy: use the client's address (X-Forwarded-For) for per-IP rate limits
+      - key: OUTREACH_SANDBOX
+        value: "true" # real sending only reaches OUTREACH_LIVE_ALLOWLIST; set to false deliberately, never by default
+      - key: OUTREACH_LIVE_ALLOWLIST
+        sync: false # e.g. founder@plantiers.com
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_USERNAME
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false # secret: dashboard only
+      - key: SMTP_SECURITY
+        value: starttls
+      - key: IMAP_HOST
+        sync: false # reads replies and bounces from the sending mailbox (TLS, port 993)
+      - key: IMAP_USERNAME
+        sync: false
+      - key: IMAP_PASSWORD
+        sync: false # secret: dashboard only
+      - key: SENDGRID_API_KEY
+        sync: false
+      - key: SENDGRID_FROM_EMAIL
+        sync: false
+      - key: SENDGRID_WEBHOOK_PUBLIC_KEY
+        sync: false # Event Webhook signature verification key
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_WHATSAPP_FROM
+        sync: false
+      - key: TWILIO_WEBHOOK_URL
+        sync: false # public URL of /api/webhooks/twilio, as set in the Twilio console
+
+  - type: worker
+    name: clawpilot-worker
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    dockerCommand: celery -A celery_app worker -Q sends,automation,webhooks -l info
+    envVars: *common-env
+
+  - type: worker
+    name: clawpilot-beat
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    dockerCommand: celery -A celery_app beat -l info
+    envVars: *common-env

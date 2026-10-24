@@ -7,8 +7,8 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.session import get_db_session
-from deps import db, get_current_user
-from repositories import agent_repo, campaign_repo, lead_repo, outreach_repo
+from deps import get_current_user
+from repositories import activity_repo, agent_repo, campaign_repo, lead_repo, outreach_repo
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
@@ -83,11 +83,7 @@ async def overview(
 
 
 @router.get("/activity")
-async def activity(limit: int = 30, user: dict = Depends(get_current_user)):
-    items = (
-        await db.activity.find({"org_id": user["org_id"]}, {"_id": 0})
-        .sort("created_at", -1)
-        .limit(limit)
-        .to_list(limit)
-    )
-    return items
+async def activity(
+    limit: int = 30, user: dict = Depends(get_current_user), session: AsyncSession = Depends(get_db_session)
+):
+    return await activity_repo.list_recent(session, user["org_id"], limit)

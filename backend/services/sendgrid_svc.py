@@ -1,38 +1,80 @@
-"""SendGrid email sending wrapper with graceful mock fallback."""
+"""SendGrid e-mail sender. Without credentials nothing is attempted and the answer says so (no pretend dispatch)."""
 
 import logging
 import os
 
+from services import feature_flags
+from services.outreach_os import channels
+
 logger = logging.getLogger(__name__)
 
 API_KEY = os.environ.get("SENDGRID_API_KEY")
-FROM_EMAIL = os.environ.get("SENDGRID_FROM_EMAIL") or "noreply@clawpilot.io"
+# No default sender: a message never leaves from an address nobody configured. Without SENDGRID_FROM_EMAIL, no send.
+FROM_EMAIL = os.environ.get("SENDGRID_FROM_EMAIL") or None
+
+
+# Verification key from SendGrid: Settings → Mail Settings → Event Webhook → "Signature Verification".
+WEBHOOK_PUBLIC_KEY = os.environ.get("SENDGRID_WEBHOOK_PUBLIC_KEY")
+
+
+def verify_event_signature(
+    raw_body: bytes, signature: str | None, timestamp: str | None, public_key: str | None = None
+) -> bool:
+    """Check SendGrid's ECDSA signature over `timestamp + raw body` (event webhook).
+
+    Returns False — never raises — for a missing key/header or any malformed input.
+    """
+    public_key = WEBHOOK_PUBLIC_KEY if public_key is None else public_key
+    if not public_key or not signature or not timestamp:
+        return False
+    try:
+        from sendgrid.helpers.eventwebhook import EventWebhook
+
+        return bool(EventWebhook(public_key).verify_signature(raw_body.decode("utf-8"), signature, timestamp))
+    except Exception:
+        return False
 
 
 def is_configured() -> bool:
     return bool(API_KEY and FROM_EMAIL and "@" in FROM_EMAIL)
 
 
-def send_email(to_email: str, subject: str, body: str, from_email: str | None = None) -> dict:
-    """Send email. Returns {status, provider_id, error}.
+def send_email(
+    to_email: str, subject: str, body: str, from_email: str | None = None, headers: dict[str, str] | None = None
+) -> dict:
+    """Send email. Returns {status, provider_id, error}; `status` is "sent" or "failed", never a pretend success.
 
-    If SendGrid isn't fully configured (missing verified sender), returns mocked dispatch.
+    If SendGrid isn't fully configured (no API key or no `SENDGRID_FROM_EMAIL`) nothing is attempted and the answer
+    says so. A provider error (an unverified sender, a rejected key) is returned as the failure it is.
     """
+    if feature_flags.kill_switch():
+        return {"status": "failed", "provider_id": None, "error": "sending halted by the kill switch"}
     sender = from_email or FROM_EMAIL
     if not API_KEY or not sender:
-        return {"status": "mock", "provider_id": None, "error": "sendgrid not configured"}
+        return {
+            "status": "failed",
+            "provider_id": None,
+            "error": "SendGrid is not configured (SENDGRID_API_KEY and SENDGRID_FROM_EMAIL): nothing was sent",
+        }
 
     try:
         from sendgrid import SendGridAPIClient
-        from sendgrid.helpers.mail import ClickTracking, Mail, OpenTracking, TrackingSettings
+        from sendgrid.helpers.mail import ClickTracking, Header, Mail, OpenTracking, TrackingSettings
 
         html = (
             '<div style="font-family:system-ui,-apple-system,sans-serif;line-height:1.6;color:#111">'
             + body.replace("\n", "<br/>")
             + "</div>"
         )
+        unsubscribe_url = channels.find_unsubscribe_url(body)
+        if unsubscribe_url:  # the opt-out link must reach us directly: never rewritten by click tracking
+            html = html.replace(
+                unsubscribe_url, f'<a clicktracking="off" href="{unsubscribe_url}">{unsubscribe_url}</a>'
+            )
 
         message = Mail(from_email=sender, to_emails=to_email, subject=subject, html_content=html)
+        for name, value in (headers or {}).items():  # List-Unsubscribe / List-Unsubscribe-Post (RFC 8058)
+            message.add_header(Header(name, value))
         ts = TrackingSettings()
         ts.click_tracking = ClickTracking(True, True)
         ts.open_tracking = OpenTracking(True)
@@ -48,6 +90,5 @@ def send_email(to_email: str, subject: str, body: str, from_email: str | None = 
             }
         return {"status": "failed", "provider_id": None, "error": f"status {resp.status_code}"}
     except Exception as e:
-        logger.warning("sendgrid send failed: %s", e)
-        # Graceful mock on failure (e.g., unverified sender) so UX continues
-        return {"status": "mock", "provider_id": None, "error": str(e)}
+        logger.warning("sendgrid send failed: %s", type(e).__name__)
+        return {"status": "failed", "provider_id": None, "error": f"SendGrid refused the message: {str(e)[:200]}"}

@@ -3,33 +3,16 @@ import { api } from "@/lib/api";
 
 const AuthContext = createContext(null);
 
-const DEMO_EMAIL = "demo@clawpilot.io";
-const DEMO_PASSWORD = "Demo12345!";
-const DEMO_TOKEN = "bypass-token-12345";
-
-const DEMO_USER_DATA = {
-  user: { id: "demo-1", email: DEMO_EMAIL, name: "Operator" },
-  organization: { id: "org-1", name: "ClawPilot Demo" }
-};
-
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [org, setOrg] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const loadMe = useCallback(async () => {
-    const token = localStorage.getItem("clawpilot_token");
+    const token = localStorage.getItem("outreachos_token");
     if (!token) { 
       setLoading(false); 
       return; 
-    }
-
-    // Interception pour le mode Démo
-    if (token === DEMO_TOKEN) {
-      setUser(DEMO_USER_DATA.user);
-      setOrg(DEMO_USER_DATA.organization);
-      setLoading(false);
-      return;
     }
 
     try {
@@ -37,7 +20,7 @@ export function AuthProvider({ children }) {
       setUser(data.user);
       setOrg(data.organization);
     } catch (e) {
-      localStorage.removeItem("clawpilot_token");
+      localStorage.removeItem("outreachos_token");
       setUser(null);
       setOrg(null);
     } finally {
@@ -48,16 +31,8 @@ export function AuthProvider({ children }) {
   useEffect(() => { loadMe(); }, [loadMe]);
 
   const login = async (email, password) => {
-    // Interception pour le mode Démo
-    if (email === DEMO_EMAIL && password === DEMO_PASSWORD) {
-      localStorage.setItem("clawpilot_token", DEMO_TOKEN);
-      setUser(DEMO_USER_DATA.user);
-      setOrg(DEMO_USER_DATA.organization);
-      return { access_token: DEMO_TOKEN, ...DEMO_USER_DATA };
-    }
-
     const { data } = await api.post("/auth/login", { email, password });
-    localStorage.setItem("clawpilot_token", data.access_token);
+    localStorage.setItem("outreachos_token", data.access_token);
     setUser(data.user);
     setOrg(data.organization);
     return data;
@@ -65,14 +40,14 @@ export function AuthProvider({ children }) {
 
   const register = async (payload) => {
     const { data } = await api.post("/auth/register", payload);
-    localStorage.setItem("clawpilot_token", data.access_token);
+    localStorage.setItem("outreachos_token", data.access_token);
     setUser(data.user);
     setOrg(data.organization);
     return data;
   };
 
   const logout = () => {
-    localStorage.removeItem("clawpilot_token");
+    localStorage.removeItem("outreachos_token");
     setUser(null);
     setOrg(null);
     window.location.href = "/login";

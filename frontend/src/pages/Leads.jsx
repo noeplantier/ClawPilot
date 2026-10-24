@@ -1,5 +1,6 @@
-import { useEffect, useState, useRef } from "react";
+import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
+import { Link } from "react-router-dom";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 import {
@@ -10,17 +11,26 @@ import BulkLeadsModal from "@/components/BulkLeadsModal";
 import BatchComposerModal from "@/components/BatchComposerModal";
 import LeadsBulkBar from "@/components/LeadsBulkBar";
 import LeadDetailDrawer from "@/components/LeadDetailDrawer";
+import HeatBadge from "@/components/outreach/HeatBadge";
+import EmptyToggle from "@/components/outreach/EmptyToggle";
+import { LANES, LANE_LABEL, inLane, laneCounts, splitEmpty } from "@/lib/heat";
+import { LIVE_MS, useLive } from "@/lib/live";
+import { readPref, writePref } from "@/lib/uiPrefs";
 
+// Where a prospect from discovery (map, sources, import) stands in the human review; a CRM lead has none.
+const REVIEW_LABEL = { pending: "to review", approved: "approved", rejected: "rejected" };
+const REVIEW_CHIP = { pending: "chip-warn", approved: "chip-success", rejected: "chip-danger" };
 const STAGES = ["new", "contacted", "engaged", "qualified", "won", "lost"];
 const STAGE_COLORS = {
-  new: "#DC2626", contacted: "#475569", engaged: "#0F172A",
+  new: "#4F46E5", contacted: "#475569", engaged: "#0F172A",
   qualified: "#F59E0B", won: "#10B981", lost: "#EF4444",
 };
 
 export default function Leads() {
-  const [leads, setLeads] = useState([]);
   const [view, setView] = useState("table");
   const [search, setSearch] = useState("");
+  const [lane, setLane] = useState("all"); // heat filter: all | top | hot | warm | cold
+  const [showEmpty, setShowEmpty] = useState(() => readPref("leads.showEmpty", false)); // leads with no e-mail, phone or website
   const [showCreate, setShowCreate] = useState(false);
   const [showBulk, setShowBulk] = useState(false);
   const [showBatch, setShowBatch] = useState(false);
@@ -28,6 +38,14 @@ export default function Leads() {
   const [aiDefaults, setAiDefaults] = useState(null);
   const [selected, setSelected] = useState(new Set());
   const [detailLeadId, setDetailLeadId] = useState(null);
+
+  // Real leads, hottest first (real information + score), refreshed in the background.
+  const live = useLive(() => api.get("/leads", { params: { search, sort: "heat" } }).then((r) => r.data), [search]);
+  const everyLead = useMemo(() => live.data || [], [live.data]);
+  const { shown: reachable, empty } = useMemo(() => splitEmpty(everyLead, showEmpty), [everyLead, showEmpty]);
+  const counts = useMemo(() => laneCounts(reachable), [reachable]);
+  const leads = useMemo(() => inLane(reachable, lane), [reachable, lane]);
+  const toggleEmpty = () => setShowEmpty((v) => { writePref("leads.showEmpty", !v); return !v; });
 
   const allVisible = leads.map((l) => l.id);
   const toggleOne = (id) =>
@@ -39,11 +57,7 @@ export default function Leads() {
   const toggleAll = () =>
     setSelected((s) => (s.size === allVisible.length ? new Set() : new Set(allVisible)));
 
-  const load = async () => {
-    const { data } = await api.get("/leads", { params: { search } });
-    setLeads(data);
-  };
-  useEffect(() => { load(); }, [search]); // eslint-disable-line
+  const load = () => live.reload();
 
   const updateStage = async (id, stage) => {
     await api.patch(`/leads/${id}`, { stage });
@@ -74,11 +88,18 @@ export default function Leads() {
         <div>
           <div className="mono-accent">// crm.pipeline</div>
           <h1 className="text-4xl font-black tracking-tighter">Leads</h1>
-          <p className="text-[#6B6B66] mt-1">{leads.length} contacts across the pipeline.</p>
+          <p className="text-[#5F5F5A] mt-1">
+            {leads.length}{lane !== "all" ? ` ${LANE_LABEL[lane].toLowerCase()}` : ""} contact{leads.length === 1 ? "" : "s"} across the pipeline, hottest first.
+          </p>
+          <p className="text-xs mt-1 inline-flex items-center gap-2 text-[#4338CA]" role="status" aria-live="polite" data-testid="leads-live">
+            <span className="pos-live-dot" aria-hidden="true" />
+            {live.stale ? "Refresh failed: showing the last data. " : ""}
+            {live.updatedAt ? `Live · updated ${live.updatedAt.toLocaleTimeString()} · every ${LIVE_MS / 1000} s` : "Loading…"}
+          </p>
         </div>
         <div className="flex gap-2 items-center">
-          <div className="flex items-center gap-2 px-3 py-1.5 border border-[#D6D3C8] rounded-md bg-[#FFFFFF]">
-            <MagnifyingGlass size={14} className="text-[#999995]" />
+          <div className="flex items-center gap-2 px-3 py-1.5 border border-[#D3DBEA] rounded-md bg-[#FFFFFF]">
+            <MagnifyingGlass size={14} className="text-[#6B6B66]" />
             <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, email, company" className="bg-transparent outline-none text-sm w-56 font-mono" data-testid="leads-search" />
           </div>
           <button onClick={() => setView(view === "table" ? "kanban" : "table")} className="btn-ghost" data-testid="toggle-view">
@@ -91,25 +112,40 @@ export default function Leads() {
         </div>
       </div>
 
+      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filter by heat" data-testid="leads-lanes">
+        {LANES.map((k) => [k, `${LANE_LABEL[k]} ${k === "all" ? counts.total : counts[k]}`]).map(([key, label]) => (
+          <button key={key} onClick={() => setLane(key)} aria-pressed={lane === key} data-testid={`lane-${key}`}
+            className={`px-3 py-1 rounded-full text-xs border transition-colors ${lane === key ? "bg-[#0B1020] text-white border-[#0B1020] shadow-[0_0_14px_-2px_rgba(99,102,241,0.7)]" : "bg-white/80 border-[#D3DBEA] hover:bg-white"}`}>
+            {label}
+          </button>
+        ))}
+        <span className="text-xs text-[#5F5F5A]">Heat = real information known + score; TOP = 80 or more. Hover a badge to see what is missing.</span>
+        <EmptyToggle empty={empty} showEmpty={showEmpty} onToggle={toggleEmpty} testId="leads-empty-toggle" />
+      </div>
+
+      {live.error && <div role="alert" className="text-sm text-[#991B1B]" data-testid="leads-error">{live.error}</div>}
+
       {view === "table" ? (
-        <div className="surface overflow-hidden">
+        <div className="surface overflow-hidden overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-[#FAFAF7] border-b border-[#D6D3C8]">
+            <thead className="bg-[#F6F8FC] border-b border-[#D3DBEA]">
               <tr className="text-left mono-accent">
                 <th className="p-3 w-10">
                   <input
                     type="checkbox"
                     checked={selected.size > 0 && selected.size === allVisible.length}
                     onChange={toggleAll}
-                    className="accent-[#DC2626]"
+                    className="accent-[#4F46E5]"
+                    aria-label="Select all visible leads"
                     data-testid="leads-select-all"
                   />
                 </th>
                 <th className="p-3">Name</th>
                 <th className="p-3">Company</th>
-                <th className="p-3">Email</th>
+                <th className="p-3">Contact</th>
                 <th className="p-3">Country</th>
                 <th className="p-3">Stage</th>
+                <th className="p-3">Heat</th>
                 <th className="p-3">Score</th>
                 <th className="p-3 text-right">Actions</th>
               </tr>
@@ -122,7 +158,7 @@ export default function Leads() {
                   animate={{ opacity: 1 }}
                   transition={{ delay: i * 0.02 }}
                   onClick={() => setDetailLeadId(l.id)}
-                  className={`border-b border-[#F0F0EA] hover:bg-[#FAFAF7] transition-colors cursor-pointer ${selected.has(l.id) ? "bg-[#FEF2F2]" : ""}`}
+                  className={`border-b border-[#E6ECF6] hover:bg-[#F6F8FC] transition-colors cursor-pointer ${selected.has(l.id) ? "bg-indigo-50" : live.fresh.has(l.id) ? "bg-cyan-50" : ""}`}
                   data-testid={`lead-row-${l.id}`}
                 >
                   <td className="p-3" onClick={(e) => e.stopPropagation()}>
@@ -130,55 +166,75 @@ export default function Leads() {
                       type="checkbox"
                       checked={selected.has(l.id)}
                       onChange={() => toggleOne(l.id)}
-                      className="accent-[#DC2626]"
+                      className="accent-[#4F46E5]"
+                      aria-label={`Select ${l.full_name}`}
                       data-testid={`lead-check-${l.id}`}
                     />
                   </td>
                   <td className="p-3">
                     <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#DC2626]/30 to-[#0F172A]/30 flex items-center justify-center text-xs font-bold">
+                      <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#4F46E5]/30 to-[#0F172A]/30 flex items-center justify-center text-xs font-bold">
                         {(l.full_name || "?").charAt(0)}
                       </div>
                       <div>
-                        <div className="font-medium">{l.full_name}</div>
-                        <div className="mono-accent text-[#999995] text-[10px]">{l.title || "—"}</div>
+                        <div className="font-medium">
+                          {l.full_name}
+                          {live.fresh.has(l.id) && <span className="chip chip-cyan ml-2" data-testid="lead-new">new</span>}
+                          {l.review_status && (
+                            <Link to={`/app/prospects/${l.id}`} className={`chip ml-2 ${REVIEW_CHIP[l.review_status]}`} data-testid={`lead-review-${l.id}`} title="Open the prospect: its sources, signals and review">
+                              {REVIEW_LABEL[l.review_status]}
+                            </Link>
+                          )}
+                        </div>
+                        <div className="mono-accent text-[#6B6B66] text-[10px]">{l.title || "—"}</div>
                       </div>
                     </div>
                   </td>
-                  <td className="p-3 text-[#6B6B66]">{l.company}</td>
-                  <td className="p-3 font-mono text-xs text-[#6B6B66]">{l.email}</td>
+                  <td className="p-3 text-[#5F5F5A]">{l.company}</td>
+                  <td className="p-3 font-mono text-xs text-[#5F5F5A]">
+                    <div>{l.email || <span className="text-[#6B6B66]">e-mail not known</span>}</div>
+                    <div>{l.phone || <span className="text-[#6B6B66]">phone not known</span>}</div>
+                  </td>
                   <td className="p-3 font-mono text-xs">{l.country}</td>
                   <td className="p-3" onClick={(e) => e.stopPropagation()}>
                     <select
                       value={l.stage}
                       onChange={(e) => updateStage(l.id, e.target.value)}
-                      className="bg-transparent border border-[#D6D3C8] rounded px-2 py-1 text-xs font-mono uppercase"
+                      className="bg-transparent border border-[#D3DBEA] rounded px-2 py-1 text-xs font-mono uppercase"
                       style={{ color: STAGE_COLORS[l.stage] }}
+                      aria-label={`Stage of ${l.full_name}`}
                       data-testid={`stage-select-${l.id}`}
                     >
                       {STAGES.map((s) => <option key={s} value={s}>{s}</option>)}
                     </select>
                   </td>
+                  <td className="p-3"><HeatBadge heat={l.heat} /></td>
                   <td className="p-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-16 h-1 bg-[#F0F0EA] rounded overflow-hidden">
-                        <div className="h-full bg-gradient-to-r from-[#DC2626] to-[#0F172A]" style={{ width: `${l.score}%` }} />
+                    {l.heat && !l.heat.scored ? (
+                      <span className="text-xs text-[#6B6B66]" data-testid="lead-not-scored">not scored</span>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <div className="w-16 h-1 bg-[#E6ECF6] rounded overflow-hidden">
+                          <div className="h-full bg-gradient-to-r from-[#4F46E5] to-[#0F172A]" style={{ width: `${l.score}%` }} />
+                        </div>
+                        <span className="font-mono text-xs w-6 text-right">{l.score}</span>
                       </div>
-                      <span className="font-mono text-xs w-6 text-right">{l.score}</span>
-                    </div>
+                    )}
                   </td>
                   <td className="p-3" onClick={(e) => e.stopPropagation()}>
                     <div className="flex justify-end gap-1">
-                      <button onClick={() => writeFor(l)} className="btn-ghost !py-1 !px-2" title="AI write" data-testid={`ai-${l.id}`}><Sparkle size={12} /></button>
-                      {l.email && <a href={`mailto:${l.email}`} className="btn-ghost !py-1 !px-2"><Envelope size={12} /></a>}
-                      {l.phone && <a href={`tel:${l.phone}`} className="btn-ghost !py-1 !px-2"><Phone size={12} /></a>}
-                      <button onClick={() => remove(l.id)} className="btn-ghost !py-1 !px-2 hover:!border-[#EF4444]" data-testid={`delete-lead-${l.id}`}><Trash size={12} /></button>
+                      <button onClick={() => writeFor(l)} className="btn-ghost !py-1 !px-2" title="AI write" aria-label={`Write to ${l.full_name} with AI`} data-testid={`ai-${l.id}`}><Sparkle size={12} /></button>
+                      {l.email && <a href={`mailto:${l.email}`} className="btn-ghost !py-1 !px-2" aria-label={`E-mail ${l.full_name}`}><Envelope size={12} /></a>}
+                      {l.phone && <a href={`tel:${l.phone}`} className="btn-ghost !py-1 !px-2" aria-label={`Call ${l.full_name}`}><Phone size={12} /></a>}
+                      <button onClick={() => remove(l.id)} className="btn-ghost !py-1 !px-2 hover:!border-[#EF4444]" aria-label={`Delete ${l.full_name}`} data-testid={`delete-lead-${l.id}`}><Trash size={12} /></button>
                     </div>
                   </td>
                 </motion.tr>
               ))}
               {leads.length === 0 && (
-                <tr><td colSpan="7" className="p-10 text-center text-[#6B6B66]">No leads. Add your first or import.</td></tr>
+                <tr><td colSpan="9" className="p-10 text-center text-[#5F5F5A]" data-testid="leads-none">
+                  {everyLead.length === 0 ? "No leads. Add your first or import." : reachable.length === 0 ? "Every lead is empty (no e-mail, phone or website): they are hidden. Show them above, or add contact details." : "No lead in this heat tier."}
+                </td></tr>
               )}
             </tbody>
           </table>
@@ -189,9 +245,9 @@ export default function Leads() {
             const items = leads.filter((l) => l.stage === s);
             return (
               <div key={s} className="kanban-column p-3 min-h-[400px]" data-testid={`kanban-${s}`}>
-                <div className="flex items-center justify-between mb-3 pb-2 border-b border-[#D6D3C8]">
+                <div className="flex items-center justify-between mb-3 pb-2 border-b border-[#D3DBEA]">
                   <span className="mono-accent" style={{ color: STAGE_COLORS[s] }}>{s}</span>
-                  <span className="font-mono text-xs text-[#6B6B66]">{items.length}</span>
+                  <span className="font-mono text-xs text-[#5F5F5A]">{items.length}</span>
                 </div>
                 <div className="space-y-2">
                   {items.map((l) => (
@@ -200,14 +256,15 @@ export default function Leads() {
                       initial={{ opacity: 0, y: 4 }}
                       animate={{ opacity: 1, y: 0 }}
                       onClick={() => setDetailLeadId(l.id)}
-                      className="surface p-3 text-xs cursor-pointer hover:border-[#DC2626]/40 transition"
+                      className="surface p-3 text-xs cursor-pointer hover:border-[#4F46E5]/40 transition"
                       data-testid={`kanban-card-${l.id}`}
                     >
                       <div className="font-semibold text-sm text-[#0A0A0A]">{l.full_name}</div>
-                      <div className="text-[#6B6B66] mt-0.5">{l.company}</div>
-                      <div className="mono-accent text-[#999995] mt-2 flex items-center justify-between">
+                      <div className="text-[#5F5F5A] mt-0.5">{l.company}</div>
+                      <div className="mt-2"><HeatBadge heat={l.heat} compact /></div>
+                      <div className="mono-accent text-[#6B6B66] mt-2 flex items-center justify-between">
                         <span>{l.country}</span>
-                        <span>score · {l.score}</span>
+                        <span>{l.heat && !l.heat.scored ? "not scored" : `score · ${l.score}`}</span>
                       </div>
                     </motion.div>
                   ))}
@@ -252,7 +309,7 @@ function CreateLead({ onClose, onSaved }) {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-50 bg-[#0F172A]/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
       <motion.div initial={{ y: 10 }} animate={{ y: 0 }} className="surface w-full max-w-xl p-8 relative" onClick={(e) => e.stopPropagation()}>
-        <button onClick={onClose} className="absolute top-4 right-4 text-[#6B6B66] hover:text-[#0A0A0A]" data-testid="close-create-lead"><X size={20} /></button>
+        <button onClick={onClose} className="absolute top-4 right-4 text-[#5F5F5A] hover:text-[#0A0A0A]" data-testid="close-create-lead"><X size={20} /></button>
         <div className="mono-accent">/// new.lead</div>
         <h2 className="text-2xl font-black tracking-tighter mt-1">Add Lead</h2>
 

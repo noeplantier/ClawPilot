@@ -12,18 +12,20 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.session import get_db_session
-from deps import db, get_current_user
-from models import Activity, SendEmailIn, SendWhatsAppIn
+from deps import get_current_user
+from models import SendEmailIn, SendWhatsAppIn
 from repositories import (
+    activity_repo,
     audit_repo,
     campaign_repo,
     consent_repo,
     lead_repo,
     outreach_repo,
 )
-from services.sendgrid_svc import send_email
+from routes._refusal import block_detail, refusal
+from services import legacy_email, send_gate
+from services.mail_provider import send_email, send_whatsapp
 from services.templating import render as _render
-from services.twilio_svc import send_whatsapp
 
 router = APIRouter(prefix="/messages", tags=["messages"])
 
@@ -42,6 +44,18 @@ async def _enforce_consent_for_lead(
     repositories/lead_repo.py::_gather_signals)."""
     if not lead_id:
         return None
+    blocked = await lead_repo.discovery_send_block(session, account_id, uuid.UUID(lead_id))
+    if blocked:
+        await audit_repo.log(
+            session,
+            account_id,
+            action="send.blocked_review",
+            resource_type="lead",
+            resource_id=uuid.UUID(lead_id),
+            diff={"channel": channel, "reason": blocked},
+        )
+        await session.commit()  # get_db_session rolls back on HTTPException: persist the evidence first
+        raise HTTPException(status_code=403, detail=f"Recipient cannot be contacted: {blocked}")
     contact_id = await consent_repo.get_primary_contact_id(session, uuid.UUID(lead_id))
     if not contact_id:
         return None
@@ -55,8 +69,29 @@ async def _enforce_consent_for_lead(
             resource_id=uuid.UUID(lead_id),
             diff={"channel": channel, "consent_status": status},
         )
+        await session.commit()  # get_db_session rolls back on HTTPException: persist the evidence first
         raise HTTPException(status_code=403, detail=f"Recipient has not consented to {channel} outreach")
     return contact_id
+
+
+async def _gate(session: AsyncSession, account_id: uuid.UUID, channel: str) -> Optional[send_gate.SendBlocked]:
+    """None if one more message may go out now, else why not (batch loops stop at the first refusal)."""
+    try:
+        await send_gate.check(session, account_id, channel, provider=True)
+    except send_gate.SendBlocked as blocked:
+        return blocked
+    return None
+
+
+async def _audit_batch_block(session: AsyncSession, user: dict, blocked: send_gate.SendBlocked, channel: str) -> None:
+    await audit_repo.log(
+        session,
+        uuid.UUID(user["org_id"]),
+        action="send.blocked_limits",
+        resource_type="send",
+        actor_user_id=uuid.UUID(user["id"]),
+        diff={"code": blocked.code, "channel": channel, "batch": True},
+    )
 
 
 class BatchSendIn(BaseModel):
@@ -64,13 +99,6 @@ class BatchSendIn(BaseModel):
     subject: Optional[str] = None
     body: str
     campaign_id: Optional[str] = None
-
-
-async def _log(org_id: str, kind: str, title: str):
-    act = Activity(org_id=org_id, kind=kind, title=title)
-    d = act.model_dump()
-    d["created_at"] = d["created_at"].isoformat()
-    await db.activity.insert_one(d)
 
 
 @router.get("", response_model=List[dict])
@@ -94,7 +122,30 @@ async def send_email_route(
 ):
     account_id = uuid.UUID(user["org_id"])
     contact_id = await _enforce_consent_for_lead(session, account_id, payload.lead_id, "email")
-    result = send_email(payload.to, payload.subject, payload.body)
+    try:
+        await send_gate.check(session, account_id, "email", provider=True)
+    except send_gate.SendBlocked as blocked:
+        raise await refusal(session, user, blocked, resource_type="send", action="send.blocked_limits", channel="email")
+    source = None
+    if payload.lead_id:
+        known = await lead_repo.get_leads_by_ids(session, account_id, [payload.lead_id])
+        source = known[0].get("source") if known else None
+    try:
+        prepared = await legacy_email.prepare(
+            session, account_id, to_email=payload.to, body=payload.body, lead_id=payload.lead_id, source=source
+        )
+    except legacy_email.EmailNotCompliant as exc:
+        await audit_repo.log(
+            session,
+            account_id,
+            action="send.blocked_compliance",
+            resource_type="send",
+            actor_user_id=uuid.UUID(user["id"]),
+            diff={"code": exc.code, "channel": "email"},
+        )
+        await session.commit()  # get_db_session rolls back on HTTPException: persist the evidence first
+        raise HTTPException(status_code=409 if exc.code != "recipient_unknown" else 400, detail=exc.message)
+    result = send_email(payload.to, payload.subject, prepared.body, headers=prepared.headers)
 
     send = await outreach_repo.create_email_send(
         session,
@@ -103,7 +154,7 @@ async def send_email_route(
         contact_id=contact_id,
         to_email=payload.to,
         subject=payload.subject,
-        body=payload.body,
+        body=prepared.body,
         status=result["status"],
         provider_message_id=result.get("provider_id"),
         error=result.get("error"),
@@ -116,9 +167,9 @@ async def send_email_route(
         campaign_id=payload.campaign_id,
         lead_id=payload.lead_id,
     )
-    await _log(user["org_id"], "message.email", f"Email {result['status']} → {payload.to}")
+    await activity_repo.record(session, user["org_id"], "message.email", f"Email {result['status']} → {payload.to}")
 
-    if payload.campaign_id:
+    if payload.campaign_id and result["status"] == "sent":
         await campaign_repo.increment_counters(session, account_id, payload.campaign_id, sent=1)
     lead_uuid = uuid.UUID(payload.lead_id) if payload.lead_id else None
     return {
@@ -135,6 +186,12 @@ async def send_whatsapp_route(
 ):
     account_id = uuid.UUID(user["org_id"])
     contact_id = await _enforce_consent_for_lead(session, account_id, payload.lead_id, "whatsapp")
+    try:
+        await send_gate.check(session, account_id, "whatsapp", provider=True)
+    except send_gate.SendBlocked as blocked:
+        raise await refusal(
+            session, user, blocked, resource_type="send", action="send.blocked_limits", channel="whatsapp"
+        )
     result = send_whatsapp(payload.to, payload.body)
 
     send = await outreach_repo.create_whatsapp_send(
@@ -158,13 +215,14 @@ async def send_whatsapp_route(
         campaign_id=payload.campaign_id,
         lead_id=payload.lead_id,
     )
-    await _log(
+    await activity_repo.record(
+        session,
         user["org_id"],
         "message.whatsapp",
         f"WhatsApp {result['status']} → {payload.to}",
     )
 
-    if payload.campaign_id:
+    if payload.campaign_id and result["status"] == "sent":
         await campaign_repo.increment_counters(session, account_id, payload.campaign_id, sent=1)
     lead_uuid = uuid.UUID(payload.lead_id) if payload.lead_id else None
     return {
@@ -187,9 +245,10 @@ async def batch_send_email(
     leads = await lead_repo.get_leads_by_ids(session, account_id, payload.lead_ids)
 
     results = []
-    sent = mocked = failed = skipped = 0
+    sent = failed = skipped = not_attempted = 0
+    blocked: Optional[send_gate.SendBlocked] = None
 
-    for lead in leads:
+    for index, lead in enumerate(leads):
         if not lead.get("email"):
             skipped += 1
             results.append({"lead_id": lead["id"], "status": "skipped", "reason": "no email"})
@@ -198,9 +257,29 @@ async def batch_send_email(
             skipped += 1
             results.append({"lead_id": lead["id"], "status": "skipped", "reason": "opted out"})
             continue
+        blocked = await _gate(session, account_id, "email")
+        if blocked:  # limits, pause or kill switch: stop here, nothing further is sent
+            for rest in leads[index:]:
+                not_attempted += 1
+                results.append({"lead_id": rest["id"], "status": "blocked", "reason": blocked.code})
+            await _audit_batch_block(session, user, blocked, "email")
+            break
         subj = _render(payload.subject, lead)
-        body = _render(payload.body, lead)
-        result = send_email(lead["email"], subj, body)
+        try:
+            prepared = await legacy_email.prepare(
+                session,
+                account_id,
+                to_email=lead["email"],
+                body=_render(payload.body, lead),
+                lead_id=lead["id"],
+                source=lead.get("source"),
+            )
+        except legacy_email.EmailNotCompliant as exc:
+            skipped += 1
+            results.append({"lead_id": lead["id"], "status": "skipped", "reason": exc.code})
+            continue
+        body = prepared.body
+        result = send_email(lead["email"], subj, body, headers=prepared.headers)
 
         contact_id = uuid.UUID(lead["contact_id"]) if lead.get("contact_id") else None
         await outreach_repo.create_email_send(
@@ -226,26 +305,27 @@ async def batch_send_email(
 
         if result["status"] == "sent":
             sent += 1
-        elif result["status"] == "mock":
-            mocked += 1
         else:
             failed += 1
         results.append({"lead_id": lead["id"], "email": lead["email"], "status": result["status"]})
 
     if payload.campaign_id:
-        await campaign_repo.increment_counters(session, account_id, payload.campaign_id, sent=sent + mocked)
+        await campaign_repo.increment_counters(session, account_id, payload.campaign_id, sent=sent)
 
-    await _log(
+    await activity_repo.record(
+        session,
         user["org_id"],
         "message.email.batch",
-        f"Batch email · {sent} sent, {mocked} mocked, {failed} failed, {skipped} skipped",
+        f"Batch email · {sent} sent, {failed} failed, {skipped} skipped"
+        + (f", {not_attempted} not attempted ({blocked.code})" if blocked else ""),
     )
     return {
-        "dispatched": sent + mocked,
+        "dispatched": sent,
         "sent": sent,
-        "mocked": mocked,
         "failed": failed,
         "skipped": skipped,
+        "not_attempted": not_attempted,
+        "blocked": block_detail(blocked) if blocked else None,
         "total": len(payload.lead_ids),
         "results": results,
     }
@@ -261,9 +341,10 @@ async def batch_send_whatsapp(
     leads = await lead_repo.get_leads_by_ids(session, account_id, payload.lead_ids)
 
     results = []
-    sent = mocked = failed = skipped = 0
+    sent = failed = skipped = not_attempted = 0
+    blocked: Optional[send_gate.SendBlocked] = None
 
-    for lead in leads:
+    for index, lead in enumerate(leads):
         if not lead.get("phone"):
             skipped += 1
             results.append({"lead_id": lead["id"], "status": "skipped", "reason": "no phone"})
@@ -272,6 +353,13 @@ async def batch_send_whatsapp(
             skipped += 1
             results.append({"lead_id": lead["id"], "status": "skipped", "reason": "not opted in"})
             continue
+        blocked = await _gate(session, account_id, "whatsapp")
+        if blocked:
+            for rest in leads[index:]:
+                not_attempted += 1
+                results.append({"lead_id": rest["id"], "status": "blocked", "reason": blocked.code})
+            await _audit_batch_block(session, user, blocked, "whatsapp")
+            break
         body = _render(payload.body, lead)
         result = send_whatsapp(lead["phone"], body)
 
@@ -300,26 +388,27 @@ async def batch_send_whatsapp(
 
         if result["status"] == "sent":
             sent += 1
-        elif result["status"] == "mock":
-            mocked += 1
         else:
             failed += 1
         results.append({"lead_id": lead["id"], "phone": lead["phone"], "status": result["status"]})
 
     if payload.campaign_id:
-        await campaign_repo.increment_counters(session, account_id, payload.campaign_id, sent=sent + mocked)
+        await campaign_repo.increment_counters(session, account_id, payload.campaign_id, sent=sent)
 
-    await _log(
+    await activity_repo.record(
+        session,
         user["org_id"],
         "message.whatsapp.batch",
-        f"Batch WhatsApp · {sent} sent, {mocked} mocked, {failed} failed, {skipped} skipped",
+        f"Batch WhatsApp · {sent} sent, {failed} failed, {skipped} skipped"
+        + (f", {not_attempted} not attempted ({blocked.code})" if blocked else ""),
     )
     return {
-        "dispatched": sent + mocked,
+        "dispatched": sent,
         "sent": sent,
-        "mocked": mocked,
         "failed": failed,
         "skipped": skipped,
+        "not_attempted": not_attempted,
+        "blocked": block_detail(blocked) if blocked else None,
         "total": len(payload.lead_ids),
         "results": results,
     }

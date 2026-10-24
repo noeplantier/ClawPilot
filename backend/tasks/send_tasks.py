@@ -13,14 +13,24 @@ timezone window skipped over a weekend).
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from celery_app import celery_app
 from repositories import campaign_repo, consent_repo, lead_repo, outreach_repo, send_policy_repo
-from services.sendgrid_svc import send_email
+from services import legacy_email, send_gate
+from services.mail_provider import send_email
 from services.templating import render as _render
 from services.timezones import resolve_timezone
 from tasks._bridge import run_async
+
+HALT_RETRY_SECONDS = 900  # kill switch / pause: look again in 15 minutes
+
+
+def _retry_args(blocked: send_gate.SendBlocked) -> dict:
+    """How a refused send is rescheduled: at the time the limit frees up, or later for a halt. Never a failure."""
+    if blocked.retry_at is not None:
+        return {"eta": blocked.retry_at.astimezone(timezone.utc).replace(tzinfo=None), "max_retries": None}
+    return {"countdown": HALT_RETRY_SECONDS, "max_retries": None}
 
 
 def _next_window_start(now_local: datetime, window_start_hour: int) -> datetime:
@@ -77,9 +87,27 @@ async def _send_email_impl(
     if retry_at:
         raise task.retry(eta=retry_at, max_retries=None)
 
+    try:
+        await send_gate.check(session, account_id, "email", provider=True)
+    except send_gate.SendBlocked as blocked:
+        if blocked.code == "provider_not_configured":  # waiting cannot fix it: report it, do not retry forever
+            return {"status": "failed", "reason": blocked.code}
+        raise task.retry(**_retry_args(blocked))
+
     subject = _render(step.subject or "", lead)
-    body = _render(step.body or "", lead)
-    result = send_email(lead["email"], subject, body)
+    try:
+        prepared = await legacy_email.prepare(
+            session,
+            account_id,
+            to_email=lead["email"],
+            body=_render(step.body or "", lead),
+            lead_id=lead_id,
+            source=lead.get("source"),
+        )
+    except legacy_email.EmailNotCompliant as exc:
+        return {"status": "failed", "reason": exc.code}
+    body = prepared.body
+    result = send_email(lead["email"], subject, body, headers=prepared.headers)
 
     contact_id = uuid.UUID(lead["contact_id"]) if lead.get("contact_id") else None
     await outreach_repo.create_email_send(
@@ -104,7 +132,7 @@ async def _send_email_impl(
         campaign_step_id=campaign_step_id,
         lead_id=lead_id,
     )
-    if result["status"] in ("sent", "mock"):
+    if result["status"] == "sent":
         await campaign_repo.increment_counters(session, account_id, campaign_id, sent=1)
     return result
 
@@ -112,7 +140,7 @@ async def _send_email_impl(
 async def _send_whatsapp_impl(
     session, task, account_id: uuid.UUID, campaign_id: str, campaign_step_id: str, lead_id: str
 ) -> dict:
-    from services.twilio_svc import send_whatsapp
+    from services.mail_provider import send_whatsapp
 
     campaign = await campaign_repo.get_campaign(session, account_id, campaign_id)
     if not campaign:
@@ -134,6 +162,13 @@ async def _send_whatsapp_impl(
     retry_at = await _check_window_or_get_eta(session, account_id, "whatsapp", lead.get("country"))
     if retry_at:
         raise task.retry(eta=retry_at, max_retries=None)
+
+    try:
+        await send_gate.check(session, account_id, "whatsapp", provider=True)
+    except send_gate.SendBlocked as blocked:
+        if blocked.code == "provider_not_configured":  # waiting cannot fix it: report it, do not retry forever
+            return {"status": "failed", "reason": blocked.code}
+        raise task.retry(**_retry_args(blocked))
 
     body = _render(step.body or "", lead)
     result = send_whatsapp(lead["phone"], body)
@@ -160,7 +195,7 @@ async def _send_whatsapp_impl(
         campaign_id=campaign_id,
         lead_id=lead_id,
     )
-    if result["status"] in ("sent", "mock"):
+    if result["status"] == "sent":
         await campaign_repo.increment_counters(session, account_id, campaign_id, sent=1)
     return result
 

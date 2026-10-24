@@ -13,15 +13,16 @@ strictly for the Celery worker process.
 from __future__ import annotations
 
 import asyncio
-import os
 from typing import Awaitable, Callable, TypeVar
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
+from db.url import async_database_url
+
 _T = TypeVar("_T")
 
-_engine = create_async_engine(os.environ["DATABASE_URL"], poolclass=NullPool, future=True)
+_engine = create_async_engine(async_database_url(), poolclass=NullPool, future=True)
 _SessionLocal = async_sessionmaker(bind=_engine, expire_on_commit=False, autoflush=False)
 
 

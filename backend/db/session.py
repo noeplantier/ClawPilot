@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-import os
 from typing import AsyncIterator
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-DATABASE_URL = os.environ["DATABASE_URL"]  # postgresql+asyncpg://user:pass@host:5432/dbname
+from db.url import async_database_url
+
+DATABASE_URL = async_database_url()  # postgresql+asyncpg://user:pass@host:5432/dbname
 
 engine = create_async_engine(DATABASE_URL, pool_pre_ping=True, future=True)
 AsyncSessionLocal = async_sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)

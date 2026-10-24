@@ -1,6 +1,6 @@
 # Feuille de route cloud — option A (FastAPI conservé)
 
-Objectif : transformer ClawPilot en machine de prospection pour commerces locaux
+Objectif : transformer Plantiers - OutreachOS (ex-ClawPilot) en machine de prospection pour commerces locaux
 (sourcing → enrichissement → scoring par signaux → séquence email → suivi des réponses),
 **sans réécrire le socle existant** (Postgres, consentement, Celery, CRM, CI).
 

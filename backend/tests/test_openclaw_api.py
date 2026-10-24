@@ -1,5 +1,5 @@
 """
-ClawPilot SaaS Platform - Backend API Tests
+Plantiers - OutreachOS - Backend API Tests
 Tests: Auth, Leads, Campaigns, Agents, Messages, AI, Analytics, Settings
 """
 
@@ -9,17 +9,28 @@ import uuid
 
 import pytest
 import requests
+from helpers import open_send_limits, unique_email
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
 
+
+def _ai_off(response) -> bool:
+    """The AI composer is off on this server (no key or package): it refuses with 503, it never fabricates a message."""
+    if response.status_code == 503:
+        detail = response.json()["detail"]
+        assert detail["code"] == "ai_not_configured" and "AI composer is off" in detail["message"]
+        return True
+    return False
+
+
 # Test credentials
-TEST_EMAIL = f"test_{uuid.uuid4().hex[:8]}@clawpilot.io"
+TEST_EMAIL = f"test_{uuid.uuid4().hex[:8]}@outreachos.example"
 TEST_PASSWORD = "TestPass123!"
 TEST_ORG = "Test Organization"
 TEST_NAME = "Test User"
 
 # Demo credentials (pre-seeded)
-DEMO_EMAIL = "demo@clawpilot.io"
+DEMO_EMAIL = "demo@outreachos.example"
 DEMO_PASSWORD = "Demo12345!"
 
 
@@ -31,7 +42,7 @@ class TestHealthAndRoot:
         response = requests.get(f"{BASE_URL}/api/")
         assert response.status_code == 200
         data = response.json()
-        assert data["service"] == "clawpilot"
+        assert data["service"] == "plantiers-outreachos"
         assert data["status"] == "ok"
         print("✓ Root endpoint working")
 
@@ -102,7 +113,7 @@ class TestAuthentication:
                 "email": DEMO_EMAIL,
                 "password": DEMO_PASSWORD,
                 "full_name": "Demo User",
-                "organization_name": "ClawPilot Demo",
+                "organization_name": "OutreachOS Demo",
             },
         )
 
@@ -163,7 +174,7 @@ def auth_token():
             "email": DEMO_EMAIL,
             "password": DEMO_PASSWORD,
             "full_name": "Demo User",
-            "organization_name": "ClawPilot Demo",
+            "organization_name": "OutreachOS Demo",
         },
     )
 
@@ -173,8 +184,10 @@ def auth_token():
 
 @pytest.fixture(scope="module")
 def auth_headers(auth_token):
-    """Get auth headers for authenticated tests"""
-    return {"Authorization": f"Bearer {auth_token}"}
+    """Get auth headers for authenticated tests (send limits lifted: these suites send many messages in a row)"""
+    headers = {"Authorization": f"Bearer {auth_token}"}
+    open_send_limits(headers)
+    return headers
 
 
 class TestAnalytics:
@@ -251,7 +264,7 @@ class TestLeads:
         """Test creating a new lead"""
         lead_data = {
             "full_name": "TEST_John Doe",
-            "email": "test_john@example.com",
+            "email": unique_email("john"),
             "company": "Test Corp",
             "title": "CEO",
             "country": "US",
@@ -270,13 +283,37 @@ class TestLeads:
         print(f"✓ Created lead: {data['id']}")
         return data["id"]
 
+    def test_create_lead_duplicate_email_is_a_conflict(self, auth_headers):
+        """The same address twice in one organisation is a 409 with a clear message, never a 500."""
+        email = unique_email("dup")
+        first = requests.post(
+            f"{BASE_URL}/api/leads", headers=auth_headers, json={"full_name": "TEST_Dup", "email": email}
+        )
+        assert first.status_code == 200
+        second = requests.post(
+            f"{BASE_URL}/api/leads", headers=auth_headers, json={"full_name": "TEST_Dup 2", "email": email}
+        )
+        assert second.status_code == 409
+        assert "already exists" in second.json()["detail"]
+
+        # The same address in a patch on another lead is refused the same way.
+        other = requests.post(
+            f"{BASE_URL}/api/leads", headers=auth_headers, json={"full_name": "TEST_Dup 3", "email": unique_email("o")}
+        ).json()
+        patched = requests.patch(f"{BASE_URL}/api/leads/{other['id']}", headers=auth_headers, json={"email": email})
+        assert patched.status_code == 409
+
+        # The refusal leaves the connection usable and the lead unchanged.
+        again = requests.get(f"{BASE_URL}/api/leads", headers=auth_headers)
+        assert again.status_code == 200
+
     def test_update_lead_stage(self, auth_headers):
         """Test updating lead stage"""
         # Create a lead first
         create_resp = requests.post(
             f"{BASE_URL}/api/leads",
             headers=auth_headers,
-            json={"full_name": "TEST_Stage Update", "email": "test_stage@example.com"},
+            json={"full_name": "TEST_Stage Update", "email": unique_email("stage")},
         )
         lead_id = create_resp.json()["id"]
 
@@ -299,7 +336,7 @@ class TestLeads:
         create_resp = requests.post(
             f"{BASE_URL}/api/leads",
             headers=auth_headers,
-            json={"full_name": "TEST_To Delete", "email": "test_delete@example.com"},
+            json={"full_name": "TEST_To Delete", "email": unique_email("delete")},
         )
         lead_id = create_resp.json()["id"]
 
@@ -332,6 +369,8 @@ class TestLeads:
 
 class TestCampaigns:
     """Campaign CRUD tests"""
+
+    STEP = {"channel": "email", "delay_hours": 0, "subject": "Hello", "body": "Hello {{first_name}}", "language": "en"}
 
     def test_list_campaigns(self, auth_headers):
         """Test listing campaigns"""
@@ -377,20 +416,43 @@ class TestCampaigns:
         assert response.json()["status"] == "running"
         print("✓ Campaign status updated")
 
-    def test_launch_campaign(self, auth_headers):
-        """Test launching a campaign"""
-        # Create campaign
+    def test_launch_campaign_without_leads_is_refused(self, auth_headers):
+        """An empty campaign has nothing to launch: no fabricated numbers, an explicit refusal."""
         create_resp = requests.post(
-            f"{BASE_URL}/api/campaigns", headers=auth_headers, json={"name": "TEST_Launch", "goal": "Test launch"}
+            f"{BASE_URL}/api/campaigns",
+            headers=auth_headers,
+            json={"name": "TEST_Launch_Empty", "goal": "Test launch", "steps": [self.STEP]},
         )
         campaign_id = create_resp.json()["id"]
 
-        # Launch
         response = requests.post(f"{BASE_URL}/api/campaigns/{campaign_id}/launch", headers=auth_headers)
-        assert response.status_code == 200
+        assert response.status_code == 400
+        print("✓ Empty campaign refused")
+
+    def test_launch_campaign(self, auth_headers):
+        """Launching runs the first step on the assigned leads; the counters are the real number of sends."""
+        lead = requests.post(
+            f"{BASE_URL}/api/leads",
+            headers=auth_headers,
+            json={"full_name": "TEST_Launch Lead", "email": f"launch_{uuid.uuid4().hex[:8]}@test.example"},
+        ).json()
+        create_resp = requests.post(
+            f"{BASE_URL}/api/campaigns",
+            headers=auth_headers,
+            json={"name": "TEST_Launch", "goal": "Test launch", "steps": [self.STEP]},
+        )
+        campaign_id = create_resp.json()["id"]
+        requests.post(
+            f"{BASE_URL}/api/campaigns/{campaign_id}/assign-leads",
+            headers=auth_headers,
+            json={"lead_ids": [lead["id"]]},
+        )
+
+        response = requests.post(f"{BASE_URL}/api/campaigns/{campaign_id}/launch", headers=auth_headers)
+        assert response.status_code == 200, response.text
         data = response.json()
-        assert data["ok"] == True
-        assert "dispatched" in data
+        assert data["ok"] is True
+        assert data["dispatched"] == 1
         print(f"✓ Campaign launched, dispatched {data['dispatched']} messages")
 
     def test_delete_campaign(self, auth_headers):
@@ -495,13 +557,15 @@ class TestAIGeneration:
         payload = {
             "recipient_name": "John Smith",
             "company": "Acme Corp",
-            "product": "ClawPilot outreach platform",
+            "product": "Plantiers - OutreachOS platform",
             "language": "en",
             "tone": "professional",
             "channel": "email",
             "goal": "book a demo call",
         }
         response = requests.post(f"{BASE_URL}/api/ai/generate", headers=auth_headers, json=payload)
+        if _ai_off(response):
+            return
         assert response.status_code == 200
         data = response.json()
 
@@ -518,13 +582,15 @@ class TestAIGeneration:
         payload = {
             "recipient_name": "Maria Garcia",
             "company": "Tech Startup",
-            "product": "ClawPilot",
+            "product": "Plantiers - OutreachOS",
             "language": "en",
             "tone": "friendly",
             "channel": "whatsapp",
             "goal": "quick chat",
         }
         response = requests.post(f"{BASE_URL}/api/ai/generate", headers=auth_headers, json=payload)
+        if _ai_off(response):
+            return
         assert response.status_code == 200
         data = response.json()
 
@@ -539,12 +605,14 @@ class TestAIGeneration:
         for lang in ["es", "fr", "de"]:
             payload = {
                 "recipient_name": "Test User",
-                "product": "ClawPilot",
+                "product": "Plantiers - OutreachOS",
                 "language": lang,
                 "tone": "professional",
                 "channel": "email",
             }
             response = requests.post(f"{BASE_URL}/api/ai/generate", headers=auth_headers, json=payload)
+            if _ai_off(response):
+                return
             assert response.status_code == 200
             data = response.json()
             assert data["language"] == lang
@@ -563,8 +631,12 @@ class TestMessages:
         print(f"✓ Listed {len(data)} messages")
 
     def test_send_email(self, auth_headers):
-        """Test sending email (mock expected)"""
-        payload = {"to": "test@example.com", "subject": "Test Email", "body": "This is a test email from ClawPilot."}
+        """Test sending email (the test server records it in its sink: nothing leaves, nothing is pretended)"""
+        payload = {
+            "to": "test@example.com",
+            "subject": "Test Email",
+            "body": "This is a test email from Plantiers - OutreachOS.",
+        }
         response = requests.post(f"{BASE_URL}/api/messages/email", headers=auth_headers, json=payload)
         assert response.status_code == 200
         data = response.json()
@@ -573,14 +645,14 @@ class TestMessages:
         assert "result" in data
         assert data["message"]["channel"] == "email"
         assert data["message"]["to"] == payload["to"]
-        # Status should be sent or mock (mock expected due to unverified sender)
-        assert data["result"]["status"] in ["sent", "mock"]
+        # The CI server runs with OUTREACH_TEST_SINK: the message is recorded as sent, and its id says it went nowhere
+        assert data["result"]["status"] == "sent" and data["result"]["provider_id"].startswith("sink:")
 
         print(f"✓ Email sent with status: {data['result']['status']}")
 
     def test_send_whatsapp(self, auth_headers):
-        """Test sending WhatsApp (mock expected)"""
-        payload = {"to": "+14155550123", "body": "Test WhatsApp message from ClawPilot"}
+        """Test sending WhatsApp (the test server records it in its sink)"""
+        payload = {"to": "+14155550123", "body": "Test WhatsApp message from Plantiers - OutreachOS"}
         response = requests.post(f"{BASE_URL}/api/messages/whatsapp", headers=auth_headers, json=payload)
         assert response.status_code == 200
         data = response.json()
@@ -588,8 +660,7 @@ class TestMessages:
         assert "message" in data
         assert "result" in data
         assert data["message"]["channel"] == "whatsapp"
-        # Status should be mock (SK key provided, not AC Account SID)
-        assert data["result"]["status"] in ["sent", "mock"]
+        assert data["result"]["status"] == "sent" and data["result"]["provider_id"].startswith("sink:")
 
         print(f"✓ WhatsApp sent with status: {data['result']['status']}")
 
@@ -665,7 +736,7 @@ class TestMultiTenancy:
         lead_resp = requests.post(
             f"{BASE_URL}/api/leads",
             headers=headers1,
-            json={"full_name": "ISOLATION_TEST_Lead", "email": "isolation@test.com"},
+            json={"full_name": "ISOLATION_TEST_Lead", "email": unique_email("isolation")},
         )
         lead_id = lead_resp.json()["id"]
 

@@ -1,12 +1,4 @@
-"""Shared dependencies: DB clients (Mongo legacy + Postgres) and JWT auth.
-
-`db` (Mongo) stays until every route listed in the migration plan is cut over
-(plan doc, section "Séquence de migration") — leads/campaigns/messages/webhooks/
-analytics/agents/settings still read/write it. `get_current_user` itself is
-already Postgres-backed: new accounts/users are created there, and their UUIDs
-flow through unchanged as the `org_id` scoping key for the not-yet-migrated
-Mongo collections.
-"""
+"""Shared dependencies: JWT auth (PostgreSQL-backed users)."""
 
 import os
 from datetime import datetime, timedelta, timezone
@@ -16,7 +8,6 @@ import jwt
 from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from motor.motor_asyncio import AsyncIOMotorClient
 from passlib.context import CryptContext
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,14 +17,9 @@ from repositories import account_repo
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
 
-MONGO_URL = os.environ["MONGO_URL"]
-DB_NAME = os.environ["DB_NAME"]
 JWT_SECRET = os.environ["JWT_SECRET"]
 JWT_ALGORITHM = os.environ.get("JWT_ALGORITHM", "HS256")
 JWT_EXPIRE_MINUTES = int(os.environ.get("JWT_EXPIRE_MINUTES", "1440"))
-
-_client = AsyncIOMotorClient(MONGO_URL)
-db = _client[DB_NAME]
 
 pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer(auto_error=False)
@@ -79,8 +65,6 @@ async def get_current_user(
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
 
-    # dict shape preserved exactly as the legacy Mongo document (minus password_hash)
-    # so every existing route/test reading user["org_id"] etc. keeps working unchanged.
     return {
         "id": str(user.id),
         "email": user.email,

@@ -1,5 +1,5 @@
 """
-ClawPilot SaaS Platform - Iteration 2 Feature Tests
+Plantiers - OutreachOS - Iteration 2 Feature Tests
 Tests: Bulk Leads, Batch Messaging, Campaign Assign/Run-Step, AI Variants
 """
 
@@ -8,11 +8,22 @@ import uuid
 
 import pytest
 import requests
+from helpers import open_send_limits
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
 
+
+def _ai_off(response) -> bool:
+    """The AI composer is off on this server (no key or package): it refuses with 503, it never fabricates a message."""
+    if response.status_code == 503:
+        detail = response.json()["detail"]
+        assert detail["code"] == "ai_not_configured" and "AI composer is off" in detail["message"]
+        return True
+    return False
+
+
 # Demo credentials (pre-seeded)
-DEMO_EMAIL = "demo@clawpilot.io"
+DEMO_EMAIL = "demo@outreachos.example"
 DEMO_PASSWORD = "Demo12345!"
 
 
@@ -26,7 +37,7 @@ def auth_token():
             "email": DEMO_EMAIL,
             "password": DEMO_PASSWORD,
             "full_name": "Demo User",
-            "organization_name": "ClawPilot Demo",
+            "organization_name": "OutreachOS Demo",
         },
     )
 
@@ -36,8 +47,10 @@ def auth_token():
 
 @pytest.fixture(scope="module")
 def auth_headers(auth_token):
-    """Get auth headers for authenticated tests"""
-    return {"Authorization": f"Bearer {auth_token}"}
+    """Get auth headers for authenticated tests (send limits lifted: these suites send many messages in a row)"""
+    headers = {"Authorization": f"Bearer {auth_token}"}
+    open_send_limits(headers)
+    return headers
 
 
 # ============================================================================
@@ -187,7 +200,7 @@ class TestBatchEmail:
             json={
                 "lead_ids": lead_ids,
                 "subject": "Hello {{first_name}} from {{company}}",
-                "body": "Hi {{first_name}},\n\nThis is a test message for {{company}}.\n\nBest,\nClawPilot",
+                "body": "Hi {{first_name}},\n\nThis is a test message for {{company}}.\n\nBest,\nPlantiers",
             },
         )
         assert response.status_code == 200, f"Batch email failed: {response.text}"
@@ -196,7 +209,7 @@ class TestBatchEmail:
         # Verify response structure
         assert "dispatched" in data
         assert "sent" in data
-        assert "mocked" in data
+        assert "mocked" not in data  # a send is real or refused: there is no pretend category
         assert "failed" in data
         assert "skipped" in data
         assert "total" in data
@@ -204,10 +217,10 @@ class TestBatchEmail:
 
         # Verify counts
         assert data["total"] == 2
-        assert data["dispatched"] == data["sent"] + data["mocked"]
+        assert data["dispatched"] == data["sent"]
         assert data["skipped"] == 0  # All leads have emails
 
-        print(f"✓ Batch email: dispatched={data['dispatched']}, sent={data['sent']}, mocked={data['mocked']}")
+        print(f"✓ Batch email: dispatched={data['dispatched']}, sent={data['sent']}")
 
     def test_batch_email_token_substitution(self, auth_headers):
         """Test that tokens are substituted correctly in batch emails"""
@@ -302,16 +315,16 @@ class TestBatchWhatsApp:
         # Verify response structure
         assert "dispatched" in data
         assert "sent" in data
-        assert "mocked" in data
+        assert "mocked" not in data  # a send is real or refused: there is no pretend category
         assert "failed" in data
         assert "skipped" in data
         assert "total" in data
 
         # Verify counts
         assert data["total"] == 2
-        assert data["dispatched"] == data["sent"] + data["mocked"]
+        assert data["dispatched"] == data["sent"]
 
-        print(f"✓ Batch WhatsApp: dispatched={data['dispatched']}, sent={data['sent']}, mocked={data['mocked']}")
+        print(f"✓ Batch WhatsApp: dispatched={data['dispatched']}, sent={data['sent']}")
 
     def test_batch_whatsapp_skips_no_phone(self, auth_headers):
         """Test that batch WhatsApp skips leads without phone"""
@@ -492,14 +505,14 @@ class TestCampaignRunStep:
         # Verify response structure
         assert "dispatched" in data
         assert "sent" in data
-        assert "mocked" in data
+        assert "mocked" not in data  # a send is real or refused: there is no pretend category
         assert "failed" in data
         assert "skipped" in data
         assert "total" in data
 
         # Verify execution
         assert data["total"] == 2
-        assert data["dispatched"] == data["sent"] + data["mocked"]
+        assert data["dispatched"] == data["sent"]
 
         print(f"✓ Run step: dispatched={data['dispatched']}, total={data['total']}")
 
@@ -569,13 +582,15 @@ class TestAIGenerateVariants:
         payload = {
             "recipient_name": "John Smith",
             "company": "Acme Corp",
-            "product": "ClawPilot outreach platform",
+            "product": "Plantiers - OutreachOS platform",
             "language": "en",
             "tone": "professional",  # This is ignored, all 3 tones generated
             "channel": "email",
             "goal": "book a demo call",
         }
         response = requests.post(f"{BASE_URL}/api/ai/generate/variants", headers=auth_headers, json=payload)
+        if _ai_off(response):
+            return
         assert response.status_code == 200, f"Generate variants failed: {response.text}"
         data = response.json()
 
@@ -597,13 +612,15 @@ class TestAIGenerateVariants:
         payload = {
             "recipient_name": "Maria Garcia",
             "company": "Tech Startup",
-            "product": "ClawPilot",
+            "product": "Plantiers - OutreachOS",
             "language": "en",
             "tone": "friendly",
             "channel": "whatsapp",
             "goal": "quick chat",
         }
         response = requests.post(f"{BASE_URL}/api/ai/generate/variants", headers=auth_headers, json=payload)
+        if _ai_off(response):
+            return
         assert response.status_code == 200
         data = response.json()
 
@@ -626,7 +643,7 @@ class TestRegressionEndpoints:
         """Test root API endpoint still works"""
         response = requests.get(f"{BASE_URL}/api/")
         assert response.status_code == 200
-        assert response.json()["service"] == "clawpilot"
+        assert response.json()["service"] == "plantiers-outreachos"
         print("✓ Root endpoint working")
 
     def test_health_endpoint(self):
@@ -692,12 +709,14 @@ class TestRegressionEndpoints:
             headers=auth_headers,
             json={
                 "recipient_name": "Test User",
-                "product": "ClawPilot",
+                "product": "Plantiers - OutreachOS",
                 "language": "en",
                 "tone": "professional",
                 "channel": "email",
             },
         )
+        if _ai_off(response):
+            return
         assert response.status_code == 200
         assert "body" in response.json()
         print("✓ AI generate single working")

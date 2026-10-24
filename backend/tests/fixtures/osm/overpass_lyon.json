@@ -1,0 +1,14 @@
+{"version": 0.6, "elements": [
+ {"type": "node", "id": 101, "lat": 45.7640, "lon": 4.8357, "timestamp": "2026-09-01T10:00:00Z",
+  "tags": {"name": "Chez Marcel", "amenity": "restaurant", "addr:housenumber": "12", "addr:street": "Rue Merciere",
+           "addr:postcode": "69002", "addr:city": "Lyon", "phone": "+33 4 78 12 34 56; +33 6 00 00 00 00",
+           "contact:email": "Contact@Chez-Marcel.example;autre@x.example", "website": "https://chez-marcel.example",
+           "opening_hours": "Mo-Su 12:00-14:00"}},
+ {"type": "way", "id": 202, "center": {"lat": 45.7600, "lon": 4.8400}, "timestamp": "2026-08-15T10:00:00Z",
+  "tags": {"name": "Boulangerie Martin", "shop": "bakery"}},
+ {"type": "node", "id": 303, "lat": 45.7, "lon": 4.8, "tags": {"amenity": "restaurant"}},
+ {"type": "node", "id": 404, "tags": {"name": "Sans position", "amenity": "cafe"}},
+ {"type": "node", "id": 505, "lat": 45.75, "lon": 4.83, "tags": {"name": "Mauvais contact", "amenity": "cafe",
+  "email": "pas-un-email", "phone": "abc", "website": "javascript:alert(1)"}},
+ {"type": "node", "id": 101, "lat": 45.7640, "lon": 4.8357, "tags": {"name": "Chez Marcel (doublon)", "amenity": "restaurant"}}
+]}

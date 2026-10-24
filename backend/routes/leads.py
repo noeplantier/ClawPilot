@@ -10,12 +10,48 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.session import get_db_session
-from deps import db, get_current_user
-from models import Activity, ConsentStatus, ConsentUpdateIn, Lead, LeadCreate, LeadUpdate
-from repositories import consent_repo, lead_repo, tags_repo
+from deps import get_current_user
+from models import ConsentStatus, ConsentUpdateIn, HeatOut, Lead, LeadCreate, LeadUpdate
+from repositories import activity_repo, consent_repo, lead_repo, tags_repo
 from repositories.lead_repo import LeadExtra
+from services.outreach_os import heat as heat_rules
 
 router = APIRouter(prefix="/leads", tags=["leads"])
+
+
+def _score_of(lead, extra: LeadExtra) -> Optional[int]:
+    """The score a lead is ranked on: a discovery prospect's latest score, else the CRM score (0 means not scored)."""
+    if extra.prospect_score is not None:
+        return extra.prospect_score
+    return lead.score if lead.score > 0 else None
+
+
+def _heat(lead, extra: LeadExtra) -> HeatOut:
+    """Heat of a lead: its real information and, when it has one, its score."""
+    h = heat_rules.heat_of(
+        {
+            "email": lead.email,
+            "phone": lead.phone,
+            "website": lead.website,
+            "city": lead.city,
+            "company": lead.company,
+            "vertical": lead.vertical,
+            "country": lead.country,
+            "title": lead.title,
+        },
+        _score_of(lead, extra),
+    )
+    return HeatOut(
+        value=h.value,
+        tier=h.tier,
+        info_pct=h.info_pct,
+        known=list(h.known),
+        missing=list(h.missing),
+        scored=h.scored,
+        top=h.top,
+        has_contact=h.has_contact,
+        score=h.score,
+    )
 
 
 def _to_schema(lead, extra: LeadExtra) -> Lead:
@@ -33,18 +69,16 @@ def _to_schema(lead, extra: LeadExtra) -> Lead:
         tags=list(lead.tags),
         source=extra.source,
         notes=lead.notes,
-        score=lead.score,
+        score=extra.prospect_score if extra.prospect_score is not None else lead.score,
         email_consent=cast(ConsentStatus, extra.email_consent),
         whatsapp_consent=cast(ConsentStatus, extra.whatsapp_consent),
         created_at=lead.created_at,
+        city=lead.city,
+        website=lead.website,
+        vertical=lead.vertical,
+        heat=_heat(lead, extra),
+        review_status=lead.review_status,
     )
-
-
-async def _log(org_id: str, kind: str, title: str, meta: dict | None = None):
-    act = Activity(org_id=org_id, kind=kind, title=title, meta=meta or {})
-    d = act.model_dump()
-    d["created_at"] = d["created_at"].isoformat()
-    await db.activity.insert_one(d)
 
 
 class BulkLeadsIn(BaseModel):
@@ -79,9 +113,13 @@ async def list_leads(
     session: AsyncSession = Depends(get_db_session),
     stage: Optional[str] = None,
     search: Optional[str] = None,
+    sort: str = Query("heat", pattern="^(heat|recent)$"),
     limit: int = Query(500, le=1000),
 ):
-    rows = await lead_repo.list_leads(session, uuid.UUID(user["org_id"]), stage=stage, search=search, limit=limit)
+    """Hottest first by default: real information and score (see services/outreach_os/heat.py)."""
+    rows = await lead_repo.list_leads(
+        session, uuid.UUID(user["org_id"]), stage=stage, search=search, sort=sort, limit=limit
+    )
     return [_to_schema(lead, extra) for lead, extra in rows]
 
 
@@ -91,8 +129,11 @@ async def create_lead(
     user: dict = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
-    lead, extra = await lead_repo.create_lead(session, uuid.UUID(user["org_id"]), payload.model_dump())
-    await _log(user["org_id"], "lead.created", f"New lead added — {lead.full_name}")
+    try:
+        lead, extra = await lead_repo.create_lead(session, uuid.UUID(user["org_id"]), payload.model_dump())
+    except lead_repo.DuplicateEmail:
+        raise HTTPException(status_code=409, detail="A lead with this email already exists")
+    await activity_repo.record(session, user["org_id"], "lead.created", f"New lead added — {lead.full_name}")
     return _to_schema(lead, extra)
 
 
@@ -106,8 +147,11 @@ async def bulk_create_leads(
     result = await lead_repo.bulk_create_leads(
         session, uuid.UUID(user["org_id"]), [row.model_dump() for row in payload.leads]
     )
-    await _log(
-        user["org_id"], "lead.bulk", f"Bulk import · +{result.created} leads ({result.skipped} duplicates skipped)"
+    await activity_repo.record(
+        session,
+        user["org_id"],
+        "lead.bulk",
+        f"Bulk import · +{result.created} leads ({result.skipped} duplicates skipped)",
     )
     return BulkLeadsOut(created=result.created, skipped=result.skipped, errors=result.errors, lead_ids=result.lead_ids)
 
@@ -119,7 +163,9 @@ async def bulk_update_stage(
     session: AsyncSession = Depends(get_db_session),
 ):
     updated = await lead_repo.bulk_update_stage(session, uuid.UUID(user["org_id"]), payload.lead_ids, payload.stage)
-    await _log(user["org_id"], "lead.bulk_stage", f"Bulk stage update → {payload.stage} · {updated} leads")
+    await activity_repo.record(
+        session, user["org_id"], "lead.bulk_stage", f"Bulk stage update → {payload.stage} · {updated} leads"
+    )
     return {"updated": updated}
 
 
@@ -130,7 +176,7 @@ async def bulk_delete_leads(
     session: AsyncSession = Depends(get_db_session),
 ):
     deleted = await lead_repo.bulk_delete_leads(session, uuid.UUID(user["org_id"]), payload.lead_ids)
-    await _log(user["org_id"], "lead.bulk_delete", f"Bulk delete · {deleted} leads removed")
+    await activity_repo.record(session, user["org_id"], "lead.bulk_delete", f"Bulk delete · {deleted} leads removed")
     return {"deleted": deleted}
 
 
@@ -143,7 +189,9 @@ async def bulk_tag_leads(
     updated = await lead_repo.bulk_tag_leads(
         session, uuid.UUID(user["org_id"]), payload.lead_ids, payload.tags, payload.mode
     )
-    await _log(user["org_id"], "lead.bulk_tag", f"Bulk {payload.mode} tags {payload.tags} · {updated} leads")
+    await activity_repo.record(
+        session, user["org_id"], "lead.bulk_tag", f"Bulk {payload.mode} tags {payload.tags} · {updated} leads"
+    )
     return {"updated": updated}
 
 
@@ -235,12 +283,15 @@ async def update_lead(
     upd = {k: v for k, v in payload.model_dump().items() if v is not None}
     if not upd:
         raise HTTPException(status_code=400, detail="No fields to update")
-    res = await lead_repo.update_lead(session, uuid.UUID(user["org_id"]), lead_id, upd)
+    try:
+        res = await lead_repo.update_lead(session, uuid.UUID(user["org_id"]), lead_id, upd)
+    except lead_repo.DuplicateEmail:
+        raise HTTPException(status_code=409, detail="A lead with this email already exists")
     if not res:
         raise HTTPException(status_code=404, detail="Lead not found")
     lead, extra = res
     if "stage" in upd:
-        await _log(user["org_id"], "lead.stage", f"{lead.full_name} → {upd['stage']}")
+        await activity_repo.record(session, user["org_id"], "lead.stage", f"{lead.full_name} → {upd['stage']}")
     return _to_schema(lead, extra)
 
 
@@ -265,7 +316,7 @@ async def enrich_leads(
     country, tags, source intent, engagement history — see services/scoring.py).
     Each recomputation is recorded in `lead_scores` for a full audit trail."""
     count = await lead_repo.enrich_leads(session, uuid.UUID(user["org_id"]))
-    await _log(user["org_id"], "lead.rescored", f"Rescored {count} leads")
+    await activity_repo.record(session, user["org_id"], "lead.rescored", f"Rescored {count} leads")
     return {"enriched": count}
 
 
@@ -298,7 +349,8 @@ async def update_consent(
         status=payload.status,
         source=payload.source,
     )
-    await _log(
+    await activity_repo.record(
+        session,
         user["org_id"],
         "lead.consent",
         f"{lead.full_name} · {payload.channel} → {payload.status} ({payload.source})",

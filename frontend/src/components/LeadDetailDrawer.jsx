@@ -8,7 +8,7 @@ import {
 } from "@phosphor-icons/react";
 
 const STAGE_COLORS = {
-  new: "#DC2626", contacted: "#475569", engaged: "#0F172A",
+  new: "#4F46E5", contacted: "#475569", engaged: "#0F172A",
   qualified: "#F59E0B", won: "#10B981", lost: "#EF4444",
 };
 const CONSENT_CHIP = {
@@ -60,23 +60,23 @@ export default function LeadDetailDrawer({ open, leadId, onClose, onUpdate }) {
           onClick={(e) => e.stopPropagation()}
           data-testid="lead-detail-drawer"
         >
-          <div className="sticky top-0 bg-[#FFFFFF] border-b border-[#D6D3C8] px-6 py-4 flex items-center justify-between z-10">
+          <div className="sticky top-0 bg-[#FFFFFF] border-b border-[#D3DBEA] px-6 py-4 flex items-center justify-between z-10">
             <div>
               <div className="mono-accent" style={{ color: STAGE_COLORS[lead.stage] }}>/// lead · {lead.stage}</div>
               <h2 className="text-2xl font-black tracking-tighter text-[#0A0A0A]">{lead.full_name}</h2>
             </div>
-            <button onClick={onClose} className="text-[#595955] hover:text-[#DC2626]" data-testid="close-lead-drawer">
+            <button onClick={onClose} className="text-[#595955] hover:text-[#4F46E5]" data-testid="close-lead-drawer">
               <X size={22} />
             </button>
           </div>
 
-          <div className="px-6 pt-4 flex items-center gap-1.5 border-b border-[#D6D3C8] overflow-x-auto">
+          <div className="px-6 pt-4 flex items-center gap-1.5 border-b border-[#D3DBEA] overflow-x-auto">
             {TABS.map(({ key, label, icon: Icon }) => (
               <button
                 key={key}
                 onClick={() => setTab(key)}
                 className={`flex items-center gap-1.5 px-3 py-2 text-xs font-mono uppercase border-b-2 transition-colors whitespace-nowrap ${
-                  tab === key ? "border-[#DC2626] text-[#DC2626]" : "border-transparent text-[#999995] hover:text-[#0A0A0A]"
+                  tab === key ? "border-[#4F46E5] text-[#4F46E5]" : "border-transparent text-[#6B6B66] hover:text-[#0A0A0A]"
                 }`}
                 data-testid={`lead-tab-${key}`}
               >
@@ -118,8 +118,8 @@ function InfoTab({ lead }) {
       <div className="surface p-4">
         <div className="mono-accent mb-2">/// lead.score</div>
         <div className="flex items-center gap-3">
-          <div className="flex-1 h-2 bg-[#F0F0EA] rounded overflow-hidden">
-            <div className="h-full bg-gradient-to-r from-[#DC2626] to-[#0F172A]" style={{ width: `${lead.score}%` }} />
+          <div className="flex-1 h-2 bg-[#E6ECF6] rounded overflow-hidden">
+            <div className="h-full bg-gradient-to-r from-[#4F46E5] to-[#0F172A]" style={{ width: `${lead.score}%` }} />
           </div>
           <span className="font-mono text-sm font-bold">{lead.score}</span>
         </div>
@@ -192,13 +192,13 @@ function NotesTab({ leadId }) {
           <motion.div key={n.id} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} className="surface p-3" data-testid={`note-${n.id}`}>
             <div className="flex items-start justify-between gap-2">
               <p className="text-sm text-[#0A0A0A] whitespace-pre-wrap flex-1">{n.body}</p>
-              <button onClick={() => remove(n.id)} className="text-[#999995] hover:text-[#DC2626] shrink-0"><Trash size={13} /></button>
+              <button onClick={() => remove(n.id)} className="text-[#6B6B66] hover:text-[#4F46E5] shrink-0"><Trash size={13} /></button>
             </div>
             <div className="mono-accent mt-2 text-[9px]">{new Date(n.created_at).toLocaleString()}</div>
           </motion.div>
         ))}
         {notes.length === 0 && (
-          <div className="text-sm text-[#999995] italic py-4 text-center">No notes yet.</div>
+          <div className="text-sm text-[#6B6B66] italic py-4 text-center">No notes yet.</div>
         )}
       </div>
     </div>
@@ -266,25 +266,25 @@ function TasksTab({ leadId }) {
               <CheckSquare
                 size={18}
                 weight={t.status === "done" ? "fill" : "regular"}
-                className={t.status === "done" ? "text-[#10B981]" : "text-[#999995]"}
+                className={t.status === "done" ? "text-[#10B981]" : "text-[#6B6B66]"}
               />
             </button>
-            <span className={`text-sm flex-1 ${t.status === "done" ? "line-through text-[#999995]" : "text-[#0A0A0A]"}`}>
+            <span className={`text-sm flex-1 ${t.status === "done" ? "line-through text-[#6B6B66]" : "text-[#0A0A0A]"}`}>
               {t.title}
             </span>
             {t.due_at && <span className="mono-accent text-[9px]">{new Date(t.due_at).toLocaleDateString()}</span>}
-            <button onClick={() => remove(t.id)} className="text-[#999995] hover:text-[#DC2626]"><Trash size={13} /></button>
+            <button onClick={() => remove(t.id)} className="text-[#6B6B66] hover:text-[#4F46E5]"><Trash size={13} /></button>
           </motion.div>
         ))}
         {tasks.length === 0 && (
-          <div className="text-sm text-[#999995] italic py-4 text-center">No tasks yet.</div>
+          <div className="text-sm text-[#6B6B66] italic py-4 text-center">No tasks yet.</div>
         )}
       </div>
     </div>
   );
 }
 
-const TAG_COLORS = ["#DC2626", "#0F172A", "#10B981", "#F59E0B", "#475569", "#7C3AED"];
+const TAG_COLORS = ["#4F46E5", "#0F172A", "#10B981", "#F59E0B", "#475569", "#7C3AED"];
 
 function TagsTab({ lead, onChanged }) {
   const [allTags, setAllTags] = useState([]);
@@ -357,7 +357,7 @@ function TagsTab({ lead, onChanged }) {
               <button onClick={() => detach(t.id)} disabled={busy}><X size={10} /></button>
             </span>
           ))}
-          {attached.length === 0 && <span className="text-sm text-[#999995] italic">No tags attached.</span>}
+          {attached.length === 0 && <span className="text-sm text-[#6B6B66] italic">No tags attached.</span>}
         </div>
       </div>
 
@@ -422,7 +422,7 @@ function HistoryTab({ leadId }) {
     api.get("/messages", { params: { lead_id: leadId } }).then((r) => setMessages(r.data)).finally(() => setLoading(false));
   }, [leadId]);
 
-  if (loading) return <div className="text-sm text-[#999995] italic py-4 text-center">Loading...</div>;
+  if (loading) return <div className="text-sm text-[#6B6B66] italic py-4 text-center">Loading...</div>;
 
   return (
     <div className="space-y-2">
@@ -440,7 +440,7 @@ function HistoryTab({ leadId }) {
         </div>
       ))}
       {messages.length === 0 && (
-        <div className="text-sm text-[#999995] italic py-4 text-center">No messages sent to this lead yet.</div>
+        <div className="text-sm text-[#6B6B66] italic py-4 text-center">No messages sent to this lead yet.</div>
       )}
     </div>
   );
