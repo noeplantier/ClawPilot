@@ -4,7 +4,6 @@ their real score (a discovery prospect is scored in `prospect_scores`, not in `L
 import os
 import uuid
 
-import pytest
 import requests
 from sqlalchemy import Integer, literal, select
 
@@ -132,10 +131,12 @@ def test_leads_rank_a_prospect_on_its_real_score_and_agree_with_the_prospects_pa
     assert _get(h, "/leads")[0]["full_name"] == "Top Rich" and _get(h, "/leads")[0]["heat"]["top"] is True
 
 
-@pytest.mark.parametrize("score", [None, 0, 37, 59, 60, 80, 100])
-def test_the_sql_twin_gives_exactly_the_python_top_and_empty_flags(score):
-    h, me = _org()
+def test_the_sql_twin_gives_exactly_the_python_top_and_empty_flags():
+    _, me = (
+        _org()
+    )  # one organisation for every score: the sign-up limiter of the test server is shared by the whole suite
     account = uuid.UUID(me["org_id"])
+    scores = [None, 0, 37, 59, 60, 80, 100]
     samples = []
     for mask in range(0, 256, 5):  # a spread of the 256 combinations of known / unknown fields
         samples.append(
@@ -150,16 +151,24 @@ def test_the_sql_twin_gives_exactly_the_python_top_and_empty_flags(score):
         )
 
     async def go(session):
-        for n, values in enumerate(samples):
-            session.add(Lead(account_id=account, full_name=f"Sample {n}", **values))
+        for k, score in enumerate(scores):
+            for n, values in enumerate(samples):
+                email = values["email"] and f"{k}.{values['email']}"  # unique per organisation
+                session.add(Lead(account_id=account, full_name=f"Sample {k} {n}", **{**values, "email": email}))
         await session.flush()
-        heat = heat_sql.heat_sql(literal(score, type_=Integer))
-        rows = await session.execute(
-            select(Lead.full_name, heat_sql.has_contact_sql(), heat_sql.top_sql(heat)).where(Lead.account_id == account)
-        )
-        return {name: (bool(c), bool(t)) for name, c, t in rows.all()}
+        out = {}
+        for k, score in enumerate(scores):
+            heat = heat_sql.heat_sql(literal(score, type_=Integer))
+            rows = await session.execute(
+                select(Lead.full_name, heat_sql.has_contact_sql(), heat_sql.top_sql(heat)).where(
+                    Lead.account_id == account, Lead.full_name.like(f"Sample {k} %")
+                )
+            )
+            out[k] = {name: (bool(c), bool(t)) for name, c, t in rows.all()}
+        return out
 
     got = run_async(go)
-    for n, values in enumerate(samples):
-        expected = heat_rules.heat_of(values, score)
-        assert got[f"Sample {n}"] == (expected.has_contact, expected.top), (n, values, score)
+    for k, score in enumerate(scores):
+        for n, values in enumerate(samples):
+            expected = heat_rules.heat_of(values, score)
+            assert got[k][f"Sample {k} {n}"] == (expected.has_contact, expected.top), (n, values, score)

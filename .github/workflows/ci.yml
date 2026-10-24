@@ -117,6 +117,8 @@ jobs:
       OUTREACH_TEST_SINK: "true"
       FEATURE_DEMO_DATA: "true"
       OUTREACH_LIVE_PHONES: "+33600000001" # a fictional number: the WhatsApp test route only reaches listed numbers
+      # The suite registers one organisation per test (about 300 now): the sign-up limit (300 an hour, in memory) stays on in production.
+      REGISTER_MAX_PER_HOUR: "2000"
       REACT_APP_BACKEND_URL: http://localhost:8000
     steps:
       - uses: actions/checkout@v4
