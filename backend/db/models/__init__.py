@@ -5,6 +5,7 @@ from db.models.account import Account, User
 from db.models.agent import Agent
 from db.models.campaign import Campaign, CampaignLead, CampaignStep, SendPolicy
 from db.models.consent import ConsentCurrent, ConsentRecord
+from db.models.job_run import JobRun
 from db.models.lead import Contact, Lead, LeadScore, LeadSource
 from db.models.map_jobs import MapSearchJob, MapSearchResult, SourceCache
 from db.models.outbound import OutboundEvent, OutboundMessage
@@ -42,6 +43,7 @@ __all__ = [
     "Lead",
     "LeadScore",
     "LeadSource",
+    "JobRun",
     "EmailSend",
     "OutreachEvent",
     "WhatsappSend",

@@ -257,6 +257,15 @@ jobs:
             sleep 1
           done
           echo "Server failed to become healthy" && cat server.log && exit 1
+      - name: Start real Celery automation worker
+        working-directory: backend
+        run: |
+          nohup celery -A celery_app worker -Q automation -l warning >/dev/null 2>&1 &
+          for i in $(seq 1 20); do
+            if celery -A celery_app inspect ping --timeout=1 >/dev/null 2>&1; then exit 0; fi
+            sleep 1
+          done
+          echo "Celery automation worker failed to become ready" && exit 1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ env.NODE_VERSION }}

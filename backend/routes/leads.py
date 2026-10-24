@@ -2,21 +2,38 @@
 
 import csv
 import io
+import logging
 import uuid
+from datetime import datetime, timezone
 from typing import List, Optional, cast
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from db.models import Company, JobRun
+from db.models import Lead as LeadRow
+from db.models import PublicPageCache
 from db.session import get_db_session
 from deps import get_current_user
-from models import ConsentStatus, ConsentUpdateIn, HeatOut, Lead, LeadCreate, LeadUpdate
+from models import (
+    ConsentStatus,
+    ConsentUpdateIn,
+    HeatOut,
+    Lead,
+    LeadCreate,
+    LeadUpdate,
+    ScoreLeadsIn,
+    ScoreLeadsQueued,
+)
 from repositories import activity_repo, consent_repo, lead_repo, tags_repo
 from repositories.lead_repo import LeadExtra
 from services.outreach_os import heat as heat_rules
+from tasks.qualification_tasks import score_selected_leads as score_selected_leads_task
 
 router = APIRouter(prefix="/leads", tags=["leads"])
+logger = logging.getLogger(__name__)
 
 
 def _score_of(lead, extra: LeadExtra) -> Optional[int]:
@@ -54,7 +71,7 @@ def _heat(lead, extra: LeadExtra) -> HeatOut:
     )
 
 
-def _to_schema(lead, extra: LeadExtra) -> Lead:
+def _to_schema(lead, extra: LeadExtra, *, enrichment_completed: bool = False) -> Lead:
     return Lead(
         id=str(lead.id),
         org_id=str(lead.account_id),
@@ -81,7 +98,35 @@ def _to_schema(lead, extra: LeadExtra) -> Lead:
         digital_maturity=lead.digital_maturity,
         fit_score=lead.fit_score,
         priority=lead.priority,
+        qualification_scored_at=lead.qualification_scored_at,
+        enrichment_status="completed" if enrichment_completed else "required",
         review_status=lead.review_status,
+    )
+
+
+async def _enriched_lead_ids(session: AsyncSession, lead_ids: list[uuid.UUID]) -> set[uuid.UUID]:
+    if not lead_ids:
+        return set()
+    completed_cache = (
+        select(PublicPageCache.id)
+        .where(
+            PublicPageCache.status == "completed",
+            or_(
+                and_(LeadRow.website.is_not(None), PublicPageCache.url == LeadRow.website),
+                and_(LeadRow.website.is_(None), PublicPageCache.url == Company.website),
+            ),
+        )
+        .correlate(LeadRow, Company)
+        .exists()
+    )
+    return set(
+        (
+            await session.execute(
+                select(LeadRow.id)
+                .outerjoin(Company, Company.id == LeadRow.company_id)
+                .where(LeadRow.id.in_(lead_ids), completed_cache)
+            )
+        ).scalars()
     )
 
 
@@ -124,7 +169,10 @@ async def list_leads(
     rows = await lead_repo.list_leads(
         session, uuid.UUID(user["org_id"]), stage=stage, search=search, sort=sort, limit=limit
     )
-    return [_to_schema(lead, extra) for lead, extra in rows]
+    if not rows:
+        return []
+    enriched_ids = await _enriched_lead_ids(session, [lead.id for lead, _ in rows])
+    return [_to_schema(lead, extra, enrichment_completed=lead.id in enriched_ids) for lead, extra in rows]
 
 
 @router.post("", response_model=Lead)
@@ -138,7 +186,81 @@ async def create_lead(
     except lead_repo.DuplicateEmail:
         raise HTTPException(status_code=409, detail="A lead with this email already exists")
     await activity_repo.record(session, user["org_id"], "lead.created", f"New lead added — {lead.full_name}")
-    return _to_schema(lead, extra)
+    enriched_ids = await _enriched_lead_ids(session, [lead.id])
+    return _to_schema(lead, extra, enrichment_completed=lead.id in enriched_ids)
+
+
+@router.post("/score", response_model=ScoreLeadsQueued, status_code=202)
+async def score_selected_leads(
+    payload: ScoreLeadsIn,
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+):
+    account_id = uuid.UUID(user["org_id"])
+    lead_ids = payload.lead_ids
+    owned_ids = set(
+        (
+            await session.execute(
+                select(LeadRow.id).where(
+                    LeadRow.account_id == account_id,
+                    LeadRow.deleted_at.is_(None),
+                    LeadRow.id.in_(lead_ids),
+                )
+            )
+        ).scalars()
+    )
+    if owned_ids != set(lead_ids):
+        # Do not reveal whether a foreign or deleted lead exists.
+        raise HTTPException(status_code=404, detail="One or more leads were not found")
+
+    job = JobRun(
+        account_id=account_id,
+        job_type="manual_lead_scoring",
+        status="queued",
+        total_items=len(lead_ids),
+        created_by=uuid.UUID(user["id"]),
+    )
+    session.add(job)
+    await session.flush()
+    await session.refresh(job)
+    job_id = job.id
+    await session.commit()  # Persist before enqueue so the worker can always load the job.
+
+    try:
+        score_selected_leads_task.apply_async(
+            args=(str(job_id), str(account_id), [str(lead_id) for lead_id in lead_ids]),
+            task_id=str(job_id),
+            queue="automation",
+        )
+    except Exception as exc:  # noqa: BLE001 - provider/transport detail must never reach the client or job row.
+        job.status = "failed"
+        job.finished_at = datetime.now(timezone.utc)
+        job.duration_ms = 0
+        job.error = "The scoring job could not be queued."
+        await session.commit()
+        logger.warning(
+            "Scoring job enqueue failed",
+            extra={
+                "job_id": str(job_id),
+                "account_id": str(account_id),
+                "requested_by": user["id"],
+                "error_type": type(exc).__name__,
+            },
+        )
+        raise HTTPException(status_code=503, detail="Scoring service is temporarily unavailable") from None
+
+    logger.info(
+        "Scoring job queued",
+        extra={
+            "job_id": str(job_id),
+            "account_id": str(account_id),
+            "lead_count": len(lead_ids),
+            "requested_by": user["id"],
+            "created_at": job.created_at.isoformat() if job.created_at else None,
+            "status": job.status,
+        },
+    )
+    return ScoreLeadsQueued(job_id=str(job_id), status="queued", lead_count=len(lead_ids))
 
 
 @router.post("/bulk", response_model=BulkLeadsOut)
@@ -274,7 +396,8 @@ async def get_lead(
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
     extra = await lead_repo.load_extra(session, lead)
-    return _to_schema(lead, extra)
+    enriched_ids = await _enriched_lead_ids(session, [lead.id])
+    return _to_schema(lead, extra, enrichment_completed=lead.id in enriched_ids)
 
 
 @router.patch("/{lead_id}", response_model=Lead)
@@ -296,7 +419,8 @@ async def update_lead(
     lead, extra = res
     if "stage" in upd:
         await activity_repo.record(session, user["org_id"], "lead.stage", f"{lead.full_name} → {upd['stage']}")
-    return _to_schema(lead, extra)
+    enriched_ids = await _enriched_lead_ids(session, [lead.id])
+    return _to_schema(lead, extra, enrichment_completed=lead.id in enriched_ids)
 
 
 @router.delete("/{lead_id}")
@@ -373,7 +497,8 @@ async def attach_tag(
     if not lead:
         raise HTTPException(status_code=404, detail="Lead or tag not found")
     extra = await lead_repo.load_extra(session, lead)
-    return _to_schema(lead, extra)
+    enriched_ids = await _enriched_lead_ids(session, [lead.id])
+    return _to_schema(lead, extra, enrichment_completed=lead.id in enriched_ids)
 
 
 @router.delete("/{lead_id}/tags/{tag_id}", response_model=Lead)
@@ -387,4 +512,5 @@ async def detach_tag(
     if not lead:
         raise HTTPException(status_code=404, detail="Lead or tag not found")
     extra = await lead_repo.load_extra(session, lead)
-    return _to_schema(lead, extra)
+    enriched_ids = await _enriched_lead_ids(session, [lead.id])
+    return _to_schema(lead, extra, enrichment_completed=lead.id in enriched_ids)

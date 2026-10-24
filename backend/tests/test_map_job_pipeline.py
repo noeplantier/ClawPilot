@@ -338,8 +338,12 @@ def test_the_health_report_shows_the_database_the_migrations_and_the_jobs_withou
     assert report["database"]["ok"] is True and report["database"]["kind"] in ("local", "other", "render_postgres")
     assert report["migrations"]["ok"] is True and report["migrations"]["current"] == report["migrations"]["head"]
     assert report["cache"]["ok"] is True and report["map_jobs_24h"].get("succeeded", 0) >= 1
-    assert report["workers"]["mode"] == "in_process" and report["flags"]["external_sources"] is True
+    assert "ok" in report["workers"] and "checked_at" in report["workers"]
+    assert report["beat"]["checked_at"] == report["generated_at"]
+    assert report["integrations"]["groq"]["probe_performed"] is False
+    assert report["flags"]["external_sources"] is True
     assert "password" not in json.dumps(report, default=str).lower()
+    assert "api_key" not in json.dumps(report, default=str).lower()
 
 
 def test_the_overpass_probe_reports_each_server_and_is_rate_limited(monkeypatch):

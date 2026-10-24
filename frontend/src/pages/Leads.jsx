@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
 import { api } from "@/lib/api";
@@ -39,13 +39,23 @@ export default function Leads() {
   const [aiDefaults, setAiDefaults] = useState(null);
   const [selected, setSelected] = useState(new Set());
   const [detailLeadId, setDetailLeadId] = useState(null);
+  const [priorityFilter, setPriorityFilter] = useState("all");
+  const [fitSort, setFitSort] = useState(false);
+  const [scoringJob, setScoringJob] = useState(null);
+  const [scoringError, setScoringError] = useState(null);
 
   // Real leads, hottest first (real information + score), refreshed in the background.
   const live = useLive(() => api.get("/leads", { params: { search, sort: "heat" } }).then((r) => r.data), [search]);
+  const liveReload = live.reload;
   const everyLead = useMemo(() => live.data || [], [live.data]);
   const { shown: reachable, empty } = useMemo(() => splitEmpty(everyLead, showEmpty), [everyLead, showEmpty]);
   const counts = useMemo(() => laneCounts(reachable), [reachable]);
-  const leads = useMemo(() => inLane(reachable, lane), [reachable, lane]);
+  const leads = useMemo(() => {
+    let result = inLane(reachable, lane);
+    if (priorityFilter !== "all") result = result.filter((lead) => lead.priority === priorityFilter);
+    if (fitSort) result = [...result].sort((a, b) => (b.fit_score ?? -1) - (a.fit_score ?? -1));
+    return result;
+  }, [reachable, lane, priorityFilter, fitSort]);
   const toggleEmpty = () => setShowEmpty((v) => { writePref("leads.showEmpty", !v); return !v; });
 
   const allVisible = leads.map((l) => l.id);
@@ -59,6 +69,47 @@ export default function Leads() {
     setSelected((s) => (s.size === allVisible.length ? new Set() : new Set(allVisible)));
 
   const load = () => live.reload();
+
+  const startScoring = async () => {
+    if (!selected.size || selected.size > 200 || scoringJob) return;
+    setScoringError(null);
+    try {
+      const { data } = await api.post("/leads/score", { lead_ids: Array.from(selected) });
+      setScoringJob({ id: data.job_id, status: data.status, total_items: data.lead_count, processed_items: 0, failed_items: 0 });
+    } catch (error) {
+      setScoringError(error?.response?.data?.detail || "Impossible de démarrer le scoring.");
+    }
+  };
+
+  const activeJobId = scoringJob && !["succeeded", "partial", "failed"].includes(scoringJob.status) ? scoringJob.id : null;
+  const scoringActive = !!activeJobId;
+  useEffect(() => {
+    if (!activeJobId) return undefined;
+    let stopped = false;
+    let timer;
+    const poll = async () => {
+      try {
+        const { data } = await api.get(`/jobs/${activeJobId}`);
+        if (stopped) return;
+        setScoringJob(data);
+        if (["succeeded", "partial", "failed"].includes(data.status)) {
+          setSelected(new Set());
+          liveReload();
+          if (data.status === "succeeded") toast.success("Scoring terminé");
+          else if (data.status === "partial") toast.warning(data.error || "Scoring partiel");
+          else toast.error(data.error || "Le job de scoring a échoué");
+        } else {
+          timer = setTimeout(poll, 2500);
+        }
+      } catch (error) {
+        if (stopped) return;
+        setScoringError(error?.response?.data?.detail || "Le suivi du job est momentanément indisponible.");
+        timer = setTimeout(poll, 5000);
+      }
+    };
+    poll();
+    return () => { stopped = true; clearTimeout(timer); };
+  }, [activeJobId, liveReload]);
 
   const updateStage = async (id, stage) => {
     await api.patch(`/leads/${id}`, { stage });
@@ -127,6 +178,29 @@ export default function Leads() {
         <EmptyToggle empty={empty} showEmpty={showEmpty} onToggle={toggleEmpty} testId="leads-empty-toggle" />
       </div>
 
+      <div className="flex flex-wrap items-center gap-3" data-testid="qualification-controls">
+        <label className="text-xs flex items-center gap-2">Priority
+          <select value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value)} data-testid="priority-filter" className="border rounded px-2 py-1">
+            <option value="all">All</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option>
+          </select>
+        </label>
+        <button type="button" onClick={() => setFitSort((value) => !value)} aria-pressed={fitSort} data-testid="fit-sort" className="btn-ghost !py-1 !px-2">
+          {fitSort ? "FIT SCORE ↓" : "SORT BY FIT SCORE"}
+        </button>
+        <button type="button" onClick={startScoring} disabled={!selected.size || selected.size > 200 || scoringActive} className="btn-primary !py-1 !px-3" data-testid="score-selected">
+          {scoringActive ? "SCORING…" : `SCORER LA SÉLECTION${selected.size ? ` (${selected.size})` : ""}`}
+        </button>
+        {selected.size > 200 && <span className="text-xs text-[#991B1B]" role="alert">Select at most 200 leads.</span>}
+      </div>
+
+      {scoringError && <div role="alert" className="text-sm text-[#991B1B]" data-testid="scoring-error">{scoringError}</div>}
+      {scoringJob && <section className="surface p-4 space-y-2" role="status" aria-live="polite" data-testid="scoring-job">
+        <div className="flex justify-between text-sm"><strong>{scoringJob.status === "running" ? "Scoring en cours" : scoringJob.status === "queued" ? "Scoring en attente" : `Scoring ${scoringJob.status}`}</strong>
+          <span>{scoringJob.processed_items || 0} / {scoringJob.total_items} · {scoringJob.failed_items || 0} failed</span></div>
+        <progress className="w-full" max={scoringJob.total_items || 1} value={(scoringJob.processed_items || 0) + (scoringJob.failed_items || 0)} aria-label="Scoring progress" />
+        {scoringJob.error && <p className="text-sm text-[#991B1B]">{scoringJob.error}</p>}
+      </section>}
+
       {live.error && <div role="alert" className="text-sm text-[#991B1B]" data-testid="leads-error">{live.error}</div>}
 
       {view === "map" ? <DiscoveryMap /> : view === "table" ? (
@@ -151,6 +225,7 @@ export default function Leads() {
                 <th className="p-3">Stage</th>
                 <th className="p-3">Heat</th>
                 <th className="p-3">Score</th>
+                <th className="p-3">Qualification</th>
                 <th className="p-3 text-right">Actions</th>
               </tr>
             </thead>
@@ -225,6 +300,14 @@ export default function Leads() {
                       </div>
                     )}
                   </td>
+                  <td className="p-3 min-w-48" data-testid={`qualification-${l.id}`}>
+                    {l.enrichment_status !== "completed" ? <span className="text-xs text-[#92400E]">Enrichissement requis</span> : l.fit_score == null ? <span className="text-xs text-[#6B6B66]">Scoring requis</span> : (
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2"><span className={`chip ${l.priority === "high" ? "chip-danger" : l.priority === "medium" ? "chip-warn" : "chip-success"}`}>{l.priority[0].toUpperCase() + l.priority.slice(1)}</span><span className="font-mono text-xs">Fit {l.fit_score}</span></div>
+                        <div className="text-[10px] text-[#5F5F5A]">Website {l.website_quality} · Digital {l.digital_maturity}</div>
+                      </div>
+                    )}
+                  </td>
                   <td className="p-3" onClick={(e) => e.stopPropagation()}>
                     <div className="flex justify-end gap-1">
                       <button onClick={() => writeFor(l)} className="btn-ghost !py-1 !px-2" title="AI write" aria-label={`Write to ${l.full_name} with AI`} data-testid={`ai-${l.id}`}><Sparkle size={12} /></button>
@@ -236,7 +319,7 @@ export default function Leads() {
                 </motion.tr>
               ))}
               {leads.length === 0 && (
-                <tr><td colSpan="9" className="p-10 text-center text-[#5F5F5A]" data-testid="leads-none">
+                <tr><td colSpan="10" className="p-10 text-center text-[#5F5F5A]" data-testid="leads-none">
                   {everyLead.length === 0 ? "No leads. Add your first or import." : reachable.length === 0 ? "Every lead is empty (no e-mail, phone or website): they are hidden. Show them above, or add contact details." : "No lead in this heat tier."}
                 </td></tr>
               )}

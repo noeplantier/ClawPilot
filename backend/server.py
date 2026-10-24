@@ -17,6 +17,7 @@ from routes.analytics import router as analytics_router
 from routes.auth import router as auth_router
 from routes.campaigns import router as campaigns_router
 from routes.dashboard import router as dashboard_router
+from routes.jobs import router as jobs_router
 from routes.leads import router as leads_router
 from routes.map_search import router as map_router
 from routes.messages import router as messages_router
@@ -53,6 +54,7 @@ async def health():
 
 api_router.include_router(auth_router)
 api_router.include_router(leads_router)
+api_router.include_router(jobs_router)
 api_router.include_router(campaigns_router)
 api_router.include_router(agents_router)
 api_router.include_router(messages_router)

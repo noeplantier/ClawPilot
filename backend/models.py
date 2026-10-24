@@ -103,6 +103,8 @@ class Lead(BaseModel):
     digital_maturity: Optional[int] = None
     fit_score: Optional[int] = None
     priority: Optional[Literal["low", "medium", "high"]] = None
+    qualification_scored_at: Optional[datetime] = None
+    enrichment_status: Literal["completed", "required"] = "required"
     # A prospect found by discovery (map, sources, import) says where it stands in the human review; a CRM lead: none.
     review_status: Optional[Literal["pending", "approved", "rejected"]] = None
 
@@ -124,6 +126,37 @@ class LeadCreate(BaseModel):
     email_opt_in: bool = False
     whatsapp_opt_in: bool = False
     consent_source: Optional[str] = None
+
+
+class ScoreLeadsIn(BaseModel):
+    lead_ids: List[uuid.UUID] = Field(min_length=1, max_length=200)
+
+    @model_validator(mode="after")
+    def lead_ids_are_unique(self):
+        if len(self.lead_ids) != len(set(self.lead_ids)):
+            raise ValueError("lead_ids must not contain duplicates")
+        return self
+
+
+class ScoreLeadsQueued(BaseModel):
+    job_id: str
+    status: Literal["queued"]
+    lead_count: int
+
+
+class JobRunOut(BaseModel):
+    id: str
+    job_type: str
+    status: Literal["queued", "running", "succeeded", "partial", "failed"]
+    total_items: int
+    processed_items: int
+    failed_items: int
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+    duration_ms: Optional[int] = None
+    error: Optional[str] = None
+    created_by: Optional[str] = None
+    created_at: datetime
 
 
 class LeadUpdate(BaseModel):
