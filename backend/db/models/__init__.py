@@ -20,6 +20,7 @@ from db.models.prospect import (
     SuppressionEntry,
     UsageRecord,
 )
+from db.models.prospecting import Company, DiscoveryJob, DiscoveredPlace, EnrichmentJob, PublicPageCache
 from db.models.taxonomy import LeadTag, Segment, Tag
 from db.models.webhook import WebhookEvent
 from db.models.workspace import AuditLog, Note, Task
@@ -44,6 +45,11 @@ __all__ = [
     "EmailSend",
     "OutreachEvent",
     "WhatsappSend",
+    "Company",
+    "DiscoveryJob",
+    "DiscoveredPlace",
+    "EnrichmentJob",
+    "PublicPageCache",
     "LeadTag",
     "Segment",
     "Tag",

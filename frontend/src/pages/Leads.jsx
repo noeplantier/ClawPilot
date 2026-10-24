@@ -16,6 +16,7 @@ import EmptyToggle from "@/components/outreach/EmptyToggle";
 import { LANES, LANE_LABEL, inLane, laneCounts, splitEmpty } from "@/lib/heat";
 import { LIVE_MS, useLive } from "@/lib/live";
 import { readPref, writePref } from "@/lib/uiPrefs";
+import DiscoveryMap from "@/components/DiscoveryMap";
 
 // Where a prospect from discovery (map, sources, import) stands in the human review; a CRM lead has none.
 const REVIEW_LABEL = { pending: "to review", approved: "approved", rejected: "rejected" };
@@ -102,11 +103,14 @@ export default function Leads() {
             <MagnifyingGlass size={14} className="text-[#6B6B66]" />
             <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, email, company" className="bg-transparent outline-none text-sm w-56 font-mono" data-testid="leads-search" />
           </div>
-          <button onClick={() => setView(view === "table" ? "kanban" : "table")} className="btn-ghost" data-testid="toggle-view">
-            {view === "table" ? <Kanban size={14} /> : <Table size={14} />} {view === "table" ? "KANBAN" : "TABLE"}
+          <button onClick={() => setView(view === "map" ? "table" : "map")} className="btn-ghost" data-testid="toggle-map">
+            {view === "map" ? <Table size={14} /> : <MagnifyingGlass size={14} />} {view === "map" ? "CRM TABLE" : "MAP SEARCH"}
           </button>
-          <button onClick={() => setShowBatch(true)} className="btn-ink" data-testid="open-batch-send"><PaperPlaneTilt size={14} weight="fill" /> BATCH SEND</button>
-          <button onClick={enrich} className="btn-purple" data-testid="enrich-leads-button"><Sparkle size={14} weight="fill" /> ENRICH</button>
+          {view !== "map" && <button onClick={() => setView(view === "table" ? "kanban" : "table")} className="btn-ghost" data-testid="toggle-view">
+            {view === "table" ? <Kanban size={14} /> : <Table size={14} />} {view === "table" ? "KANBAN" : "TABLE"}
+          </button>}
+          {view !== "map" && <button onClick={() => setShowBatch(true)} className="btn-ink" data-testid="open-batch-send"><PaperPlaneTilt size={14} weight="fill" /> BATCH SEND</button>}
+          {view !== "map" && <button onClick={enrich} className="btn-purple" data-testid="enrich-leads-button"><Sparkle size={14} weight="fill" /> ENRICH</button>}
           <button onClick={() => setShowBulk(true)} className="btn-ghost" data-testid="open-bulk-import"><UploadSimple size={14} /> BULK IMPORT</button>
           <button onClick={() => setShowCreate(true)} className="btn-primary" data-testid="add-lead-button"><Plus size={14} weight="bold" /> ADD LEAD</button>
         </div>
@@ -125,7 +129,7 @@ export default function Leads() {
 
       {live.error && <div role="alert" className="text-sm text-[#991B1B]" data-testid="leads-error">{live.error}</div>}
 
-      {view === "table" ? (
+      {view === "map" ? <DiscoveryMap /> : view === "table" ? (
         <div className="surface overflow-hidden overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-[#F6F8FC] border-b border-[#D3DBEA]">
