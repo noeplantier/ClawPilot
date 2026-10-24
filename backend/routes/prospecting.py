@@ -16,8 +16,8 @@ from db.models import (
     AuditLog,
     Company,
     Contact,
-    DiscoveryJob,
     DiscoveredPlace,
+    DiscoveryJob,
     EnrichmentJob,
     Lead,
     LeadSource,
@@ -89,7 +89,14 @@ async def search(
         )
         session.add(job)
     await session.flush()
-    discover_task.apply_async(args=[str(job.id)], queue="automation")
+    await session.commit()
+    try:
+        discover_task.apply_async(args=[str(job.id)], queue="automation")
+    except Exception:
+        job.status = "failed"
+        job.error_code = "queue_unavailable"
+        await session.commit()
+        raise HTTPException(status_code=503, detail="Discovery queue unavailable")
     return {"job_id": str(job.id), "status": "queued", "cached": False}
 
 
@@ -206,15 +213,17 @@ async def convert(
     )
     session.add(lead)
     await session.flush()
-    session.add(
-        Contact(
-            account_id=account_id,
-            lead_id=lead.id,
-            full_name=place.name,
-            phone=place.phone,
-            is_primary=True,
+    contact_name = place.tags.get("contact:person") or place.tags.get("contact:name")
+    if isinstance(contact_name, str) and contact_name.strip():
+        session.add(
+            Contact(
+                account_id=account_id,
+                lead_id=lead.id,
+                full_name=contact_name.strip()[:300],
+                phone=place.phone,
+                is_primary=True,
+            )
         )
-    )
     place.lead_id = lead.id
     user_id = uuid.UUID(user["id"])
     session.add(
@@ -285,5 +294,12 @@ async def enqueue_enrichment(
             )
         )
         return {"job_id": str(existing.id), "status": existing.status, "cached": True}
-    enrich_task.apply_async(args=[str(created_id)], queue="automation")
+    job = await session.get(EnrichmentJob, created_id)
+    await session.commit()
+    try:
+        enrich_task.apply_async(args=[str(created_id)], queue="automation")
+    except Exception:
+        job.status = "failed"
+        await session.commit()
+        raise HTTPException(status_code=503, detail="Enrichment queue unavailable")
     return {"job_id": str(created_id), "status": "queued", "cached": False}

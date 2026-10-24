@@ -1,5 +1,7 @@
 """Pure guards for public map source normalization; no network or database calls."""
 
+import inspect
+
 from tasks.prospecting_tasks import CATEGORIES, QUERY_VERSION, _key, _overpass_query
 
 
@@ -11,7 +13,26 @@ def test_bbox_cache_key_normalizes_precision_and_includes_category_version():
 
 def test_overpass_query_is_bounded_and_uses_category_selector():
     query = _overpass_query([48.0, 2.0, 48.1, 2.1], "cafe")
-    assert "node[amenity=\"cafe\"](48.0,2.0,48.1,2.1)" in query
-    assert "way[amenity=\"cafe\"]" in query
-    assert "relation[amenity=\"cafe\"]" in query
+    assert 'node[amenity="cafe"](48.0,2.0,48.1,2.1)' in query
+    assert 'way[amenity="cafe"]' in query
+    assert 'relation[amenity="cafe"]' in query
     assert set(CATEGORIES) == {"restaurant", "cafe", "hotel", "shop", "office", "beauty", "dentist", "company"}
+
+
+def test_celery_work_entrypoints_are_synchronous_for_async_bridge():
+    from tasks.prospecting_tasks import _discover, _enrich
+
+    assert not inspect.iscoroutinefunction(_discover)
+    assert not inspect.iscoroutinefunction(_enrich)
+
+
+def test_robots_rules_are_applied_to_public_page_paths():
+    from tasks.prospecting_tasks import _robots_parser
+
+    parser = _robots_parser(
+        "https://prospect.example/robots.txt",
+        "User-agent: Plantiers-OutreachOS\nDisallow: /private",
+    )
+
+    assert parser.can_fetch("Plantiers-OutreachOS", "https://prospect.example/contact")
+    assert not parser.can_fetch("Plantiers-OutreachOS", "https://prospect.example/private/about")

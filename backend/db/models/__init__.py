@@ -7,7 +7,7 @@ from db.models.campaign import Campaign, CampaignLead, CampaignStep, SendPolicy
 from db.models.consent import ConsentCurrent, ConsentRecord
 from db.models.lead import Contact, Lead, LeadScore, LeadSource
 from db.models.outreach import EmailSend, OutreachEvent, WhatsappSend
-from db.models.prospecting import Company, DiscoveryJob, DiscoveredPlace, EnrichmentJob, PublicPageCache
+from db.models.prospecting import Company, DiscoveredPlace, DiscoveryJob, EnrichmentJob, PublicPageCache
 from db.models.taxonomy import LeadTag, Segment, Tag
 from db.models.webhook import WebhookEvent
 from db.models.workspace import AuditLog, Note, Task

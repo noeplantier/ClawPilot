@@ -119,9 +119,6 @@ class PublicPageCache(Base, UUIDPKMixin, CreatedAtMixin):
     url: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     data: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
-    source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
-    source_type: Mapped[str] = mapped_column(String(40), nullable=False, server_default="public_website")
-    confidence: Mapped[float] = mapped_column(nullable=False, server_default="0")
     collected_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
