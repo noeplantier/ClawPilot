@@ -30,6 +30,11 @@ def known(column: ColumnElement) -> ColumnElement:
     return _known(column)
 
 
+def has_contact_sql() -> ColumnElement:
+    """True when at least one of e-mail, phone, website is really known (the Python `heat.has_contact`)."""
+    return sum((_known(_COLUMNS[f]) for f in heat_rules.CONTACT_FIELDS), literal(0)) > 0
+
+
 def info_pct_sql() -> ColumnElement:
     count = sum((_known(_COLUMNS[f]) for f in heat_rules.INFO_FIELDS), literal(0))
     return (count * 25 + 1) // 2
