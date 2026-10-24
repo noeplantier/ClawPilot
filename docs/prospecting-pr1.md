@@ -12,7 +12,7 @@
 
 ## Migration and Render
 
-Apply Alembic revision `20261024_01` before deploying the backend. It creates company, discovery, enrichment and URL cache tables plus their account/status/deduplication indexes, and links existing-compatible leads to companies with a nullable FK.
+Apply Alembic revision `20261024_01` after the current `a8c4d5e6f7b9` head before deploying the backend. It creates company, discovery, enrichment and URL cache tables plus their account/status/deduplication indexes, links leads to companies with a nullable FK, and enables row-level security on each new table with no Supabase Data API policies.
 
 No new secret or environment variable is required. The Render Celery worker must consume the existing `automation` queue (the repository's `docker-compose.yml` worker already does). API and worker continue to use the existing `DATABASE_URL` and Celery broker configuration; do not copy their values into a deployment log or PR.
 
@@ -20,7 +20,7 @@ No new secret or environment variable is required. The Render Celery worker must
 
 In staging, apply the migration, verify a small bounding-box job reaches `completed`, click one result twice and confirm one company/lead exists, queue enrichment twice and confirm one active job exists, and inspect URL cache timestamps. Confirm that no contact is created without a source-provided person's name and no send record is created. Check that OSM attribution is displayed.
 
-Local checks for this revision: backend isort, Black and Flake8 pass; `PYTHONPATH=. ./.venv/bin/pytest -q tests/test_prospecting.py` passes (4 tests). Alembic history/heads and offline SQL generation pass. The database-backed migration/check and integration suite run in CI with its PostgreSQL, Redis and MongoDB services. Frontend lint and build pass; Jest reports no frontend tests, and Playwright is not configured, so neither is represented as a passing test.
+Local checks for this revision: backend isort, Black and Flake8 pass; `PYTHONPATH=. ./.venv/bin/pytest -q tests/test_prospecting.py` passes (4 tests), and the unit suite passes (499 tests). Alembic has one head and offline SQL generation passes. The database-backed migration/check and integration suite run in CI with PostgreSQL and Redis; no MongoDB client or active MongoDB test is present in this repository. Frontend lint passes with 10 existing warnings, Jest passes 262 tests, and build passes. Playwright is not configured for this flow.
 
 ## Risks and rollback
 

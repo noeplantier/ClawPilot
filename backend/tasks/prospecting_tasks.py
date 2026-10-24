@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from celery_app import celery_app
 from db.models import Contact, DiscoveredPlace, DiscoveryJob, EnrichmentJob, Lead, PublicPageCache
 
-logger = logging.getLogger("clawpilot.prospecting")
+logger = logging.getLogger("outreachos.prospecting")
 ENDPOINTS = (
     "https://overpass-api.de/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",

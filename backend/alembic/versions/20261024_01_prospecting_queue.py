@@ -1,14 +1,14 @@
 """Persisted map discovery and free enrichment queue.
 
 Revision ID: 20261024_01
-Revises: c3bad547cfc1
+Revises: a8c4d5e6f7b9
 """
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 revision = "20261024_01"
-down_revision = "c3bad547cfc1"
+down_revision = "a8c4d5e6f7b9"
 branch_labels = None
 depends_on = None
 
@@ -143,6 +143,8 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("url", name="uq_public_page_cache_url"),
     )
+    for table_name in ("companies", "discovery_jobs", "discovered_places", "enrichment_jobs", "public_page_cache"):
+        op.execute(f'ALTER TABLE "{table_name}" ENABLE ROW LEVEL SECURITY')
 
 
 def downgrade() -> None:

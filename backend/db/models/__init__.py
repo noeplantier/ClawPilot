@@ -20,7 +20,7 @@ from db.models.prospect import (
     SuppressionEntry,
     UsageRecord,
 )
-from db.models.prospecting import Company, DiscoveryJob, DiscoveredPlace, EnrichmentJob, PublicPageCache
+from db.models.prospecting import Company, DiscoveredPlace, DiscoveryJob, EnrichmentJob, PublicPageCache
 from db.models.taxonomy import LeadTag, Segment, Tag
 from db.models.webhook import WebhookEvent
 from db.models.workspace import AuditLog, Note, Task
