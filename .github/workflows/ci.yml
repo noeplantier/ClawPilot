@@ -9,12 +9,30 @@ env:
   PYTHON_VERSION: "3.12"
   NODE_VERSION: "20"
 
+permissions:
+  contents: read
+
 jobs:
+  secret-scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0 # v6.0.3
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_COMMENTS: "false"
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
+
   lint-backend:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0 # v6.0.3
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: "pip"
@@ -35,21 +53,31 @@ jobs:
   lint-frontend:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0 # v6.0.3
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
+          package-manager-cache: false
       - run: npm ci --legacy-peer-deps
         working-directory: frontend
       - run: npm run lint
         working-directory: frontend
-      - name: unit and render tests (no browser, no network)
-        run: npm test -- --watchAll=false --ci
+      - name: frontend tests with report
+        run: |
+          mkdir -p reports
+          npm test -- --watchAll=false --ci --json --outputFile=reports/jest-results.json
         working-directory: frontend
         env:
           CI: "true"
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        if: always()
+        with:
+          name: frontend-test-report
+          path: frontend/reports/jest-results.json
+          if-no-files-found: ignore
+          retention-days: 7
 
   alembic-check:
     runs-on: ubuntu-latest
@@ -65,8 +93,8 @@ jobs:
           --health-cmd "pg_isready -U clawpilot"
           --health-interval 5s --health-timeout 3s --health-retries 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0 # v6.0.3
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: "pip"
@@ -121,8 +149,8 @@ jobs:
       REGISTER_MAX_PER_HOUR: "2000"
       REACT_APP_BACKEND_URL: http://localhost:8000
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0 # v6.0.3
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: "pip"
@@ -140,25 +168,35 @@ jobs:
             sleep 1
           done
           echo "Server failed to become healthy" && cat server.log && exit 1
-      - name: Run backend test suite
+      - name: Run backend test suite with report
         working-directory: backend
-        run: pytest tests/ -v
+        run: |
+          mkdir -p reports
+          pytest tests/ -v --junitxml=reports/junit.xml
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        if: always()
+        with:
+          name: backend-test-report
+          path: backend/reports/junit.xml
+          if-no-files-found: ignore
+          retention-days: 7
 
   build-frontend:
     runs-on: ubuntu-latest
     needs: [lint-frontend]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0 # v6.0.3
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
+          package-manager-cache: false
       - run: npm ci --legacy-peer-deps
         working-directory: frontend
       - run: npm run build
         working-directory: frontend
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: frontend-build
           path: frontend/build
@@ -179,6 +217,12 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U clawpilot"
           --health-interval 5s --health-timeout 3s --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 5
     env:
       DATABASE_URL: postgresql+asyncpg://clawpilot:ci-password@localhost:5432/clawpilot_ci
       JWT_SECRET: ci-only-secret-not-used-in-prod-32b
@@ -194,8 +238,8 @@ jobs:
       OUTREACH_LIVE_PHONES: "+33600000001" # a fictional number: the WhatsApp test route only reaches listed numbers
       REACT_APP_BACKEND_URL: http://localhost:8000
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0 # v6.0.3
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: "pip"
@@ -213,11 +257,12 @@ jobs:
             sleep 1
           done
           echo "Server failed to become healthy" && cat server.log && exit 1
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
+          package-manager-cache: false
       - run: npm ci --legacy-peer-deps
         working-directory: frontend
       - run: npm run build
@@ -226,7 +271,7 @@ jobs:
         working-directory: frontend
       - run: npm run e2e
         working-directory: frontend
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         if: failure()
         with:
           name: playwright-traces
