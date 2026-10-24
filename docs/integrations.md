@@ -54,8 +54,10 @@ Sans clé. `OVERPASS_ENDPOINTS` (facultatif) remplace les serveurs publics par u
 Si aucun serveur ne répond depuis l'hébergeur, la recherche sur carte bascule explicitement sur le navigateur (`docs/map-search.md`).
 
 <a id="geocoder"></a>
-### Recherche de villes (api-adresse.data.gouv.fr)
-Sans clé, appelée depuis le navigateur.
+### Recherche de villes (geo.api.gouv.fr, repli api-adresse.data.gouv.fr)
+Sans clé, appelée depuis le navigateur : seul le texte tapé quitte la page. Liste officielle des communes d'abord (classée par population, recherche
+par nom ou code postal), service d'adresses en repli ; si aucun ne répond, la carte le dit et n'affiche que les villes de vos leads.
+Le nombre de leads chauds par ville vient de ce serveur (`GET /api/map/cities`), voir `docs/map-search.md`.
 
 <a id="registry"></a>
 ### Registre des entreprises (France)

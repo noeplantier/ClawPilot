@@ -127,10 +127,10 @@ describe("Settings integrations", () => {
 
   it("tests the city search from the browser, not through the API", async () => {
     await show();
-    global.fetch.mockResolvedValue({ ok: true, status: 200, json: async () => ({ features: [{}] }) });
+    global.fetch.mockResolvedValue({ ok: true, status: 200, json: async () => [{ nom: "Lyon" }] });
     await click("int-geocoder-test");
     expect(api.post).not.toHaveBeenCalled();
-    expect(global.fetch.mock.calls[0][0]).toContain("api-adresse.data.gouv.fr");
+    expect(global.fetch.mock.calls[0][0]).toContain("geo.api.gouv.fr/communes");
     expect(byId("int-geocoder-status").textContent).toContain("VERIFIED");
   });
 

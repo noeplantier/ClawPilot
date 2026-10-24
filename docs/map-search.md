@@ -9,6 +9,27 @@ Les prospects déjà importés qui ont une position (importés depuis la carte, 
 dessinés en **carrés** (bleu : à valider, vert : approuvé, rouge : refusé), cliquables vers leur fiche. Un lieu déjà importé n'est
 plus proposé comme résultat de recherche (reconnu par son identifiant OpenStreetMap). Endpoint : `GET /api/map/prospects`.
 
+## Aller à une ville : l'autocomplétion
+
+Le champ « Go to a town or a postcode » de la carte propose les villes pendant la frappe, avec, à côté de chacune, **le nombre de vos leads**
+(`12 hot · 40 leads`, ou `no lead yet`). Comportement :
+
+- Il s'ouvre au focus et à **chaque** clic dans le champ (y compris après un choix), se ferme sur Échap ou un clic à côté ; flèches haut/bas et
+  Entrée au clavier. À vide, il liste les villes où se trouvent vos leads chauds, sans aucune requête.
+- Les réponses viennent de la liste officielle des communes (`geo.api.gouv.fr/communes`, triée par population, par nom ou code postal à 5
+  chiffres), puis du service d'adresses (`api-adresse.data.gouv.fr`) en repli. Sans clé ; **seul le texte tapé quitte le navigateur**.
+- Rapidité : 120 ms d'anti-rebond, une requête annulée dès qu'une plus récente part, réponses gardées par texte (revenir en arrière est
+  instantané), et la liste se réduit tout de suite pendant que la réponse suivante arrive (elle ne disparaît pas).
+- Précision : sans accents, casse, tirets ni apostrophes (`St-Etienne` = `Saint-Étienne`). `st` reste ambigu tant que le mot est en cours
+  (Saint… ou Strasbourg) : les deux lectures sont proposées.
+- Si aucun des deux services ne répond, la liste le dit (« The official town lists did not answer ») et ne montre que les villes de vos leads.
+- Les compteurs viennent de `GET /api/map/cities` (même sondage que les prospects de la carte, toutes les 20 s) : `hot` / `warm` / `cold`
+  calculés **dans la base** avec la même règle que partout (`repositories/heat_sql.py`, jumeau de `services/outreach_os/heat.py`), sur les leads
+  du CRM et les prospects non rejetés, supprimés exclus. Une ville vide, `unknown` ou `unspecified` n'est comptée nulle part ; `Lyon`, `lyon `
+  et `LYON` sont une seule ville. Tant que les compteurs ne sont pas chargés, rien n'est affiché (jamais un 0 inventé).
+- Limite connue : un lead porte le nom de sa ville, pas son code postal ; deux communes du même nom (Saint-Denis 93 / 974) se partagent donc
+  le même compteur, attribué à la plus peuplée.
+
 ## Une recherche = un job enregistré
 `POST /api/map/search` crée un job (`map_search_jobs` : zone, catégorie, statut, source, nombre de résultats, erreur, durée,
 auteur, organisation) et répond tout de suite (`202`). Un exécutant en arrière-plan du processus de l'API :

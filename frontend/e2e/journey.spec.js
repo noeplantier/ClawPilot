@@ -538,9 +538,9 @@ test("settings lists every integration from the server, tests the database live 
   await expect(page.getByTestId("int-smtp-result")).toContainText("are not all set");
   await expect(page.getByTestId("int-smtp")).toHaveAttribute("data-status", "missing");
 
-  // The city search is called from the browser, so it is tested from the browser (stubbed here: no real network in tests).
-  await page.route("https://api-adresse.data.gouv.fr/**", (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ features: [{ properties: { label: "Lyon" } }] }) }),
+  // The town search is called from the browser, so it is tested from the browser (stubbed here: no real network in tests).
+  await page.route("https://geo.api.gouv.fr/**", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([{ nom: "Lyon" }]) }),
   );
   await page.getByTestId("int-geocoder-test").click();
   await expect(page.getByTestId("int-geocoder-status")).toContainText("VERIFIED");
@@ -590,42 +590,54 @@ test("one click on a map point adds the business to the CRM, with the attestatio
   await expect(page.getByTestId("map-mine-toggle")).toContainText("1 prospect on the map: 0 to review, 1 approved");
 });
 
+async function apiGet(page, path) {
+  const token = await page.evaluate(() => localStorage.getItem("outreachos_token"));
+  const res = await page.request.get(`${API}/api${path}`, { headers: { Authorization: `Bearer ${token}` } });
+  expect(res.status(), await res.text()).toBeLessThan(300);
+  return res.json();
+}
 
-test("the TOP leads are marked and have their own lane; empty leads are hidden, counted, and one click brings them back", async ({ page }) => {
+test("the town search opens on every focus, answers as you type, and shows my counted hot leads in each town", async ({ page }) => {
   await register(page);
-  const heat = (value, over = {}) => ({ value, tier: value >= 65 ? "hot" : value >= 40 ? "warm" : "cold", info_pct: 75, known: ["email", "phone", "website", "city"], missing: ["company"], scored: true, score: value, top: value >= 80, has_contact: true, ...over });
-  const lead = (id, name, h, over = {}) => ({ id, org_id: "o", full_name: name, email: `${id}@x.example`, phone: null, company: "Co", title: null, country: "FR", language: "fr", stage: "new", tags: [], source: null, notes: null, score: h.score, email_consent: "unknown", whatsapp_consent: "unknown", created_at: "2026-10-24T10:00:00Z", city: "Lyon", website: null, vertical: null, heat: h, review_status: null, ...over });
-  await page.route(/\/api\/leads(\?.*)?$/, (route) =>
-    route.fulfill({
-      json: [
-        lead("t1", "Top Boulangerie", heat(95)),
-        lead("t2", "Hot Pizzeria", heat(70)),
-        lead("e1", "Nothing Known", heat(0, { has_contact: false, known: [], scored: false, score: null, info_pct: 0 }), { email: null, company: null, country: null, score: 0 }),
-        lead("e2", "Only A City", heat(13, { has_contact: false, known: ["city"], scored: false, score: null }), { email: null, score: 0 }),
-      ],
-    }));
-  await page.goto("/app/leads");
-  const rows = page.locator('[data-testid^="lead-row-"]');
-  await expect(rows).toHaveCount(2); // the two empty leads are not listed
-  await expect(page.getByTestId("lane-all")).toHaveText("All 2");
-  await expect(page.getByTestId("lane-top")).toHaveText("TOP 1");
-  await expect(page.getByTestId("lane-hot")).toHaveText("Hot 2"); // a TOP lead is also hot: the lanes overlap on purpose
-  await expect(rows.first().getByTestId("heat-top")).toHaveText("TOP");
-  await expect(rows.first().getByTestId("heat-badge")).toHaveAttribute("title", /TOP lead \(heat 80 or more\)/);
-  await expect(rows.last().getByTestId("heat-top")).toHaveCount(0);
-  await expect(page.getByTestId("leads-empty-toggle-note")).toHaveText("2 empty leads hidden (no e-mail, phone or website).");
+  await apiPost(page, "/prospects/discovery/run", { source: "fixture_directory" });
+  const towns = await apiGet(page, "/map/cities"); // counted by the server from the real leads of this organisation
+  expect(towns.length).toBeGreaterThan(0);
+  const top = towns[0];
+  const leads = (n) => `${n} lead${n === 1 ? "" : "s"}`;
 
-  await page.getByTestId("lane-top").click();
-  await expect(rows).toHaveCount(1);
-  await expect(rows.first()).toContainText("Top Boulangerie");
-  await page.getByTestId("lane-all").click();
+  await MAP_STUBS(page); // tiles, flags and an empty prospects list: only the town services are faked (the sandbox has no outside access)
+  const asked = [];
+  await page.route("https://geo.api.gouv.fr/**", (route) => {
+    asked.push(decodeURIComponent(route.request().url()));
+    return route.fulfill({ json: [{ nom: top.city, code: "00000", codesPostaux: ["00000"], centre: { type: "Point", coordinates: [4.83, 45.76] }, population: 50000, departement: { code: "00", nom: "Test" } }] });
+  });
+  await page.goto("/app/map");
 
-  await page.getByTestId("leads-empty-toggle").click(); // show them: they come last, and say they are not scored
-  await expect(rows).toHaveCount(4);
-  await expect(rows.last()).toContainText("not scored");
-  await expect(page.getByTestId("leads-empty-toggle-note")).toHaveText("Showing 2 empty leads (no e-mail, phone or website).");
-  await page.reload(); // the choice is remembered in this browser
-  await expect(rows).toHaveCount(4);
-  await page.getByTestId("leads-empty-toggle").click();
-  await expect(rows).toHaveCount(2);
+  // before anything is typed: the towns where my hot leads are, hottest first, with the server's counts
+  const field = page.getByTestId("map-goto");
+  await field.click();
+  await expect(page.getByTestId("city-header")).toHaveText("Your hottest towns");
+  await expect(page.getByTestId("map-city-0")).toContainText(top.city);
+  await expect(page.getByTestId("map-city-0").getByTestId("city-counts")).toContainText(`${top.hot} hot · ${leads(top.total)}`);
+  expect(asked).toHaveLength(0); // nothing leaves the browser until the person types
+
+  // typing: the official list answers, the figures are the same
+  await field.fill(top.city.slice(0, 3));
+  await expect(page.getByTestId("map-city-0")).toContainText("(00000)");
+  await expect(page.getByTestId("map-city-0").getByTestId("city-counts")).toContainText(`${top.hot} hot · ${leads(top.total)}`);
+  expect(asked[0]).toContain(`nom=${top.city.slice(0, 3)}`);
+
+  // choosing closes the list; the same field opens it again (the old search showed it once)
+  await page.getByTestId("map-city-0").click();
+  await expect(page.getByTestId("map-cities")).toHaveCount(0);
+  await expect(field).toHaveValue(`${top.city} (00000)`);
+  await field.click();
+  await expect(page.getByTestId("map-cities")).toBeVisible();
+  await field.fill(top.city.slice(0, 2));
+  await expect(page.getByTestId("map-city-0")).toContainText(top.city);
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("map-cities")).toHaveCount(0);
+  await field.focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByTestId("map-cities")).toBeVisible();
 });

@@ -31,6 +31,8 @@ export const mapApi = {
   // Explicit fallback: the browser asked a public Overpass server itself because the server could not.
   ingest: (id, data) => api.post(`/map/search/${id}/ingest`, { data }).then((r) => r.data),
   prospects: () => api.get("/map/prospects").then((r) => r.data),
+  // Where my leads are: hot / warm / cold counted per town (the dropdown of the town search).
+  cities: () => api.get("/map/cities").then((r) => r.data),
   // One click on a pin: the place becomes a prospect (and, by the person's choice, joins the CRM).
   addPlace: (body) => api.post("/map/places/add", body).then((r) => r.data),
 };
