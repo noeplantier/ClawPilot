@@ -17,6 +17,7 @@ class Company(Base, UUIDPKMixin, TimestampMixin):
     __table_args__ = (
         UniqueConstraint("account_id", "source_key", name="uq_companies_account_source"),
         Index("ix_companies_account_name", "account_id", "name"),
+        Index("ix_companies_qualification_website", "website", postgresql_where=text("website IS NOT NULL")),
     )
 
     account_id: Mapped[uuid.UUID] = mapped_column(

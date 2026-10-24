@@ -34,6 +34,7 @@ celery_app = Celery(
         "tasks.webhook_tasks",
         "tasks.inbox_tasks",
         "tasks.prospecting_tasks",
+        "tasks.qualification_tasks",
     ],
 )
 
@@ -51,6 +52,7 @@ celery_app.conf.update(
         "tasks.webhook_tasks.*": {"queue": "webhooks"},
         "tasks.inbox_tasks.*": {"queue": "webhooks"},
         "tasks.prospecting_tasks.*": {"queue": "automation"},
+        "tasks.qualification_tasks.*": {"queue": "automation"},
     },
     beat_schedule={
         # Safety net for apply_async(eta=...) sends that got lost (e.g. a
@@ -64,6 +66,11 @@ celery_app.conf.update(
         "rescore-all-active-leads": {
             "task": "tasks.automation_tasks.rescore_all_active_leads",
             "schedule": crontab(hour=3, minute=0),
+            "options": {"queue": "automation"},
+        },
+        "score-enriched-leads": {
+            "task": "tasks.qualification_tasks.score_enriched_leads",
+            "schedule": crontab(hour=3, minute=30),
             "options": {"queue": "automation"},
         },
         "stop-unqualified-sequences": {

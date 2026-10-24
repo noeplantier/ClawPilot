@@ -73,6 +73,30 @@ class Lead(Base, UUIDPKMixin, TimestampMixin, SoftDeleteMixin):
         Index("ix_leads_match_keys_gin", "match_keys", postgresql_using="gin"),
         Index("ix_leads_tags_gin", "tags", postgresql_using="gin"),
         Index("ix_leads_account_created", "account_id", text("created_at DESC")),
+        Index(
+            "ix_leads_qualification_website_scan",
+            "website",
+            postgresql_where=text("deleted_at IS NULL AND website IS NOT NULL"),
+        ),
+        Index(
+            "ix_leads_account_qual_priority",
+            "account_id",
+            "priority",
+            text("fit_score DESC"),
+            postgresql_where=text("deleted_at IS NULL AND fit_score IS NOT NULL"),
+        ),
+        CheckConstraint("website_quality IS NULL OR website_quality BETWEEN 0 AND 100", name="website_quality_range"),
+        CheckConstraint(
+            "digital_maturity IS NULL OR digital_maturity BETWEEN 0 AND 100", name="digital_maturity_range"
+        ),
+        CheckConstraint("fit_score IS NULL OR fit_score BETWEEN 0 AND 100", name="fit_score_range"),
+        CheckConstraint("priority IS NULL OR priority IN ('low','medium','high')", name="qualification_priority"),
+        CheckConstraint(
+            "(website_quality IS NULL AND digital_maturity IS NULL AND fit_score IS NULL AND priority IS NULL) "
+            "OR (website_quality IS NOT NULL AND digital_maturity IS NOT NULL AND fit_score IS NOT NULL "
+            "AND priority IS NOT NULL)",
+            name="qualification_scores_complete",
+        ),
     )
 
     account_id: Mapped[uuid.UUID] = mapped_column(
@@ -106,6 +130,11 @@ class Lead(Base, UUIDPKMixin, TimestampMixin, SoftDeleteMixin):
     reviewed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    website_quality: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    digital_maturity: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    fit_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    priority: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    qualification_scored_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     contacts: Mapped[list["Contact"]] = relationship(back_populates="lead", cascade="all, delete-orphan")
     score_history: Mapped[list["LeadScore"]] = relationship(back_populates="lead", cascade="all, delete-orphan")

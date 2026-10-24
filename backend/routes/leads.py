@@ -77,6 +77,10 @@ def _to_schema(lead, extra: LeadExtra) -> Lead:
         website=lead.website,
         vertical=lead.vertical,
         heat=_heat(lead, extra),
+        website_quality=lead.website_quality,
+        digital_maturity=lead.digital_maturity,
+        fit_score=lead.fit_score,
+        priority=lead.priority,
         review_status=lead.review_status,
     )
 
