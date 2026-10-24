@@ -35,6 +35,7 @@ celery_app = Celery(
         "tasks.inbox_tasks",
         "tasks.prospecting_tasks",
         "tasks.qualification_tasks",
+        "tasks.health_tasks",
     ],
 )
 
@@ -53,6 +54,7 @@ celery_app.conf.update(
         "tasks.inbox_tasks.*": {"queue": "webhooks"},
         "tasks.prospecting_tasks.*": {"queue": "automation"},
         "tasks.qualification_tasks.*": {"queue": "automation"},
+        "tasks.health_tasks.*": {"queue": "automation"},
     },
     beat_schedule={
         # Safety net for apply_async(eta=...) sends that got lost (e.g. a
@@ -71,6 +73,11 @@ celery_app.conf.update(
         "score-enriched-leads": {
             "task": "tasks.qualification_tasks.score_enriched_leads",
             "schedule": crontab(hour=3, minute=30),
+            "options": {"queue": "automation"},
+        },
+        "celery-beat-health-heartbeat": {
+            "task": "tasks.health_tasks.record_beat_heartbeat",
+            "schedule": 60.0,
             "options": {"queue": "automation"},
         },
         "stop-unqualified-sequences": {

@@ -9,21 +9,22 @@ from __future__ import annotations
 import asyncio
 import time
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import text
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from alembic.config import Config
 from alembic.script import ScriptDirectory
+from db.models import Account, JobRun, PublicPageCache, UsageRecord
 from db.session import get_db_session
 from db.url import describe_database
 from deps import get_current_user, require_roles
 from repositories import map_job_repo
-from services import feature_flags, map_job_runner, overpass_svc
+from services import ai_svc, celery_health, feature_flags, imap_svc, map_job_runner, overpass_svc, smtp_svc
 from services.rate_limit import AttemptLimiter
 
 router = APIRouter(prefix="/system", tags=["system"])
@@ -47,7 +48,11 @@ async def health(user: dict = Depends(get_current_user), session: AsyncSession =
     database: dict[str, Any] = {**describe_database(), "ok": False, "latency_ms": None}
     migrations: dict = {"ok": False, "current": None, "head": _script_head()}
     cache: dict = {"ok": False}
-    jobs: dict = {}
+    map_jobs: dict = {}
+    recent_jobs = []
+    job_counts: dict = {}
+    quotas: dict = {}
+    page_cache: dict = {"ok": False, "entries": None}
     try:
         await session.execute(text("SELECT 1"))
         database["ok"] = True
@@ -56,25 +61,82 @@ async def health(user: dict = Depends(get_current_user), session: AsyncSession =
         migrations["current"] = row.scalar_one_or_none()
         migrations["ok"] = migrations["current"] is not None and migrations["current"] == migrations["head"]
         cache = {"ok": True, **await map_job_repo.cache_stats(session, now)}
-        jobs = await map_job_repo.job_counts(session, now - timedelta(hours=24))
+        map_jobs = await map_job_repo.job_counts(session, now - timedelta(hours=24))
+        page_cache_count = await session.scalar(
+            select(func.count()).select_from(PublicPageCache).where(PublicPageCache.expires_at > now)
+        )
+        page_cache = {"ok": True, "live_entries": int(page_cache_count or 0), "checked_at": now}
+        account_id = uuid.UUID(user["org_id"])
+        counts = await session.execute(
+            select(JobRun.status, func.count())
+            .where(JobRun.account_id == account_id, JobRun.created_at >= now - timedelta(hours=24))
+            .group_by(JobRun.status)
+        )
+        job_counts = {status: count for status, count in counts.all()}
+        jobs = await session.execute(
+            select(JobRun).where(JobRun.account_id == account_id).order_by(JobRun.created_at.desc()).limit(10)
+        )
+        recent_jobs = [
+            {
+                "id": str(job.id),
+                "job_type": job.job_type,
+                "status": job.status,
+                "total_items": job.total_items,
+                "processed_items": job.processed_items,
+                "failed_items": job.failed_items,
+                "created_at": job.created_at,
+                "finished_at": job.finished_at,
+                "error": job.error,
+            }
+            for job in jobs.scalars()
+        ]
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        usage = await session.execute(
+            select(UsageRecord.kind, func.sum(UsageRecord.quantity))
+            .where(UsageRecord.account_id == account_id, UsageRecord.created_at >= month_start)
+            .group_by(UsageRecord.kind)
+        )
+        plan = await session.scalar(select(Account.plan).where(Account.id == account_id))
+        quotas = {
+            "plan": plan,
+            "period_started_at": month_start,
+            "consumed": {kind: int(quantity or 0) for kind, quantity in usage.all()},
+            "limits_configured": False,
+            "checked_at": now,
+        }
     except Exception:  # noqa: BLE001 (a broken dependency is the thing to show)
         await session.rollback()
     org = uuid.UUID(user["org_id"])
+    celery = await asyncio.to_thread(celery_health.snapshot, now)
+    ai_config = ai_svc.config()
     return {
         "generated_at": now,
         "database": database,
         "migrations": migrations,
         "cache": cache,
-        "map_jobs_24h": jobs,
-        "workers": {
-            "mode": "in_process",
-            "note": "Map searches run as background tasks of the API process (no separate worker on this plan); the "
-            "job row is the state, a lost job is reported as such.",
+        "public_page_cache": page_cache,
+        "map_jobs_24h": map_jobs,
+        "jobs_24h": job_counts,
+        "recent_jobs": recent_jobs,
+        "workers": celery["worker"],
+        "beat": celery["beat"],
+        "automation_queue": {**celery["automation_queue"], "broker_ok": celery["broker_ok"]},
+        "integrations": {
+            "overpass": {"status": "not_checked", "checked_at": None},
+            "smtp": {"status": "configured" if smtp_svc.is_configured() else "not_configured", "checked_at": now},
+            "imap": {"status": "configured" if imap_svc.is_configured() else "not_configured", "checked_at": now},
+            "groq": {
+                "status": "configured" if ai_config is not None and ai_config.provider == "groq" else "not_configured",
+                "checked_at": now,
+                "probe_performed": False,
+            },
         },
+        "quotas": quotas,
         "overpass": {
             "endpoints": [e.split("//", 1)[1].split("/", 1)[0] for e in overpass_svc.endpoints()],
             "cooling_down": overpass_svc.cooling_hosts(),
-            "probe": "POST /api/system/health/overpass (owner/admin)",
+            "status": "not_checked",
+            "checked_at": None,
         },
         "flags": {
             "external_sources": feature_flags.is_enabled("external_sources"),
@@ -96,4 +158,4 @@ async def probe_overpass(user: dict = Depends(decider)):
     results = []
     for endpoint in overpass_svc.endpoints():  # one after the other: never a burst on public servers
         results.append(await asyncio.to_thread(overpass_svc.probe, endpoint))
-    return {"ok": any(r["ok"] for r in results), "servers": results}
+    return {"ok": any(r["ok"] for r in results), "servers": results, "checked_at": datetime.now(timezone.utc)}

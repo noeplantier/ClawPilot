@@ -112,6 +112,35 @@ test("a visitor without a session is sent to the login page", async ({ page }) =
   await expect(page).toHaveURL(/\/login/);
 });
 
+test("manual scoring selection creates and tracks a real account-scoped job", async ({ page }) => {
+  await register(page);
+  await page.goto("/app/leads");
+  await page.getByTestId("add-lead-button").click();
+  await page.getByTestId("lead-full_name").fill(`Scoring E2E ${uid()}`);
+  await page.getByTestId("save-lead-button").click();
+  const checkbox = page.locator('[data-testid^="lead-check-"]').first();
+  await checkbox.check();
+  await page.getByTestId("score-selected").click();
+  await expect(page.getByTestId("scoring-job")).toContainText("Scoring failed");
+  await expect(page.locator('[data-testid^="qualification-"]').first()).toContainText("Enrichissement requis");
+  await expect(page.getByTestId("scoring-job")).toContainText("1 / 1");
+});
+
+test("system health uses live service state and does not expose provider credentials", async ({ page }) => {
+  await register(page);
+  await page.goto("/app/system");
+  await expect(page.getByTestId("health-checks")).toBeVisible();
+  await expect(page.getByTestId("health-checked-at")).toBeVisible();
+  const report = await page.request.get(`${API}/api/system/health`, {
+    headers: { authorization: `Bearer ${await page.evaluate(() => localStorage.getItem("outreachos_token"))}` },
+  });
+  expect(report.ok()).toBeTruthy();
+  const body = JSON.stringify(await report.json()).toLowerCase();
+  expect(body).not.toContain("password");
+  expect(body).not.toContain("api_key");
+  expect(body).not.toContain("auth_token");
+});
+
 test("the map shows real places from the search, marks what is published and never invents a contact", async ({ page }) => {
   // The server runs with the flags off (the safe default): the page says so. Then the flag and OpenStreetMap are faked
   // at the network edge so the interactive map can be exercised without any outside access.

@@ -1,14 +1,15 @@
 import { useState } from "react";
 import { CheckCircle, WarningCircle } from "@phosphor-icons/react";
 import { useAuth } from "@/contexts/AuthContext";
-import { canDecide, systemApi, useAsync } from "@/lib/outreach";
+import { canDecide, systemApi } from "@/lib/outreach";
 import { describeApiError } from "@/lib/outreachFormat";
-import { checks, coolingLine, jobsLine, probeLine } from "@/lib/systemHealth";
+import { checks, coolingLine, jobRunsLine, jobsLine, probeLine } from "@/lib/systemHealth";
 import { ErrorBlock, LoadingBlock } from "@/components/outreach/States";
+import { useLive } from "@/lib/live";
 
 export default function SystemHealth() {
   const { user } = useAuth();
-  const page = useAsync(() => systemApi.health(), []);
+  const page = useLive(() => systemApi.health(), [], { intervalMs: 15000 });
   const [probe, setProbe] = useState(null);
   const [probing, setProbing] = useState(false);
   const [probeError, setProbeError] = useState(null);
@@ -37,6 +38,7 @@ export default function SystemHealth() {
       {page.error && <ErrorBlock message={page.error} onRetry={page.reload} />}
       {d && (
         <>
+          <p className="text-xs text-[#5F5F5A]" data-testid="health-checked-at">Last checked {new Date(d.generated_at).toLocaleString()}</p>
           <ul className="surface divide-y divide-[#E9EEF7]" data-testid="health-checks">
             {checks(d).map((c) => (
               <li key={c.key} className="p-4 flex items-start gap-3" data-testid={`health-${c.key}`} data-ok={c.ok}>
@@ -46,6 +48,20 @@ export default function SystemHealth() {
             ))}
           </ul>
           <p className="text-sm" data-testid="health-jobs">{jobsLine(d.map_jobs_24h)}</p>
+          <p className="text-sm" data-testid="health-job-run-counts">{jobRunsLine(d.jobs_24h)}</p>
+          <section className="surface p-5 space-y-3" data-testid="health-job-runs">
+            <div className="flex justify-between items-center"><h2 className="font-display text-lg font-bold">Scoring and background jobs</h2><span className="text-xs text-[#5F5F5A]">{Object.entries(d.jobs_24h || {}).map(([status, count]) => `${count} ${status}`).join(" · ") || "No runs in 24 h"}</span></div>
+            {d.recent_jobs?.length ? <ul className="divide-y divide-[#E9EEF7]">{d.recent_jobs.map((job) => <li key={job.id} className="py-2 flex flex-wrap justify-between gap-2 text-sm" data-testid={`health-job-${job.id}`}>
+              <span><strong>{job.job_type}</strong> · {job.status}</span><span>{job.processed_items}/{job.total_items} processed · {job.failed_items} failed</span>
+              {job.error && <span className="w-full text-xs text-[#991B1B]">{job.error}</span>}
+            </li>)}</ul> : <p className="text-sm text-[#5F5F5A]">No persisted job runs yet.</p>}
+          </section>
+          <section className="surface p-5 space-y-2" data-testid="health-quotas">
+            <h2 className="font-display text-lg font-bold">Usage and quotas</h2>
+            <p className="text-sm">Plan: {d.quotas?.plan || "unknown"} · period from {d.quotas?.period_started_at ? new Date(d.quotas.period_started_at).toLocaleDateString() : "unknown"}</p>
+            <p className="text-sm">{Object.entries(d.quotas?.consumed || {}).map(([kind, count]) => `${kind}: ${count}`).join(" · ") || "No metered usage recorded this period."}</p>
+            <p className="text-xs text-[#5F5F5A]">{d.quotas?.limits_configured ? "Configured plan limits are shown above." : "Usage is persisted; numeric plan limits are not configured in this application."}</p>
+          </section>
           <section className="surface p-5 space-y-3" data-testid="health-overpass">
             <h2 className="font-display text-lg font-bold">OpenStreetMap servers</h2>
             <p className="text-sm text-[#5F5F5A]">Public servers used for the map search: {d.overpass.endpoints.join(", ")}. The probe asks each one for its status page from this server.</p>
@@ -54,6 +70,7 @@ export default function SystemHealth() {
             {probeError && <p role="alert" className="text-sm text-[#991B1B]">{probeError}</p>}
             {probe && (
               <ul className="text-sm space-y-1" data-testid="probe-result">
+                <li>Checked {new Date(probe.checked_at).toLocaleString()}</li>
                 {probe.servers.map((s) => <li key={s.host} data-ok={s.ok}>{s.ok ? "✓" : "✗"} {probeLine(s)}</li>)}
                 {!probe.ok && <li className="text-[#991B1B]">None answered: the server cannot reach OpenStreetMap from here. Searches fall back to your browser.</li>}
               </ul>
