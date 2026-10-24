@@ -55,26 +55,40 @@ export function needsList(item) {
   return (item.needs || []).join("\n");
 }
 
-export const GEOCODER_URL = "https://api-adresse.data.gouv.fr/search/?q=Lyon&type=municipality&limit=1";
+export const GEOCODER_URL = "https://geo.api.gouv.fr/communes?nom=Lyon&fields=nom&limit=1";
+export const GEOCODER_FALLBACK_URL = "https://api-adresse.data.gouv.fr/search/?q=Lyon&type=municipality&limit=1";
 
-// The city search is called from the browser, so the browser is what gets tested. `fetchImpl` is injectable for tests.
-export async function testGeocoder(fetchImpl = fetch, { timeoutMs = 8000, now = () => Date.now() } = {}) {
-  const started = now();
+// One call, bounded in time: { found } when the service answered, { error } with the reason when it did not.
+async function askTownService(fetchImpl, url, timeoutMs) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetchImpl(GEOCODER_URL, { signal: controller.signal });
-    const latency = now() - started;
-    if (!response.ok) return { ok: false, outcome: "failed", latency_ms: latency, detail: `The city search answered HTTP ${response.status}.` };
+    const response = await fetchImpl(url, { signal: controller.signal });
+    if (!response.ok) return { error: `HTTP ${response.status}` };
     const body = await response.json();
-    const found = Array.isArray(body?.features) && body.features.length > 0;
-    return found
-      ? { ok: true, outcome: "passed", latency_ms: latency, detail: "The city search answered from your browser." }
-      : { ok: false, outcome: "failed", latency_ms: latency, detail: "The city search answered without a result for a known city." };
+    const list = Array.isArray(body) ? body : body?.features;
+    return { found: Array.isArray(list) && list.length > 0 };
   } catch (e) {
-    const reason = e && e.name === "AbortError" ? `no answer within ${Math.round(timeoutMs / 1000)} s` : "the request was blocked or the network is down";
-    return { ok: false, outcome: "failed", latency_ms: null, detail: `The city search is unreachable from your browser: ${reason}.` };
+    return { error: e && e.name === "AbortError" ? `no answer within ${Math.round(timeoutMs / 1000)} s` : "the request was blocked or the network is down" };
   } finally {
     clearTimeout(timer);
   }
+}
+
+// The town search of the map is called from the browser, so the browser is what gets tested: the official communes list first, the
+// address service as the map's fallback. `fetchImpl` is injectable for tests.
+export async function testGeocoder(fetchImpl = fetch, { timeoutMs = 8000, now = () => Date.now() } = {}) {
+  const started = now();
+  const first = await askTownService(fetchImpl, GEOCODER_URL, timeoutMs);
+  if (first.found) return { ok: true, outcome: "passed", latency_ms: now() - started, detail: "The official communes list answered from your browser." };
+  const second = await askTownService(fetchImpl, GEOCODER_FALLBACK_URL, timeoutMs);
+  const latency = now() - started;
+  const why = (r) => r.error || "it answered without a result for a known town";
+  if (second.found) {
+    return { ok: true, outcome: "passed", latency_ms: latency, detail: `The communes list did not help (${why(first)}); the address service did: the town search works through its fallback.` };
+  }
+  if (first.error && second.error) {
+    return { ok: false, outcome: "failed", latency_ms: null, detail: `The town search is unreachable from your browser: communes list: ${first.error}; address service: ${second.error}.` };
+  }
+  return { ok: false, outcome: "failed", latency_ms: latency, detail: `The town search answered without a result for a known town (communes list: ${why(first)}; address service: ${why(second)}).` };
 }

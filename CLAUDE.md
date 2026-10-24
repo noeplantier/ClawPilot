@@ -103,6 +103,9 @@ npm run e2e                    # Playwright, API réelle démarrée + build avec
   `components/outreach/`, appels API dans `lib/outreach.js`, formatage pur dans `lib/outreachFormat.js` (testé).
 - Aucune donnée inventée : un chiffre vient de l'API, sinon un état vide explicite (« not scored » ≠ 0). Un état
   `unknown` s'affiche comme tel et ne vaut jamais un défaut. Ne pas coder en dur un statut d'intégration.
+- Recherche de ville de la carte : `components/outreach/CityBox.jsx` + `lib/cityComplete.js` (pur, testé). Les compteurs de leads par ville
+  viennent de `GET /api/map/cities` (jumeau SQL de la chaleur, `repositories/prospect_repo.city_heat_rows`), jamais recalculés dans le
+  navigateur ; sans compteurs chargés, rien n'est affiché (pas de 0 inventé). Voir `docs/map-search.md`.
 - Tests Jest sans dépendance ajoutée (`react-dom/client` + `act`, API mockée) ; l'alias `@/` et react-router v7 sont
   mappés dans `craco.config.js` (le Jest 27 de CRA ignore le champ `exports`).
 

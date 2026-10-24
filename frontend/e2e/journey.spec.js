@@ -532,9 +532,9 @@ test("settings lists every integration from the server, tests the database live 
   await expect(page.getByTestId("int-smtp-result")).toContainText("are not all set");
   await expect(page.getByTestId("int-smtp")).toHaveAttribute("data-status", "missing");
 
-  // The city search is called from the browser, so it is tested from the browser (stubbed here: no real network in tests).
-  await page.route("https://api-adresse.data.gouv.fr/**", (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ features: [{ properties: { label: "Lyon" } }] }) }),
+  // The town search is called from the browser, so it is tested from the browser (stubbed here: no real network in tests).
+  await page.route("https://geo.api.gouv.fr/**", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([{ nom: "Lyon" }]) }),
   );
   await page.getByTestId("int-geocoder-test").click();
   await expect(page.getByTestId("int-geocoder-status")).toContainText("VERIFIED");
@@ -582,4 +582,56 @@ test("one click on a map point adds the business to the CRM, with the attestatio
   expect(sent.place.phone).toBeUndefined();
   // The pin is now one of my prospects (a square) and is no longer offered as a search result.
   await expect(page.getByTestId("map-mine-toggle")).toContainText("1 prospect on the map: 0 to review, 1 approved");
+});
+
+async function apiGet(page, path) {
+  const token = await page.evaluate(() => localStorage.getItem("outreachos_token"));
+  const res = await page.request.get(`${API}/api${path}`, { headers: { Authorization: `Bearer ${token}` } });
+  expect(res.status(), await res.text()).toBeLessThan(300);
+  return res.json();
+}
+
+test("the town search opens on every focus, answers as you type, and shows my counted hot leads in each town", async ({ page }) => {
+  await register(page);
+  await apiPost(page, "/prospects/discovery/run", { source: "fixture_directory" });
+  const towns = await apiGet(page, "/map/cities"); // counted by the server from the real leads of this organisation
+  expect(towns.length).toBeGreaterThan(0);
+  const top = towns[0];
+  const leads = (n) => `${n} lead${n === 1 ? "" : "s"}`;
+
+  await MAP_STUBS(page); // tiles, flags and an empty prospects list: only the town services are faked (the sandbox has no outside access)
+  const asked = [];
+  await page.route("https://geo.api.gouv.fr/**", (route) => {
+    asked.push(decodeURIComponent(route.request().url()));
+    return route.fulfill({ json: [{ nom: top.city, code: "00000", codesPostaux: ["00000"], centre: { type: "Point", coordinates: [4.83, 45.76] }, population: 50000, departement: { code: "00", nom: "Test" } }] });
+  });
+  await page.goto("/app/map");
+
+  // before anything is typed: the towns where my hot leads are, hottest first, with the server's counts
+  const field = page.getByTestId("map-goto");
+  await field.click();
+  await expect(page.getByTestId("city-header")).toHaveText("Your hottest towns");
+  await expect(page.getByTestId("map-city-0")).toContainText(top.city);
+  await expect(page.getByTestId("map-city-0").getByTestId("city-counts")).toContainText(`${top.hot} hot · ${leads(top.total)}`);
+  expect(asked).toHaveLength(0); // nothing leaves the browser until the person types
+
+  // typing: the official list answers, the figures are the same
+  await field.fill(top.city.slice(0, 3));
+  await expect(page.getByTestId("map-city-0")).toContainText("(00000)");
+  await expect(page.getByTestId("map-city-0").getByTestId("city-counts")).toContainText(`${top.hot} hot · ${leads(top.total)}`);
+  expect(asked[0]).toContain(`nom=${top.city.slice(0, 3)}`);
+
+  // choosing closes the list; the same field opens it again (the old search showed it once)
+  await page.getByTestId("map-city-0").click();
+  await expect(page.getByTestId("map-cities")).toHaveCount(0);
+  await expect(field).toHaveValue(`${top.city} (00000)`);
+  await field.click();
+  await expect(page.getByTestId("map-cities")).toBeVisible();
+  await field.fill(top.city.slice(0, 2));
+  await expect(page.getByTestId("map-city-0")).toContainText(top.city);
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("map-cities")).toHaveCount(0);
+  await field.focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByTestId("map-cities")).toBeVisible();
 });

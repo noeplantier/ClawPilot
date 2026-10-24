@@ -872,6 +872,17 @@ class MapProspectOut(BaseModel):
     heat: Optional[dict] = None  # {value, tier, info_pct}: the hottest prospects are listed first on the map
 
 
+class CityHeatOut(BaseModel):
+    """Leads of one town by heat tier, counted (the town search of the map shows them next to each suggestion)."""
+
+    city: str  # the most used spelling
+    key: str  # accent- and case-insensitive key (`Saint-Étienne` = `st etienne`) the page matches on
+    hot: int
+    warm: int
+    cold: int
+    total: int
+
+
 class SourceInfo(BaseModel):
     name: str
     label: str

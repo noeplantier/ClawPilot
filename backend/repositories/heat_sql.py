@@ -25,6 +25,11 @@ def _known(column: ColumnElement) -> ColumnElement:
     return case((text_value.in_(sorted(heat_rules.NOT_KNOWN)), 0), else_=1)
 
 
+def known(column: ColumnElement) -> ColumnElement:
+    """1 when the column really holds a value, 0 for blank / unknown / "unspecified" (the Python `is_known`)."""
+    return _known(column)
+
+
 def info_pct_sql() -> ColumnElement:
     count = sum((_known(_COLUMNS[f]) for f in heat_rules.INFO_FIELDS), literal(0))
     return (count * 25 + 1) // 2

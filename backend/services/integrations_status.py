@@ -254,12 +254,13 @@ def _osm(f: Facts) -> dict[str, Any]:
 def _geocoder() -> dict[str, Any]:
     return _item(
         "geocoder",
-        "City search (api-adresse.data.gouv.fr)",
+        "Town search (geo.api.gouv.fr)",
         "sources",
         "unchecked",
         "KEYLESS · NOT TESTED",
-        "Turns a city name into coordinates for the map. Called from your browser, so the test runs in your browser.",
-        facts=[("called from", "your browser"), ("key", "none")],
+        "Suggests towns as you type on the map and turns the one you pick into coordinates: the official communes "
+        "list, the address service as a fallback. Called from your browser, so the test runs in your browser.",
+        facts=[("called from", "your browser"), ("key", "none"), ("fallback", "api-adresse.data.gouv.fr")],
         test="browser",
     )
 
