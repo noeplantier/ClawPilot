@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
@@ -6,6 +7,7 @@ import { sendErrorText } from "@/lib/campaignLaunch";
 import { describeApiError } from "@/lib/outreachFormat";
 import { Envelope, WhatsappLogo, PaperPlaneTilt, Sparkle, Users } from "@phosphor-icons/react";
 import BatchComposerModal from "@/components/BatchComposerModal";
+import { addressOf, matchLead, sendBlock, suggestLeads } from "@/lib/recipient";
 
 const STATUS_CHIP = {
   sent: "chip-success", delivered: "chip-success", opened: "chip-cyan",
@@ -97,13 +99,33 @@ function Composer({ channel, onClose, onSent }) {
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [leads, setLeads] = useState(null); // null = loading
+  const [leadsError, setLeadsError] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const blurTimer = useRef(null); // the list closes a moment after the field loses focus (a click on a suggestion comes first)
+  useEffect(() => () => clearTimeout(blurTimer.current), []);
+
+  // A real e-mail belongs to a lead record (its footer carries that lead's unsubscribe link): the recipient is picked from,
+  // or matched to, the organisation's leads, hottest first.
+  useEffect(() => {
+    let alive = true;
+    api.get("/leads", { params: { limit: 500 } })
+      .then((r) => { if (alive) setLeads(r.data); })
+      .catch(() => { if (alive) { setLeads([]); setLeadsError(true); } });
+    return () => { alive = false; };
+  }, []);
+
+  const lead = useMemo(() => matchLead(leads, to, channel), [leads, to, channel]);
+  const suggestions = useMemo(() => (focused && !lead ? suggestLeads(leads, to, channel) : []), [focused, lead, leads, to, channel]);
+  const block = leadsError && channel === "email" ? "load-error" : sendBlock(channel, to, lead, leads !== null);
 
   const aiWrite = async () => {
     if (!to) { toast.error("Enter recipient first"); return; }
     setGenerating(true);
     try {
       const { data } = await api.post("/ai/generate", {
-        recipient_name: to.split("@")[0] || to,
+        recipient_name: lead ? lead.full_name : to.split("@")[0] || to,
+        ...(lead && lead.company ? { company: lead.company } : {}),
         product: "Plantiers - OutreachOS lead generation platform",
         language: "en",
         tone: "professional",
@@ -121,7 +143,8 @@ function Composer({ channel, onClose, onSent }) {
     setSending(true);
     try {
       const path = channel === "email" ? "/messages/email" : "/messages/whatsapp";
-      const payload = channel === "email" ? { to, subject, body } : { to, body };
+      const link = lead ? { lead_id: lead.id } : {};
+      const payload = channel === "email" ? { to: to.trim(), subject, body, ...link } : { to, body, ...link };
       const { data } = await api.post(path, payload);
       const status = data.result.status;
       if (status === "sent") toast.success("Sent");
@@ -138,9 +161,40 @@ function Composer({ channel, onClose, onSent }) {
         <h2 className="text-2xl font-black tracking-tighter mt-1">New {channel === "email" ? "Email" : "WhatsApp"}</h2>
 
         <div className="space-y-3 mt-6">
-          <div>
-            <label className="mono-accent block mb-1.5">{channel === "email" ? "to.email" : "to.phone (+countrycode)"}</label>
-            <input className="neo-input font-mono" value={to} onChange={(e) => setTo(e.target.value)} placeholder={channel === "email" ? "priya@acme.io" : "+14155550123"} data-testid="compose-to" />
+          <div className="relative">
+            <label className="mono-accent block mb-1.5">{channel === "email" ? "to.email (one of your leads)" : "to.phone (+countrycode)"}</label>
+            <input className="neo-input font-mono" value={to} onChange={(e) => setTo(e.target.value)}
+              onFocus={() => { clearTimeout(blurTimer.current); setFocused(true); }}
+              onBlur={() => { blurTimer.current = setTimeout(() => setFocused(false), 120); }} autoComplete="off"
+              placeholder={channel === "email" ? "type a name or an address" : "+14155550123"} data-testid="compose-to" />
+            {suggestions.length > 0 && (
+              <ul className="absolute left-0 right-0 mt-1 z-10 max-h-56 overflow-auto rounded-lg py-1 bg-white border border-indigo-100 shadow-lg" role="listbox" data-testid="compose-suggestions">
+                {suggestions.map((l, i) => (
+                  <li key={l.id}>
+                    <button type="button" role="option" aria-selected="false" className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50"
+                      onMouseDown={(e) => e.preventDefault()} onClick={() => { setTo(addressOf(channel, l)); setFocused(false); }} data-testid={`compose-suggest-${i}`}>
+                      <span className="font-semibold">{l.full_name}</span>
+                      {l.company ? <span className="text-[#5F5F5A]"> · {l.company}</span> : null}
+                      <span className="block font-mono text-xs text-[#6B7690]">{addressOf(channel, l)}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {lead && (
+              <p className="text-xs mt-1.5 text-[#065F46]" data-testid="compose-lead">
+                Linked to <b>{lead.full_name}</b>{lead.review_status ? ` (prospect: ${lead.review_status === "pending" ? "to review" : lead.review_status})` : ""}: the e-mail carries its unsubscribe link.
+              </p>
+            )}
+            {block === "not-a-lead" && (
+              <p className="text-xs mt-1.5 text-[#92400E]" role="alert" data-testid="compose-no-lead">
+                This address is not one of your leads. A real e-mail must be linked to a lead so that it carries a working unsubscribe link:{" "}
+                <Link to="/app/leads" className="underline" onClick={onClose}>add it in Leads first</Link>.
+              </p>
+            )}
+            {block === "load-error" && (
+              <p className="text-xs mt-1.5 text-[#991B1B]" role="alert" data-testid="compose-leads-error">Your leads could not be loaded, so the recipient cannot be checked. Reload the page.</p>
+            )}
           </div>
           {channel === "email" && (
             <div>
@@ -160,7 +214,8 @@ function Composer({ channel, onClose, onSent }) {
         </div>
 
         <div className="flex gap-3 mt-6">
-          <button onClick={send} disabled={sending} className="btn-primary" data-testid="send-message-button">
+          <button onClick={send} disabled={sending || Boolean(block)} className="btn-primary" data-testid="send-message-button"
+            title={block ? "Pick one of your leads as the recipient" : undefined}>
             {sending ? "SENDING..." : <><PaperPlaneTilt size={14} weight="fill" /> DISPATCH</>}
           </button>
           <button onClick={onClose} className="btn-ghost">CANCEL</button>
