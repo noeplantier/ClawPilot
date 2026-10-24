@@ -99,6 +99,10 @@ class Lead(BaseModel):
     website: Optional[str] = None
     vertical: Optional[str] = None
     heat: Optional[HeatOut] = None
+    website_quality: Optional[int] = None
+    digital_maturity: Optional[int] = None
+    fit_score: Optional[int] = None
+    priority: Optional[Literal["low", "medium", "high"]] = None
     # A prospect found by discovery (map, sources, import) says where it stands in the human review; a CRM lead: none.
     review_status: Optional[Literal["pending", "approved", "rejected"]] = None
 
