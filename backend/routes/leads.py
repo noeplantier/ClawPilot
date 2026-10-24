@@ -19,8 +19,15 @@ from services.outreach_os import heat as heat_rules
 router = APIRouter(prefix="/leads", tags=["leads"])
 
 
-def _heat(lead) -> HeatOut:
-    """Heat of a CRM lead: its real information and, when it has one, its score (a CRM score of 0 means not scored)."""
+def _score_of(lead, extra: LeadExtra) -> Optional[int]:
+    """The score a lead is ranked on: a discovery prospect's latest score, else the CRM score (0 means not scored)."""
+    if extra.prospect_score is not None:
+        return extra.prospect_score
+    return lead.score if lead.score > 0 else None
+
+
+def _heat(lead, extra: LeadExtra) -> HeatOut:
+    """Heat of a lead: its real information and, when it has one, its score."""
     h = heat_rules.heat_of(
         {
             "email": lead.email,
@@ -32,7 +39,7 @@ def _heat(lead) -> HeatOut:
             "country": lead.country,
             "title": lead.title,
         },
-        lead.score if lead.score > 0 else None,
+        _score_of(lead, extra),
     )
     return HeatOut(
         value=h.value,
@@ -41,6 +48,8 @@ def _heat(lead) -> HeatOut:
         known=list(h.known),
         missing=list(h.missing),
         scored=h.scored,
+        top=h.top,
+        has_contact=h.has_contact,
         score=h.score,
     )
 
@@ -60,14 +69,14 @@ def _to_schema(lead, extra: LeadExtra) -> Lead:
         tags=list(lead.tags),
         source=extra.source,
         notes=lead.notes,
-        score=lead.score,
+        score=extra.prospect_score if extra.prospect_score is not None else lead.score,
         email_consent=cast(ConsentStatus, extra.email_consent),
         whatsapp_consent=cast(ConsentStatus, extra.whatsapp_consent),
         created_at=lead.created_at,
         city=lead.city,
         website=lead.website,
         vertical=lead.vertical,
-        heat=_heat(lead),
+        heat=_heat(lead, extra),
         review_status=lead.review_status,
     )
 

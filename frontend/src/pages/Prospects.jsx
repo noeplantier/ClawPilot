@@ -7,6 +7,8 @@ import { canDecide, prospectsApi, useAsync } from "@/lib/outreach";
 import { REVIEW_META, describeApiError, domainOf } from "@/lib/outreachFormat";
 import ScoreBadge from "@/components/outreach/ScoreBadge";
 import HeatBadge from "@/components/outreach/HeatBadge";
+import EmptyToggle from "@/components/outreach/EmptyToggle";
+import { readPref, writePref } from "@/lib/uiPrefs";
 import { EmptyBlock, ErrorBlock, LoadingBlock } from "@/components/outreach/States";
 
 const PAGE_SIZE = 25;
@@ -32,6 +34,8 @@ export default function Prospects() {
   const [running, setRunning] = useState(false);
   const [lastRun, setLastRun] = useState(null);
   const [runError, setRunError] = useState(null);
+  const [showEmpty, setShowEmpty] = useState(() => readPref("prospects.showEmpty", false)); // no e-mail, phone or website
+  const toggleEmpty = () => setShowEmpty((v) => { writePref("prospects.showEmpty", !v); return !v; });
 
   const list = useAsync(
     () =>
@@ -40,19 +44,24 @@ export default function Prospects() {
         offset: page * PAGE_SIZE,
         ...(status ? { review_status: status } : {}),
         ...(minScore ? { min_score: minScore } : {}),
+        ...(showEmpty ? {} : { hide_empty: true }),
       }),
-    [status, minScore, page]
+    [status, minScore, page, showEmpty]
   );
   // The built-in demo directory (fictional businesses) is offered only when the server explicitly enables it.
   const settings = useAsync(() => prospectsApi.settings().catch(() => null), []);
   const demoOn = !!(settings.data && settings.data.flags && settings.data.flags.demo_data);
-  // Real totals per review status (one tiny request each), shown on the tabs.
+  // Real totals per review status (one tiny request each, counted by the server), shown on the tabs, and how many empty leads
+  // (no e-mail, phone or website) each holds.
   const counts = useAsync(async () => {
     const [pending, approved, rejected] = await Promise.all(
-      ["pending", "approved", "rejected"].map((s) => prospectsApi.list({ limit: 1, review_status: s }))
+      ["pending", "approved", "rejected"].map((s) => prospectsApi.queues(s, { hideEmpty: !showEmpty }))
     );
-    return { pending: pending.total, approved: approved.total, rejected: rejected.total };
-  }, []);
+    return {
+      pending: pending.total, approved: approved.total, rejected: rejected.total,
+      empty: { pending: pending.empty, approved: approved.empty, rejected: rejected.empty },
+    };
+  }, [showEmpty]);
 
   const setParam = (key, value) => {
     const next = new URLSearchParams(params);
@@ -81,6 +90,7 @@ export default function Prospects() {
   const items = list.data ? list.data.items : [];
   const total = list.data ? list.data.total : 0;
   const filtered = !!(status || minScore);
+  const emptyCount = counts.data ? (status ? counts.data.empty[status] : counts.data.empty.pending + counts.data.empty.approved + counts.data.empty.rejected) : 0;
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
@@ -145,6 +155,7 @@ export default function Prospects() {
             </button>
           ))}
         </div>
+        <EmptyToggle empty={emptyCount} showEmpty={showEmpty} onToggle={toggleEmpty} testId="prospects-empty-toggle" />
         <label className="flex items-center gap-2 text-sm text-[#475569]">
           <span className="mono-accent">min score</span>
           <select className="neo-input !w-auto" value={minScore} onChange={(e) => setParam("min", e.target.value)} data-testid="min-score">
@@ -160,7 +171,13 @@ export default function Prospects() {
       {list.loading && !list.data && <LoadingBlock label="Loading prospects…" />}
       {list.error && <ErrorBlock message={list.error} onRetry={list.reload} />}
 
-      {list.data && items.length === 0 && !filtered && (
+      {list.data && items.length === 0 && !filtered && counts.data && emptyCount > 0 && !showEmpty && (
+        <EmptyBlock title="Every prospect is empty" testId="empty-all-hidden">
+          <p>{emptyCount} prospect{emptyCount === 1 ? " has" : "s have"} no e-mail, phone or website, so {emptyCount === 1 ? "it is" : "they are"} hidden. Show them to complete them, or find better ones on the map.</p>
+          <button className="btn-ghost" onClick={toggleEmpty} data-testid="empty-show-all">SHOW THEM</button>
+        </EmptyBlock>
+      )}
+      {list.data && items.length === 0 && !filtered && counts.data && !(emptyCount > 0 && !showEmpty) && (
         <EmptyBlock title="No prospect yet" testId="empty-no-prospects">
           <p>
             Find real businesses on the map: search an area, click a place and add it to your CRM in one click. You can also import

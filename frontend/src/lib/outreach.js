@@ -49,7 +49,9 @@ export const systemApi = {
 
 export const prospectsApi = {
   list: (params) => api.get("/prospects", { params }).then((r) => r.data),
-  queues: (status = "pending") => api.get("/prospects/queues", { params: { review_status: status } }).then((r) => r.data),
+  // `hideEmpty`: leave out the leads with no e-mail, phone or website (the answer still says how many there are: `empty`).
+  queues: (status = "pending", { hideEmpty = false } = {}) =>
+    api.get("/prospects/queues", { params: { review_status: status, ...(hideEmpty ? { hide_empty: true } : {}) } }).then((r) => r.data),
   get: (id) => api.get(`/prospects/${id}`).then((r) => r.data),
   events: (id) => api.get(`/prospects/${id}/events`).then((r) => r.data),
   review: (id, decision, note) => api.post(`/prospects/${id}/review`, { decision, note: note || null }).then((r) => r.data),

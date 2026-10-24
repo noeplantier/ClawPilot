@@ -5,8 +5,10 @@ import { ArrowRight, Check, SkipForward, X } from "@phosphor-icons/react";
 import { useAuth } from "@/contexts/AuthContext";
 import { canDecide, prospectsApi, useAsync } from "@/lib/outreach";
 import { LIVE_MS, useLive } from "@/lib/live";
-import { FIELD_LABEL, TIERS, TIER_LABEL, inLane, laneCounts } from "@/lib/heat";
+import { FIELD_LABEL, LANES, LANE_LABEL, inLane, laneCounts } from "@/lib/heat";
+import { readPref, writePref } from "@/lib/uiPrefs";
 import HeatBadge from "@/components/outreach/HeatBadge";
+import EmptyToggle from "@/components/outreach/EmptyToggle";
 import { describeApiError, domainOf } from "@/lib/outreachFormat";
 import ScoreBadge from "@/components/outreach/ScoreBadge";
 import ScoreBreakdown from "@/components/outreach/ScoreBreakdown";
@@ -19,14 +21,19 @@ import { EmptyBlock, ErrorBlock, LoadingBlock } from "@/components/outreach/Stat
 export default function ReviewQueue() {
   const { user } = useAuth();
   const [skipped, setSkipped] = useState([]);
-  const [lane, setLane] = useState("all"); // all | hot | warm | cold
+  const [lane, setLane] = useState("all"); // all | top | hot | warm | cold
+  const [showEmpty, setShowEmpty] = useState(() => readPref("review.showEmpty", false)); // prospects with no e-mail, phone or website
   const [pinned, setPinned] = useState(null); // the prospect being reviewed: a refresh never swaps it under your eyes
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
-  const queue = useLive(() => prospectsApi.list({ review_status: "pending", order: "heat", limit: 100 }), [], { itemsOf: (d) => d.items });
-  const counts = useLive(() => prospectsApi.queues("pending"), [], { idOf: () => "counts", itemsOf: (d) => [d] });
+  const queue = useLive(
+    () => prospectsApi.list({ review_status: "pending", order: "heat", limit: 100, ...(showEmpty ? {} : { hide_empty: true }) }),
+    [showEmpty], { itemsOf: (d) => d.items },
+  );
+  const counts = useLive(() => prospectsApi.queues("pending", { hideEmpty: !showEmpty }), [showEmpty], { idOf: () => "counts", itemsOf: (d) => [d] });
+  const toggleEmpty = () => setShowEmpty((v) => { writePref("review.showEmpty", !v); return !v; });
   const everyPending = useMemo(() => (queue.data ? queue.data.items.filter((p) => !skipped.includes(p.id)) : []), [queue.data, skipped]);
   const pending = useMemo(() => inLane(everyPending, lane), [everyPending, lane]);
   const loaded = laneCounts(everyPending);
@@ -68,7 +75,7 @@ export default function ReviewQueue() {
       {queue.data && (
         <div className="space-y-2" data-testid="queue-lanes-bar">
           <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Queues by heat">
-            {[["all", `All ${server ? server.total : loaded.total}`], ...TIERS.map((t) => [t, `${TIER_LABEL[t]} ${server ? server[t] : loaded[t]}`])].map(([key, label]) => (
+            {LANES.map((k) => [k, `${LANE_LABEL[k]} ${k === "all" ? (server ? server.total : loaded.total) : (server ? server[k] : loaded[k])}`]).map(([key, label]) => (
               <button key={key} onClick={() => setLane(key)} aria-pressed={lane === key} data-testid={`queue-lane-${key}`}
                 className={`px-3 py-1 rounded-full text-xs border transition-colors ${lane === key ? "bg-[#0B1020] text-white border-[#0B1020] shadow-[0_0_14px_-2px_rgba(99,102,241,0.7)]" : "bg-white/80 border-[#D3DBEA] hover:bg-white"}`}>
                 {label}
@@ -79,6 +86,7 @@ export default function ReviewQueue() {
               {queue.stale ? "Refresh failed: showing the last data. " : ""}
               {queue.updatedAt ? `Live · updated ${queue.updatedAt.toLocaleTimeString()} · every ${LIVE_MS / 1000} s` : ""}
             </span>
+            {server && <EmptyToggle empty={server.empty} showEmpty={showEmpty} onToggle={toggleEmpty} testId="queue-empty-toggle" />}
           </div>
           {queue.fresh.size > 0 && (
             <p className="text-xs text-[#0E7490]" data-testid="queue-new">{queue.fresh.size} new prospect{queue.fresh.size === 1 ? "" : "s"} joined the queue (hottest first).</p>
@@ -87,9 +95,11 @@ export default function ReviewQueue() {
       )}
 
       {queue.data && !current && (
-        <EmptyBlock title={queue.data.total === 0 ? "The review queue is empty" : lane !== "all" && everyPending.length > 0 ? `No ${TIER_LABEL[lane].toLowerCase()} prospect waiting` : "You skipped every pending prospect"} testId="queue-empty">
+        <EmptyBlock title={queue.data.total === 0 ? (!showEmpty && server && server.empty > 0 ? "Every prospect waiting is empty" : "The review queue is empty") : lane !== "all" && everyPending.length > 0 ? `No ${LANE_LABEL[lane].toLowerCase()} prospect waiting` : "You skipped every pending prospect"} testId="queue-empty">
           {queue.data.total === 0 ? (
-            <p>No prospect is waiting for a decision. Run discovery on the Prospects page to find more.</p>
+            !showEmpty && server && server.empty > 0
+              ? <p>{server.empty} prospect{server.empty === 1 ? "" : "s"} waiting {server.empty === 1 ? "has" : "have"} no e-mail, phone or website, so they are hidden. Show them above to decide on them anyway.</p>
+              : <p>No prospect is waiting for a decision. Run discovery on the Prospects page to find more.</p>
           ) : (
             <button className="btn-ghost" onClick={() => setSkipped([])}>
               SHOW SKIPPED AGAIN

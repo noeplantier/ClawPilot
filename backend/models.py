@@ -71,6 +71,8 @@ class HeatOut(BaseModel):
     known: List[str]
     missing: List[str]
     scored: bool  # False: never scored, ranked on information alone
+    top: bool  # heat >= 80: the leads to work first
+    has_contact: bool  # at least one of e-mail, phone, website is really known; False = an empty lead
     score: Optional[int] = None
 
 
@@ -429,6 +431,8 @@ class QueueCountsOut(BaseModel):
     warm: int
     cold: int
     total: int
+    top: int  # the hot ones at 80 or more
+    empty: int  # leads with no e-mail, phone or website in this queue: left out of the figures above when `hide_empty`
 
 
 class ProspectSummary(BaseModel):

@@ -15,7 +15,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from db.models import Contact, Lead, LeadScore, LeadSource, OutreachEvent
+from db.models import Contact, Lead, LeadScore, LeadSource, OutreachEvent, ProspectScore
 from repositories import consent_repo, heat_sql
 from services import feature_flags, scoring
 
@@ -31,6 +31,7 @@ class LeadExtra:
     contact_id: Optional[uuid.UUID] = None
     email_consent: str = "unknown"
     whatsapp_consent: str = "unknown"
+    prospect_score: Optional[int] = None  # a discovery prospect's latest explainable score; None = not scored (never 0)
 
 
 _SOURCE_NAME_TO_KIND = {
@@ -116,8 +117,23 @@ async def load_extra(session: AsyncSession, lead: Lead) -> LeadExtra:
         email_consent = await consent_repo.get_status(session, contact_id, "email")
         whatsapp_consent = await consent_repo.get_status(session, contact_id, "whatsapp")
 
+    prospect_score = None
+    if lead.review_status is not None:  # a discovery prospect is scored in `prospect_scores`, not in `Lead.score`
+        prospect_score = (
+            await session.execute(
+                select(ProspectScore.score)
+                .where(ProspectScore.lead_id == lead.id)
+                .order_by(ProspectScore.created_at.desc(), ProspectScore.id)
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+
     return LeadExtra(
-        source=source_name, contact_id=contact_id, email_consent=email_consent, whatsapp_consent=whatsapp_consent
+        source=source_name,
+        contact_id=contact_id,
+        email_consent=email_consent,
+        whatsapp_consent=whatsapp_consent,
+        prospect_score=prospect_score,
     )
 
 
@@ -138,8 +154,15 @@ async def list_leads(
     sort: str = "heat",
     limit: int = 500,
 ) -> list[tuple[Lead, LeadExtra]]:
-    """`sort`: "heat" (hottest first: real information and score; a CRM score of 0 means not scored) or "recent"."""
-    stmt = select(Lead).options(selectinload(Lead.contacts)).where(Lead.account_id == account_id, ACTIVE)
+    """`sort`: "heat" (hottest first: real information and score; a CRM score of 0 means not scored, a discovery
+    prospect is ranked on its latest prospect score) or "recent"."""
+    latest = heat_sql.latest_scores()
+    stmt = (
+        select(Lead)
+        .outerjoin(latest, latest.c.lead_id == Lead.id)
+        .options(selectinload(Lead.contacts))
+        .where(Lead.account_id == account_id, ACTIVE)
+    )
     if stage:
         stmt = stmt.where(Lead.stage == stage)
     if search:
@@ -148,8 +171,8 @@ async def list_leads(
     if sort == "recent":
         stmt = stmt.order_by(Lead.created_at.desc(), Lead.id)
     else:
-        crm_score = func.nullif(Lead.score, 0)
-        stmt = stmt.order_by(heat_sql.heat_sql(crm_score).desc(), Lead.score.desc(), Lead.created_at.desc(), Lead.id)
+        ranked = heat_sql.ranked_score(latest)
+        stmt = stmt.order_by(heat_sql.heat_sql(ranked).desc(), Lead.score.desc(), Lead.created_at.desc(), Lead.id)
     stmt = stmt.limit(limit)
     result = await session.execute(stmt)
     leads = result.scalars().all()

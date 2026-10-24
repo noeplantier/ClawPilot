@@ -29,3 +29,27 @@ def test_tiers_and_what_is_missing_are_reported():
     heat = h.heat_of({"email": "a@b.example", "phone": "+33 4 00 00 00 00"}, 70)
     assert heat.known == ("email", "phone") and "website" in heat.missing and len(heat.known) + len(heat.missing) == 8
     assert heat.tier == "warm" and heat.info_pct == 25
+
+
+def test_top_is_the_hot_lead_at_80_or_more_and_is_never_a_guess():
+    assert [h.is_top(v) for v in (0, 64, 65, 79, 80, 100)] == [False, False, False, False, True, True]
+    assert h.heat_of(FULL, 60).top is True  # (60 + 100 + 1) // 2 = 80
+    assert h.heat_of(FULL, 58).top is False  # 79
+    assert h.heat_of(FULL, None).top is True  # not scored, fully known: ranked on information alone, and says so
+    assert h.heat_of({}, 100).top is False  # (100 + 0 + 1) // 2 = 50: a score without any information is not TOP
+
+
+def test_a_lead_is_empty_when_nothing_can_reach_it_not_when_it_merely_lacks_a_city():
+    only_name_fields = {
+        "city": "Lyon",
+        "company": "Chez Marcel",
+        "vertical": "restaurants",
+        "country": "FR",
+        "title": "Owner",
+    }
+    assert h.has_contact(only_name_fields) is False and h.heat_of(only_name_fields, None).has_contact is False
+    for field in h.CONTACT_FIELDS:
+        assert h.has_contact({field: "x"}) is True
+    for blank in ("", "  ", "unknown", "unspecified", "n/a", None):
+        assert h.has_contact({"email": blank, "phone": blank, "website": blank}) is False  # an unknown is not a way in
+    assert h.heat_of({}, None).has_contact is False

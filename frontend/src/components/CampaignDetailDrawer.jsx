@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { hasContact } from "@/lib/heat";
 import { motion, AnimatePresence } from "framer-motion";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
@@ -34,7 +35,7 @@ export default function CampaignDetailDrawer({ open, campaignId, onClose, onUpda
   useEffect(() => {
     if (open) {
       load();
-      api.get("/leads", { params: { limit: 500 } }).then((r) => setAllLeads(r.data));
+      api.get("/leads", { params: { limit: 500 } }).then((r) => setAllLeads(r.data.filter(hasContact))); // an empty lead cannot be reached: not offered
       setStepResult(null);
     }
   }, [open, campaignId]); // eslint-disable-line

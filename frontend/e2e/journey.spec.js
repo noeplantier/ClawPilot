@@ -414,12 +414,16 @@ test("leads come hottest first with the real information behind the heat, and a 
   await apiPost(page, "/leads", { full_name: "B Rich Lead", email: "b@rich-lead.example", phone: "+33 4 78 00 00 01", company: "Rich SAS", title: "CEO", country: "FR" });
   await page.goto("/app/leads");
   const rows = page.locator('[data-testid^="lead-row-"]');
-  await expect(rows).toHaveCount(2);
+  // "A Name Only" has no e-mail, phone or website: it is empty, so it is left out and counted; one click brings it back
+  await expect(rows).toHaveCount(1);
+  await expect(page.getByTestId("leads-empty-toggle-note")).toHaveText("1 empty lead hidden (no e-mail, phone or website).");
   await expect(rows.first()).toContainText("B Rich Lead"); // the lead with the most real information is first
   await expect(rows.first().getByTestId("heat-badge")).toHaveAttribute("title", /5 of 8 real fields known/);
   await expect(rows.first().getByTestId("heat-badge")).toHaveAttribute("title", /Missing: website, city, category/);
-  await expect(rows.last()).toContainText("e-mail not known"); // an unknown is shown as unknown
   await expect(page.getByTestId("leads-live")).toContainText("Live · updated");
+  await page.getByTestId("leads-empty-toggle").click();
+  await expect(rows).toHaveCount(2);
+  await expect(rows.last()).toContainText("e-mail not known"); // an unknown is shown as unknown
 
   // filter by tier
   const cold = page.getByTestId("lane-cold");
@@ -446,6 +450,8 @@ test("the review queue is split into heat lanes counted by the server, hottest f
   const [all, hot, warm, cold] = [await n("all"), await n("hot"), await n("warm"), await n("cold")];
   expect(hot + warm + cold).toBe(all); // counted, never estimated
   expect(all).toBeGreaterThan(2);
+  await expect(page.getByTestId("queue-lane-top")).toHaveText(/^TOP \d+$/); // the TOP lane (heat 80+) is counted by the server too
+  await expect(page.getByTestId("queue-empty-toggle")).toHaveCount(0); // nothing is empty here: no control without a reason
   await expect(page.getByTestId("queue-live")).toContainText("Live · updated");
   await expect(page.getByTestId("queue-known")).toContainText("Known:");
   // the first card is the hottest one
