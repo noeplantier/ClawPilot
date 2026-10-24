@@ -680,3 +680,33 @@ test("the TOP leads are marked and have their own lane; empty leads are hidden, 
   await page.getByTestId("leads-empty-toggle").click();
   await expect(rows).toHaveCount(2);
 });
+
+
+test("a one-off e-mail is linked to a lead: an unknown address is explained, a lead's address goes through with its lead_id", async ({ page }) => {
+  await register(page);
+  await apiPost(page, "/leads", { full_name: "Chez Marcel", company: "Marcel SARL", email: "contact@chez-marcel.example" });
+  await page.goto("/app/messages");
+  await page.getByTestId("new-email-button").click();
+
+  // not a lead: said plainly, with the way out, and nothing can be dispatched
+  await page.getByTestId("compose-to").fill("stranger@elsewhere.example");
+  await page.getByTestId("compose-body").fill("Hello");
+  await expect(page.getByTestId("compose-no-lead")).toContainText("not one of your leads");
+  await expect(page.getByTestId("compose-no-lead").getByRole("link")).toHaveAttribute("href", "/app/leads");
+  await expect(page.getByTestId("send-message-button")).toBeDisabled();
+
+  // typing a name offers the lead; picking it fills its address and links it
+  await page.getByTestId("compose-to").fill("marcel");
+  await page.getByTestId("compose-suggest-0").click();
+  await expect(page.getByTestId("compose-to")).toHaveValue("contact@chez-marcel.example");
+  await expect(page.getByTestId("compose-lead")).toContainText("Linked to Chez Marcel");
+  await page.getByTestId("compose-subject").fill("Bonjour");
+  let sent = null;
+  await page.route("**/api/messages/email", (route) => { sent = route.request().postDataJSON(); return route.continue(); });
+  await expect(page.getByTestId("send-message-button")).toBeEnabled();
+  await page.getByTestId("send-message-button").click();
+  await expect(page.getByTestId("new-email-button")).toBeVisible();
+  await expect(page.locator("table tbody tr").first()).toContainText("contact@chez-marcel.example");
+  expect(sent).toMatchObject({ to: "contact@chez-marcel.example", subject: "Bonjour" });
+  expect(sent.lead_id).toMatch(/^[0-9a-f-]{36}$/); // the footer's unsubscribe link belongs to this lead
+});

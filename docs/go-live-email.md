@@ -55,6 +55,15 @@ journaux, ni dans une réponse d'API, ni dans la page Settings (qui n'affiche qu
 7. **Seulement ensuite**, et en connaissance de cause, `OUTREACH_SANDBOX=false` ouvre l'envoi à tout prospect **approuvé par un humain**
    (brouillon approuvé, prospect approuvé, non désinscrit, consentement respecté).
 
+## Envoyer un e-mail à la main (Messages > EMAIL)
+
+Un e-mail réel doit être **lié à un lead** : son pied de page porte le lien de désinscription de ce lead. Le serveur répond
+`400 lead_id is required…` à un envoi sans lead (et n'enregistre rien). Le compositeur propose donc vos leads pendant la frappe
+(nom, société ou adresse, les plus chauds d'abord), relie l'adresse tapée au lead qui la porte (sans tenir compte de la casse), et
+bloque « DISPATCH » avec une explication quand l'adresse n'est pas dans vos leads : ajoutez-la d'abord dans Leads. Pour un
+prospect de la découverte, le chemin conforme reste brouillon, approbation, envoi (page du prospect). Tant que
+`OUTREACH_SANDBOX=true`, seuls les destinataires de `OUTREACH_LIVE_ALLOWLIST` reçoivent un message.
+
 ## Garanties techniques
 
 - **Au plus une fois.** La ligne du message est écrite à l'état `sending` et **validée en base avant** l'appel SMTP : un plantage ou une
