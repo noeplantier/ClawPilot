@@ -5,20 +5,23 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import ipaddress
+import json
 import logging
 import re
 import socket
 from datetime import datetime, timedelta, timezone
 from html.parser import HTMLParser
 from urllib.parse import urljoin, urlparse
+from urllib.robotparser import RobotFileParser
 
 import aiohttp
 from aiohttp.abc import AbstractResolver
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from celery_app import celery_app
-from db.models import Contact, DiscoveryJob, DiscoveredPlace, EnrichmentJob, Lead, PublicPageCache
+from db.models import Contact, DiscoveredPlace, DiscoveryJob, EnrichmentJob, Lead, PublicPageCache
 
 logger = logging.getLogger("clawpilot.prospecting")
 ENDPOINTS = (
@@ -27,6 +30,7 @@ ENDPOINTS = (
     "https://overpass.private.coffee/api/interpreter",
 )
 QUERY_VERSION = "v1"
+MAX_OVERPASS_RESPONSE_BYTES = 5_000_000
 CATEGORIES = {
     "restaurant": 'amenity="restaurant"',
     "cafe": 'amenity="cafe"',
@@ -70,7 +74,12 @@ async def _fetch_overpass(bbox: list[float], category: str) -> list[dict]:
                                 continue
                             break
                         response.raise_for_status()
-                        payload = await response.json(content_type=None)
+                        body = bytearray()
+                        async for chunk in response.content.iter_chunked(64 * 1024):
+                            body.extend(chunk)
+                            if len(body) > MAX_OVERPASS_RESPONSE_BYTES:
+                                raise ValueError("overpass_response_too_large")
+                        payload = json.loads(body)
                         return payload.get("elements", [])
                 except (aiohttp.ClientError, TimeoutError, ValueError):
                     if attempt == 0:
@@ -78,7 +87,7 @@ async def _fetch_overpass(bbox: list[float], category: str) -> list[dict]:
         raise RuntimeError("overpass_unavailable")
 
 
-async def _discover(job_id: str) -> int:
+def _discover(job_id: str) -> int:
     async def work(session):
         job = await session.get(DiscoveryJob, job_id)
         if not job:
@@ -104,18 +113,21 @@ async def _discover(job_id: str) -> int:
             center = item.get("center") or item
             if center.get("lat") is None or center.get("lon") is None:
                 continue
-            address = ", ".join(
-                filter(
-                    None,
-                    (
-                        tags.get("addr:housenumber"),
-                        tags.get("addr:street"),
-                        tags.get("addr:city"),
-                        tags.get("addr:postcode"),
-                        tags.get("addr:country"),
-                    ),
+            address = (
+                ", ".join(
+                    filter(
+                        None,
+                        (
+                            tags.get("addr:housenumber"),
+                            tags.get("addr:street"),
+                            tags.get("addr:city"),
+                            tags.get("addr:postcode"),
+                            tags.get("addr:country"),
+                        ),
+                    )
                 )
-            ) or None
+                or None
+            )
             values_batch.append(
                 {
                     "account_id": job.account_id,
@@ -133,25 +145,30 @@ async def _discover(job_id: str) -> int:
             )
             count += 1
         if values_batch:
-            stmt = insert(DiscoveredPlace).values(values_batch).on_conflict_do_update(
-                index_elements=["account_id", "source_key"],
-                set_={
-                    "job_id": insert(DiscoveredPlace).excluded.job_id,
-                    "name": insert(DiscoveredPlace).excluded.name,
-                    "latitude": insert(DiscoveredPlace).excluded.latitude,
-                    "longitude": insert(DiscoveredPlace).excluded.longitude,
-                    "category": insert(DiscoveredPlace).excluded.category,
-                    "address": insert(DiscoveredPlace).excluded.address,
-                    "website": insert(DiscoveredPlace).excluded.website,
-                    "phone": insert(DiscoveredPlace).excluded.phone,
-                    "tags": insert(DiscoveredPlace).excluded.tags,
-                },
+            stmt = (
+                insert(DiscoveredPlace)
+                .values(values_batch)
+                .on_conflict_do_update(
+                    index_elements=["account_id", "source_key"],
+                    set_={
+                        "job_id": insert(DiscoveredPlace).excluded.job_id,
+                        "name": insert(DiscoveredPlace).excluded.name,
+                        "latitude": insert(DiscoveredPlace).excluded.latitude,
+                        "longitude": insert(DiscoveredPlace).excluded.longitude,
+                        "category": insert(DiscoveredPlace).excluded.category,
+                        "address": insert(DiscoveredPlace).excluded.address,
+                        "website": insert(DiscoveredPlace).excluded.website,
+                        "phone": insert(DiscoveredPlace).excluded.phone,
+                        "tags": insert(DiscoveredPlace).excluded.tags,
+                    },
+                )
             )
             await session.execute(stmt)
         job.status = "completed"
         job.result_count = count
         job.completed_at = datetime.now(timezone.utc)
         return count
+
     from tasks._bridge import run_async
 
     return run_async(work)
@@ -161,6 +178,7 @@ class _Text(HTMLParser):
     def __init__(self):
         super().__init__()
         self.parts = []
+
     def handle_data(self, data):
         self.parts.append(data)
 
@@ -210,7 +228,76 @@ class _PublicResolver(AbstractResolver):
         return None
 
 
-async def _scrape(url: str) -> dict:
+def _robots_parser(robots_url: str, content: str) -> RobotFileParser:
+    parser = RobotFileParser(robots_url)
+    parser.parse(content.splitlines())
+    return parser
+
+
+async def _load_robots(session: AsyncSession, website_url: str) -> RobotFileParser | None:
+    parsed = urlparse(website_url)
+    robots_url = f"{parsed.scheme}://{parsed.netloc}/robots.txt"
+    await session.execute(select(func.pg_advisory_xact_lock(func.hashtextextended(robots_url, 0))))
+    now = datetime.now(timezone.utc)
+    cached = await session.scalar(
+        select(PublicPageCache).where(
+            PublicPageCache.url == robots_url,
+            PublicPageCache.expires_at > now,
+        )
+    )
+    if cached:
+        if cached.status == "completed" and "robots_txt" in cached.data:
+            return _robots_parser(robots_url, cached.data["robots_txt"])
+        return None
+
+    status = "failed"
+    data = {"error": "robots_unavailable"}
+    ttl = timedelta(hours=6)
+    if await _public_host(robots_url):
+        connector = aiohttp.TCPConnector(limit_per_host=1, resolver=_PublicResolver())
+        try:
+            async with aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=8, connect=3),
+                connector=connector,
+                headers={"User-Agent": "Plantiers-OutreachOS/1.0 (public website contact details)"},
+            ) as client:
+                async with client.get(robots_url, allow_redirects=False) as response:
+                    if response.status == 200:
+                        body = bytearray()
+                        async for chunk in response.content.iter_chunked(16 * 1024):
+                            body.extend(chunk)
+                            if len(body) > 64 * 1024:
+                                raise ValueError("robots_response_too_large")
+                        data = {"robots_txt": body.decode(response.charset or "utf-8", errors="replace")}
+                        status = "completed"
+                        ttl = timedelta(days=1)
+                    elif response.status == 404:
+                        data = {"robots_txt": ""}
+                        status = "completed"
+                        ttl = timedelta(days=1)
+        except (aiohttp.ClientError, TimeoutError, ValueError, LookupError):
+            pass
+
+    await session.execute(
+        insert(PublicPageCache)
+        .values(
+            url=robots_url,
+            status=status,
+            data=data,
+            collected_at=now,
+            expires_at=now + ttl,
+        )
+        .on_conflict_do_update(
+            index_elements=["url"],
+            set_={"status": status, "data": data, "collected_at": now, "expires_at": now + ttl},
+        )
+    )
+    if status != "completed":
+        return None
+    return _robots_parser(robots_url, data["robots_txt"])
+
+
+async def _scrape(url: str, robots: RobotFileParser) -> dict:
     if not await _public_host(url):
         return {"error": "invalid_public_url"}
     parsed = urlparse(url)
@@ -226,8 +313,17 @@ async def _scrape(url: str) -> dict:
         connector=connector,
         headers={"User-Agent": "Plantiers-OutreachOS/1.0 (public website contact details)"},
     ) as session:
+        crawl_delay = robots.crawl_delay("Plantiers-OutreachOS") or robots.crawl_delay("*") or 0
+        last_request_at = None
         for page_url in urls:
+            if not robots.can_fetch("Plantiers-OutreachOS", page_url):
+                continue
             try:
+                if crawl_delay and last_request_at is not None:
+                    wait_for = crawl_delay - (asyncio.get_running_loop().time() - last_request_at)
+                    if wait_for > 0:
+                        await asyncio.sleep(wait_for)
+                last_request_at = asyncio.get_running_loop().time()
                 async with session.get(page_url, allow_redirects=False) as response:
                     if response.status != 200 or "text/html" not in response.headers.get("Content-Type", ""):
                         continue
@@ -244,9 +340,7 @@ async def _scrape(url: str) -> dict:
                     r"https?://(?:www\.)?(?:linkedin\.com|instagram\.com|facebook\.com|"
                     r"x\.com|twitter\.com|wa\.me)/[^\s\"'<>]+"
                 )
-                socials.update(
-                    re.findall(social_pattern, html, re.I)
-                )
+                socials.update(re.findall(social_pattern, html, re.I))
                 forms = forms or "<form" in html.lower()
                 for signal in ("wordpress", "shopify", "wix", "webflow", "prestashop"):
                     if signal in html.lower():
@@ -259,11 +353,10 @@ async def _scrape(url: str) -> dict:
         "socials": sorted(socials),
         "has_form": forms,
         "technologies": sorted(signals),
-        "language": None,
     }
 
 
-async def _enrich(job_id: str) -> bool:
+def _enrich(job_id: str) -> bool:
     async def work(session):
         job = await session.get(EnrichmentJob, job_id)
         if not job:
@@ -288,16 +381,18 @@ async def _enrich(job_id: str) -> bool:
         if not url:
             job.status = "completed"
             return True
-        await session.execute(
-            select(func.pg_advisory_xact_lock(func.hashtextextended(url, 0)))
-        )
+        await session.execute(select(func.pg_advisory_xact_lock(func.hashtextextended(url, 0))))
         cached = await session.scalar(
             select(PublicPageCache).where(
                 PublicPageCache.url == url,
                 PublicPageCache.expires_at > datetime.now(timezone.utc),
             )
         )
-        data = cached.data if cached else await _scrape(url)
+        if cached:
+            data = cached.data
+        else:
+            robots = await _load_robots(session, url)
+            data = await _scrape(url, robots) if robots else {"error": "robots_unavailable"}
         now = datetime.now(timezone.utc)
         if not cached:
             ttl = timedelta(hours=6) if data.get("error") else timedelta(days=30)
@@ -305,9 +400,6 @@ async def _enrich(job_id: str) -> bool:
                 url=url,
                 status="failed" if data.get("error") else "completed",
                 data=data,
-                source_url=url,
-                source_type="public_website",
-                confidence=0.0 if data.get("error") else 0.75,
                 collected_at=now,
                 expires_at=now + ttl,
             )
@@ -316,9 +408,6 @@ async def _enrich(job_id: str) -> bool:
                 set_={
                     "status": "failed" if data.get("error") else "completed",
                     "data": data,
-                    "source_url": url,
-                    "source_type": "public_website",
-                    "confidence": 0.0 if data.get("error") else 0.75,
                     "collected_at": now,
                     "expires_at": now + ttl,
                 },
@@ -345,6 +434,7 @@ async def _enrich(job_id: str) -> bool:
                 contact.phone = data["phones"][0]
         job.status = "completed"
         return True
+
     from tasks._bridge import run_async
 
     return run_async(work)
