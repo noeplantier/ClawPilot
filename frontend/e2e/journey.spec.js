@@ -116,10 +116,13 @@ test("manual scoring selection creates and tracks a real account-scoped job", as
   await register(page);
   await page.goto("/app/leads");
   await page.getByTestId("add-lead-button").click();
-  await page.getByTestId("lead-full_name").fill(`Scoring E2E ${uid()}`);
+  const leadName = `Scoring E2E ${uid()}`;
+  await page.getByTestId("lead-full_name").fill(leadName);
   await page.getByTestId("save-lead-button").click();
-  const checkbox = page.locator('[data-testid^="lead-check-"]').first();
-  await checkbox.check();
+  await expect(page.getByTestId("close-create-lead")).toHaveCount(0);
+  await page.getByTestId("leads-empty-toggle").click();
+  const leadRow = page.locator('[data-testid^="lead-row-"]').filter({ hasText: leadName });
+  await leadRow.getByRole("checkbox", { name: `Select ${leadName}` }).check();
   await page.getByTestId("score-selected").click();
   await expect(page.getByTestId("scoring-job")).toContainText("Scoring failed");
   await expect(page.locator('[data-testid^="qualification-"]').first()).toContainText("Enrichissement requis");
