@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
@@ -10,6 +10,7 @@ import BulkLeadsModal from "@/components/BulkLeadsModal";
 import BatchComposerModal from "@/components/BatchComposerModal";
 import LeadsBulkBar from "@/components/LeadsBulkBar";
 import LeadDetailDrawer from "@/components/LeadDetailDrawer";
+import DiscoveryMap from "@/components/DiscoveryMap";
 
 const STAGES = ["new", "contacted", "engaged", "qualified", "won", "lost"];
 const STAGE_COLORS = {
@@ -81,17 +82,20 @@ export default function Leads() {
             <MagnifyingGlass size={14} className="text-[#999995]" />
             <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, email, company" className="bg-transparent outline-none text-sm w-56 font-mono" data-testid="leads-search" />
           </div>
-          <button onClick={() => setView(view === "table" ? "kanban" : "table")} className="btn-ghost" data-testid="toggle-view">
-            {view === "table" ? <Kanban size={14} /> : <Table size={14} />} {view === "table" ? "KANBAN" : "TABLE"}
+          <button onClick={() => setView(view === "map" ? "table" : "map")} className="btn-ghost" data-testid="toggle-map">
+            {view === "map" ? <Table size={14} /> : <MagnifyingGlass size={14} />} {view === "map" ? "CRM TABLE" : "MAP SEARCH"}
           </button>
-          <button onClick={() => setShowBatch(true)} className="btn-ink" data-testid="open-batch-send"><PaperPlaneTilt size={14} weight="fill" /> BATCH SEND</button>
-          <button onClick={enrich} className="btn-purple" data-testid="enrich-leads-button"><Sparkle size={14} weight="fill" /> ENRICH</button>
+          {view !== "map" && <button onClick={() => setView(view === "table" ? "kanban" : "table")} className="btn-ghost" data-testid="toggle-view">
+            {view === "table" ? <Kanban size={14} /> : <Table size={14} />} {view === "table" ? "KANBAN" : "TABLE"}
+          </button>}
+          {view !== "map" && <button onClick={() => setShowBatch(true)} className="btn-ink" data-testid="open-batch-send"><PaperPlaneTilt size={14} weight="fill" /> BATCH SEND</button>}
+          {view !== "map" && <button onClick={enrich} className="btn-purple" data-testid="enrich-leads-button"><Sparkle size={14} weight="fill" /> ENRICH</button>}
           <button onClick={() => setShowBulk(true)} className="btn-ghost" data-testid="open-bulk-import"><UploadSimple size={14} /> BULK IMPORT</button>
           <button onClick={() => setShowCreate(true)} className="btn-primary" data-testid="add-lead-button"><Plus size={14} weight="bold" /> ADD LEAD</button>
         </div>
       </div>
 
-      {view === "table" ? (
+      {view === "map" ? <DiscoveryMap /> : view === "table" ? (
         <div className="surface overflow-hidden">
           <table className="w-full text-sm">
             <thead className="bg-[#FAFAF7] border-b border-[#D6D3C8]">
