@@ -354,7 +354,9 @@ class TagCreate(BaseModel):
 # ------------------------ Settings ------------------------
 class AIStatus(BaseModel):
     key_configured: bool = False
-    library_available: bool = False
+    provider: Optional[str] = None  # groq | gemini | mistral | custom
+    model: Optional[str] = None
+    host: Optional[str] = None  # where names and companies go when a message is written (never the key)
     active: bool = False  # True only when the model is really called
     mode: str = "off"  # "live" | "off" (nothing is generated)
     reason: Optional[str] = None  # why it is off

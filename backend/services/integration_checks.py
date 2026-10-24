@@ -12,7 +12,9 @@ from __future__ import annotations
 import time
 from typing import Any, Callable, Optional
 
-from services import feature_flags, imap_svc, overpass_svc, registry_svc, sendgrid_svc, smtp_svc, twilio_svc
+import requests
+
+from services import ai_svc, feature_flags, imap_svc, overpass_svc, registry_svc, sendgrid_svc, smtp_svc, twilio_svc
 
 
 def _result(outcome: str, detail: str, started: Optional[float] = None) -> dict[str, Any]:
@@ -142,3 +144,35 @@ def twilio(client: Optional[Callable[[str, str], Any]] = None) -> dict[str, Any]
     if state and state != "active":
         return _result("failed", f"The Twilio account is {state}.", started)
     return _result("passed", "Twilio accepted the credentials.", started)
+
+
+def ai(get: Callable[..., Any] = requests.get) -> dict[str, Any]:
+    """Asks the provider which models the key can use: proves the key, the address and the model, and generates nothing
+    (no token is used, no name or company is sent)."""
+    cfg = ai_svc.config()
+    if cfg is None:
+        return _result("skipped", "AI_PROVIDER and AI_API_KEY are not both set, or the settings are not valid.")
+    started = time.monotonic()
+    try:
+        response = get(f"{cfg.base_url}/models", headers=ai_svc._headers(cfg), timeout=(5, 15), allow_redirects=False)
+    except requests.Timeout:
+        return _result("failed", f"{cfg.host} did not answer in time.", started)
+    except requests.RequestException as exc:
+        return _result("failed", f"{cfg.host} could not be reached ({type(exc).__name__}).", started)
+    code = int(response.status_code)
+    if code in (401, 403):
+        return _result("failed", f"{cfg.host} rejected the key (HTTP {code}).", started)
+    if code != 200:
+        return _result("failed", f"{cfg.host} answered HTTP {code}.", started)
+    try:
+        items = response.json().get("data") or []
+        ids = {str(m.get("id", "")).removeprefix("models/") for m in items if isinstance(m, dict)}
+    except (ValueError, AttributeError):
+        ids = set()
+    if ids and cfg.model not in ids:
+        return _result(
+            "failed", f"The key works but {cfg.host} does not list the model {cfg.model}: set AI_MODEL.", started
+        )
+    return _result(
+        "passed", f"{cfg.host} accepted the key and lists the model {cfg.model}. Nothing was generated.", started
+    )
