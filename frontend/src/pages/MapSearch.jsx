@@ -1,11 +1,11 @@
-/* global ResizeObserver, AbortController */
+/* global ResizeObserver */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { ArrowsOut, ArrowsIn, CaretDoubleRight, CaretDoubleLeft, CaretDown, CaretUp, Eye, EyeSlash, MagnifyingGlass, MapPin, X } from "@phosphor-icons/react";
+import { ArrowsOut, ArrowsIn, CaretDoubleRight, CaretDoubleLeft, CaretDown, CaretUp, Eye, EyeSlash, MagnifyingGlass, X } from "@phosphor-icons/react";
 import { useAuth } from "@/contexts/AuthContext";
 import { campaignsApi, canDecide, importsApi, mapApi, prospectsApi, useAsync } from "@/lib/outreach";
 import { describeApiError } from "@/lib/outreachFormat";
@@ -22,6 +22,8 @@ import {
 import { EmptyBlock, ErrorBlock, LoadingBlock } from "@/components/outreach/States";
 import PlacePopup from "@/components/outreach/PlacePopup";
 import AddedCard from "@/components/outreach/AddedCard";
+import CityBox from "@/components/outreach/CityBox";
+import { centroids, zoomFor } from "@/lib/cityComplete";
 
 const START = { center: [45.764, 4.8357], zoom: 14 }; // Lyon; move the map anywhere in the world
 // One real map: the standard OpenStreetMap style (no light/dark variants).
@@ -132,8 +134,7 @@ function MapView({ canImport }) {
   const [overlaysHidden, setOverlaysHidden] = useState(false); // every panel hidden: just the map
   const [importOpen, setImportOpen] = useState(true); // the import form of the selection, expanded or minimised
   const [full, setFull] = useState(false);
-  const [query, setQuery] = useState("");
-  const [cities, setCities] = useState([]);
+  const [cityStats, setCityStats] = useState(null); // my leads per town, counted by the server (null until loaded)
   const [mine, setMine] = useState([]);
   const [showMine, setShowMine] = useState(true);
   const mineLayer = useRef(null);
@@ -202,25 +203,15 @@ function MapView({ canImport }) {
     else if (root.current && root.current.requestFullscreen) root.current.requestFullscreen();
   };
 
-  // Jump to a town: French national address API (free, no key); only the typed town name leaves the browser.
-  useEffect(() => {
-    const q = query.trim();
-    if (q.length < 2) { setCities([]); return undefined; }
-    const ctl = new AbortController();
-    const t = setTimeout(() => {
-      fetch(`https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(q)}&type=municipality&limit=5`, { signal: ctl.signal })
-        .then((r) => r.json())
-        .then((d) => setCities((d.features || []).map((f) => ({ label: `${f.properties.city} (${f.properties.postcode})`, lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0] }))))
-        .catch(() => setCities([]));
-    }, 300);
-    return () => { clearTimeout(t); ctl.abort(); };
-  }, [query]);
+  const goTo = useCallback((town) => map.current.flyTo([town.lat, town.lon], zoomFor(town.population), { duration: 1.2 }), []);
 
   // Near real time without a WebSocket (none on the free plan): poll while the tab is visible, keep what is shown if a poll fails.
   useEffect(() => {
     let alive = true;
-    const pull = () =>
-      mapApi.prospects().then((rows) => {
+    const pull = () => {
+      // the counts of the town search ride on the same poll; a failure keeps the last counts rather than showing zeros
+      mapApi.cities().then((rows) => { if (alive) setCityStats(rows); }).catch(() => {});
+      return mapApi.prospects().then((rows) => {
         if (!alive) return;
         setFresh(newIds(previous.current, rows));
         previous.current = rows;
@@ -228,6 +219,7 @@ function MapView({ canImport }) {
         setUpdatedAt(new Date());
         setStale(false);
       }).catch(() => { if (alive) setStale(true); });
+    };
     pullRef.current = pull;
     pull();
     const id = setInterval(() => { if (!document.hidden) pull(); }, POLL_MS);
@@ -281,6 +273,7 @@ function MapView({ canImport }) {
   const pickInfo = campaignPick(mine, picked);
 
   const known = useMemo(() => knownIds(mine), [mine]);
+  const positions = useMemo(() => centroids(mine), [mine]); // where my prospects of each town are: a town of my leads is reachable at once
   // A popup must never open under a panel: keep the map's auto-pan away from the search card and the results drawer.
   const pad = useMemo(() => panelPadding({ narrow: window.innerWidth < 768, searchOpen, panelOpen, hidden: overlaysHidden }), [searchOpen, panelOpen, overlaysHidden]);
   // A place already in the prospects is shown by its prospect pin, not offered again.
@@ -408,21 +401,7 @@ function MapView({ canImport }) {
               <CaretUp size={16} />
             </button>
           </div>
-          <div className="relative">
-            <input className="neo-input w-full" placeholder="Go to a town… (e.g. Lyon)" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Go to a town" data-testid="map-goto" />
-            {cities.length > 0 && (
-              <ul className={`absolute left-0 right-0 mt-1 z-10 max-h-56 overflow-auto ${GLASS} !rounded-lg`} data-testid="map-cities">
-                {cities.map((c) => (
-                  <li key={c.label}>
-                    <button className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 flex gap-2 items-center"
-                      onClick={() => { map.current.flyTo([c.lat, c.lon], 14, { duration: 1.2 }); setQuery(""); setCities([]); }}>
-                      <MapPin size={14} /> {c.label}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+          <CityBox stats={cityStats} positions={positions} onPick={goTo} />
           <div className="flex gap-1.5 flex-wrap" role="group" aria-label="Business category">
             {Object.entries(CATEGORY_LABELS).map(([k, v]) => (
               <button key={k} onClick={() => setCategory(k)} aria-pressed={category === k} data-testid={`map-cat-${k}`}

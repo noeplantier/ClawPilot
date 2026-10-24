@@ -35,11 +35,34 @@ describe("integrations helpers", () => {
 describe("browser geocoder test", () => {
   const reply = (ok, body, status = 200) => async () => ({ ok, status, json: async () => body });
 
-  it("passes only when the city search returns a result", async () => {
+  it("passes only when the town search returns a result", async () => {
     let t = 0;
     const now = () => (t += 30);
-    expect((await testGeocoder(reply(true, { features: [{}] }), { now })).outcome).toBe("passed");
-    expect((await testGeocoder(reply(true, { features: [] }), { now })).outcome).toBe("failed");
+    expect((await testGeocoder(reply(true, [{ nom: "Lyon" }]), { now })).outcome).toBe("passed");
+    expect((await testGeocoder(reply(true, { features: [{}] }), { now })).outcome).toBe("passed"); // the address service
+    const none = await testGeocoder(async (url) => ({ ok: true, status: 200, json: async () => (url.includes("geo.api") ? [] : { features: [] }) }), { now });
+    expect(none.outcome).toBe("failed");
+    expect(none.detail).toContain("without a result");
+  });
+
+  it("asks the official communes list first and only asks the address service when it fails", async () => {
+    const calls = [];
+    const fetchImpl = async (url) => { calls.push(url); return { ok: true, status: 200, json: async () => [{ nom: "Lyon" }] }; };
+    const out = await testGeocoder(fetchImpl);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toContain("geo.api.gouv.fr/communes");
+    expect(out.detail).toContain("official communes list");
+
+    calls.length = 0;
+    const fallback = async (url) => {
+      calls.push(url);
+      if (url.includes("geo.api")) throw new TypeError("Failed to fetch");
+      return { ok: true, status: 200, json: async () => ({ features: [{}] }) };
+    };
+    const degraded = await testGeocoder(fallback);
+    expect(calls).toHaveLength(2);
+    expect(degraded.outcome).toBe("passed");
+    expect(degraded.detail).toContain("works through its fallback"); // working, and honest about which service answered
   });
 
   it("reports an HTTP error and a blocked request, never a silent success", async () => {

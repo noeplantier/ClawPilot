@@ -13,7 +13,7 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import Subquery, func, select, update
+from sqlalchemy import Subquery, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -385,6 +385,30 @@ async def tier_counts(
     for name, n in rows.all():
         counts[name] = int(n)
     return {**counts, "total": sum(counts.values())}
+
+
+async def city_heat_rows(session: AsyncSession, account_id: uuid.UUID) -> list[tuple[str, str, int]]:
+    """(city as written, heat tier, leads) over the CRM leads and the prospects not rejected (rejected = not a lead).
+
+    A prospect's score is its latest `prospect_scores` row, a CRM lead's is `Lead.score` (0 = not scored); a lead whose
+    city is blank or unknown is left out rather than counted under a made-up town."""
+    latest = _latest_scores_subquery()
+    score = func.coalesce(latest.c.score, func.nullif(Lead.score, 0))
+    tier = heat_sql.tier_sql(heat_sql.heat_sql(score)).label("tier")
+    city = func.btrim(Lead.city).label("city")
+    rows = await session.execute(
+        select(city, tier, func.count())
+        .select_from(Lead)
+        .outerjoin(latest, latest.c.lead_id == Lead.id)
+        .where(
+            Lead.account_id == account_id,
+            ACTIVE,
+            or_(Lead.review_status.is_(None), Lead.review_status != "rejected"),
+            heat_sql.known(Lead.city) == 1,
+        )
+        .group_by(city, tier)
+    )
+    return [(str(c), str(t), int(n)) for c, t, n in rows.all()]
 
 
 async def get(session: AsyncSession, account_id: uuid.UUID, lead_id: str) -> Optional[Lead]:

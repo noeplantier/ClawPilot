@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from db.session import get_db_session
 from deps import get_current_user, require_roles
 from models import (
+    CityHeatOut,
     ImportIn,
     MapAddIn,
     MapAddOut,
@@ -35,7 +36,7 @@ from repositories import audit_repo, map_job_repo, prospect_repo, suppression_re
 from routes import prospect_imports
 from routes.prospects import heat_out
 from services import feature_flags, map_job_runner, overpass_svc
-from services.outreach_os import importer, map_jobs, osm
+from services.outreach_os import cities, importer, map_jobs, osm
 from services.outreach_os.dedupe import build_candidate
 from services.outreach_os.normalize import normalize_domain, normalize_email, normalize_phone
 from services.rate_limit import AttemptLimiter
@@ -53,6 +54,12 @@ MAX_PARSED_ELEMENTS = 1000
 async def my_prospects(user: dict = Depends(get_current_user), session: AsyncSession = Depends(get_db_session)):
     """The organisation's own prospects that have a position (imported from the map or from a file with lat/lon)."""
     return await prospect_repo.list_positions(session, uuid.UUID(user["org_id"]))
+
+
+@router.get("/cities", response_model=list[CityHeatOut])
+async def my_cities(user: dict = Depends(get_current_user), session: AsyncSession = Depends(get_db_session)):
+    """Where the organisation's leads are: hot / warm / cold counted per town, hottest towns first."""
+    return cities.merge(await prospect_repo.city_heat_rows(session, uuid.UUID(user["org_id"])))
 
 
 @router.get("/categories")
