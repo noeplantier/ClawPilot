@@ -14,7 +14,7 @@ Build a highly scalable, production-grade SaaS platform for automated global out
 - **Backend** (FastAPI, modular): `/app/backend/server.py` mounts routers from `routes/` (auth, leads, campaigns, agents, messages, ai, analytics, settings). Service layer in `services/` (ai_svc, sendgrid_svc, twilio_svc, seed).
 - **Database**: MongoDB via motor. Collections: `organizations`, `users`, `leads`, `campaigns`, `agents`, `messages`, `activity`.
 - **Auth**: JWT (HS256) + bcrypt, multi-tenant org isolation on every query.
-- **AI**: Gemini 3 Flash via `emergentintegrations` LlmChat.
+- **AI**: any OpenAI-compatible provider (Groq, Gemini, Mistral, custom) over HTTPS, chosen with `AI_PROVIDER`.
 - **Frontend**: React 19, React Router 7, Framer Motion, Recharts, Sonner, Phosphor icons. Cyberpunk theme with Chivo / IBM Plex Sans / JetBrains Mono fonts, neon cyan/purple/blue on #050505.
 
 ## Implemented (2026-02)

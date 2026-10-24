@@ -71,7 +71,7 @@ def test_old_blocks_are_unchanged_and_consistent_with_the_entries():
     assert (items["smtp"]["status"] in {"unchecked"}) == data["outreach"]["smtp_configured"]
     assert (items["sendgrid"]["status"] == "unchecked") == data["sendgrid_configured"]
     assert (items["twilio"]["status"] == "unchecked") == data["twilio_account_sid_configured"]
-    assert (items["ai"]["status"] == "ready") == data["ai"]["active"]
+    assert (items["ai"]["status"] == "unchecked") == data["ai"]["active"]  # configured: testable, not yet tested
     assert (items["sender"]["status"] == "ready") == data["outreach"]["sender_configured"]
 
 
@@ -83,7 +83,6 @@ def test_the_database_test_runs_and_unknown_or_browser_ones_are_refused():
     assert body["id"] == "database" and body["ok"] is True and body["outcome"] == "passed"
     assert isinstance(body["latency_ms"], int) and body["checked_at"]
     assert requests.post(f"{API}/settings/integrations/geocoder/test", headers=headers).status_code == 400
-    assert requests.post(f"{API}/settings/integrations/ai/test", headers=headers).status_code == 404
     assert requests.post(f"{API}/settings/integrations/nope/test", headers=headers).status_code == 404
 
 
@@ -91,7 +90,7 @@ def test_unconfigured_services_are_skipped_without_any_network_call():
     headers = _headers()
     data = requests.get(f"{API}/settings/integrations", headers=headers).json()
     items = {i["id"]: i for i in data["items"]}
-    for name in ("smtp", "imap", "sendgrid", "twilio", "registry"):
+    for name in ("smtp", "imap", "sendgrid", "twilio", "registry", "ai"):
         if items[name]["status"] in {"missing", "off"}:  # not configured on the test server
             body = requests.post(f"{API}/settings/integrations/{name}/test", headers=headers).json()
             assert body["outcome"] == "skipped" and body["ok"] is False, name

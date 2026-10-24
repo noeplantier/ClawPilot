@@ -27,7 +27,7 @@ const BARE = {
     mk("smtp", "sending", "missing", "NOT CONFIGURED", { test: "server", needs: ["SMTP_HOST", "SMTP_USERNAME", "SMTP_PASSWORD"], env: ["SMTP_HOST", "SMTP_USERNAME", "SMTP_PASSWORD"] }),
     mk("sendgrid", "sending", "unchecked", "CONFIGURED · NOT TESTED", { test: "server", hint: "The test only reads the key's scopes." }),
     mk("twilio_webhook", "inbound", "off", "NOT NEEDED YET"),
-    mk("ai", "ai", "missing", "OFF · NOTHING IS GENERATED", { needs: ["EMERGENT_LLM_KEY"], summary: "No model is called and no canned text is offered in its place. Reason: EMERGENT_LLM_KEY is not set." }),
+    mk("ai", "ai", "missing", "OFF · NOTHING IS GENERATED", { test: "server", needs: ["AI_PROVIDER", "AI_API_KEY"], summary: "Nothing is generated and no canned text is offered until it is configured. Reason: AI_PROVIDER is not set (groq, gemini, mistral or custom)." }),
   ],
   counts: {},
 };
@@ -70,8 +70,9 @@ describe("Settings integrations", () => {
   it("does not claim the AI is active when no model can be called, and says why and what to set", async () => {
     await show();
     expect(byId("int-ai-status").textContent).toContain("NOTHING IS GENERATED");
-    expect(byId("int-ai").textContent).toContain("EMERGENT_LLM_KEY is not set");
-    expect(byId("int-ai-needs").textContent).toContain("EMERGENT_LLM_KEY");
+    expect(byId("int-ai").textContent).toContain("AI_PROVIDER is not set");
+    expect(byId("int-ai-needs").textContent).toContain("AI_PROVIDER");
+    expect(byId("int-ai-needs").textContent).toContain("AI_API_KEY");
     expect(container.textContent).not.toContain("MODEL CALLED");
   });
 

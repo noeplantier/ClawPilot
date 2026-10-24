@@ -1,11 +1,13 @@
 """The live checks, replayed offline: no socket is opened and no secret is returned."""
 
 import imaplib
+import secrets
 import smtplib
 
 import pytest
+import requests
 
-from services import imap_svc
+from services import ai_svc, imap_svc
 from services import integration_checks as checks
 from services import registry_svc, sendgrid_svc, smtp_svc, twilio_svc
 
@@ -240,3 +242,88 @@ def test_twilio_check_reads_the_account_and_flags_a_suspended_one(monkeypatch):
     assert "suspended" in checks.twilio(client_for("suspended"))["detail"]
     rejected = checks.twilio(client_for(exc=_HTTPError(401)))
     assert rejected["outcome"] == "failed" and "rejected" in rejected["detail"] and PASSWORD not in rejected["detail"]
+
+
+AI_KEY = "k-" + secrets.token_hex(8)  # runtime-built, not a credential
+
+
+class _Models:
+    def __init__(self, status=200, ids=("llama-3.3-70b-versatile",), body=None):
+        self.status_code = status
+        self._body = body if body is not None else {"data": [{"id": i} for i in ids]}
+
+    def json(self):
+        if isinstance(self._body, Exception):
+            raise self._body
+        return self._body
+
+
+@pytest.fixture()
+def ai_env(monkeypatch):
+    for name in ("AI_PROVIDER", "AI_API_KEY", "AI_MODEL", "AI_BASE_URL"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("AI_PROVIDER", "groq")
+    monkeypatch.setenv("AI_API_KEY", AI_KEY)
+
+
+def test_ai_is_skipped_when_not_configured_and_nothing_is_asked(monkeypatch):
+    for name in ("AI_PROVIDER", "AI_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+
+    def ask(*a, **k):
+        raise AssertionError("asked a provider that is not configured")
+
+    out = checks.ai(get=ask)
+    assert out["outcome"] == "skipped" and "AI_PROVIDER" in out["detail"]
+
+
+def test_ai_passes_when_the_key_works_and_the_model_exists_and_generates_nothing(ai_env):
+    seen = {}
+
+    def get(url, **kwargs):
+        seen.update(url=url, **kwargs)
+        return _Models()
+
+    out = checks.ai(get=get)
+    assert out["outcome"] == "passed" and "Nothing was generated" in out["detail"] and AI_KEY not in out["detail"]
+    assert (
+        seen["url"] == "https://api.groq.com/openai/v1/models"
+        and seen["headers"]["Authorization"] == f"Bearer {AI_KEY}"
+    )
+    assert seen["allow_redirects"] is False
+
+
+def test_ai_reads_a_model_list_where_names_carry_a_prefix(monkeypatch, ai_env):
+    monkeypatch.setenv("AI_PROVIDER", "gemini")
+    out = checks.ai(get=lambda *a, **k: _Models(ids=("models/gemini-2.5-flash", "models/other")))
+    assert out["outcome"] == "passed" and "gemini-2.5-flash" in out["detail"]
+
+
+def test_ai_fails_when_the_model_is_not_offered_and_says_which_variable_to_change(ai_env):
+    out = checks.ai(get=lambda *a, **k: _Models(ids=("another-model",)))
+    assert out["outcome"] == "failed" and "AI_MODEL" in out["detail"]
+
+
+@pytest.mark.parametrize(
+    "reply,words",
+    [
+        (_Models(status=401), "rejected the key (HTTP 401)"),
+        (_Models(status=403), "rejected the key (HTTP 403)"),
+        (_Models(status=500), "answered HTTP 500"),
+        (requests.Timeout(AI_KEY), "did not answer in time"),
+        (requests.ConnectionError(AI_KEY), "could not be reached (ConnectionError)"),
+    ],
+)
+def test_ai_failures_are_explained_without_the_key(ai_env, reply, words):
+    def get(*a, **k):
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+
+    out = checks.ai(get=get)
+    assert out["outcome"] == "failed" and words in out["detail"] and AI_KEY not in out["detail"]
+
+
+def test_ai_passes_without_a_model_check_when_the_list_has_an_unexpected_shape(ai_env):
+    assert checks.ai(get=lambda *a, **k: _Models(body=ValueError("not json")))["outcome"] == "passed"
+    assert ai_svc.config() is not None

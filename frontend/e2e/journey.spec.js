@@ -520,7 +520,7 @@ test("settings lists every integration from the server, tests the database live 
   await expect(page.getByTestId("int-database-facts")).toContainText("latency");
   // Nothing is configured on the test server: each of these says so and names the variables to set, with no field to type a secret.
   await expect(page.getByTestId("int-ai-status")).toHaveText("OFF · NOTHING IS GENERATED");
-  await expect(page.getByTestId("int-ai-needs")).toContainText("EMERGENT_LLM_KEY");
+  await expect(page.getByTestId("int-ai-needs")).toContainText("AI_API_KEY");
   await expect(page.getByTestId("int-smtp-needs")).toContainText("SMTP_PASSWORD");
   await expect(page.getByTestId("int-sendgrid-status")).toContainText("NOTHING IS SENT");
   await expect(page.getByTestId("int-twilio-status")).toContainText("NOTHING IS SENT");

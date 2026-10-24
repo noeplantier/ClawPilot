@@ -136,6 +136,7 @@ def _checks() -> dict:
         "imap": integration_checks.imap,
         "sendgrid": integration_checks.sendgrid,
         "twilio": integration_checks.twilio,
+        "ai": integration_checks.ai,
     }
 
 

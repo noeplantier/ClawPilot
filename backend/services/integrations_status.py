@@ -21,7 +21,7 @@ from urllib.parse import urlsplit
 
 STATUSES = ("ready", "unchecked", "partial", "missing", "blocked", "off")
 GROUPS = ("data", "sources", "sending", "inbound", "ai")
-TESTABLE = ("database", "osm", "registry", "smtp", "imap", "sendgrid", "twilio")  # run on the server
+TESTABLE = ("database", "osm", "registry", "smtp", "imap", "sendgrid", "twilio", "ai")  # run on the server
 BROWSER_TESTS = ("geocoder",)  # the browser itself calls this service, so the browser is what must be tested
 DOCS = "docs/integrations.md"
 
@@ -60,7 +60,10 @@ TRACKED_ENV = (
     "TWILIO_AUTH_TOKEN",
     "TWILIO_WHATSAPP_FROM",
     "TWILIO_WEBHOOK_URL",
-    "EMERGENT_LLM_KEY",
+    "AI_PROVIDER",
+    "AI_API_KEY",
+    "AI_MODEL",
+    "AI_BASE_URL",
 )
 
 DATABASE_KINDS = {
@@ -613,37 +616,54 @@ def _sendgrid_webhook(f: Facts) -> dict[str, Any]:
 
 def _ai(f: Facts) -> dict[str, Any]:
     ai = f.ai
-    facts = [
-        ("api.key", "configured" if ai.get("key_configured") else "not set"),
-        ("emergentintegrations", "installed" if ai.get("library_available") else "not installed"),
-    ]
+    names = ("AI_PROVIDER", "AI_API_KEY", "AI_MODEL", "AI_BASE_URL")
+    summary = (
+        "Writes messages with the provider you chose. Nothing is generated and no canned text is offered until it is "
+        "configured."
+    )
     if ai.get("active"):
         return _item(
             "ai",
             "AI composer",
             "ai",
-            "ready",
-            "LIVE · MODEL CALLED",
-            "Messages are written by the model.",
-            env=("EMERGENT_LLM_KEY",),
-            facts=facts,
+            "unchecked",
+            "CONFIGURED · NOT TESTED",
+            summary,
+            env=names,
+            facts=[
+                ("provider", str(ai.get("provider"))),
+                ("model", str(ai.get("model"))),
+                ("sent to", str(ai.get("host"))),
+                ("api.key", "configured"),
+            ],
+            test="server",
+            hint=(
+                "The recipient's name and company, the offer and the goal are sent to this provider. "
+                "The e-mail and phone never are."
+            ),
         )
     reason = ai.get("reason") or "no model can be called"
-    status = "partial" if ai.get("key_configured") else "missing"
+    provider_set = bool(ai.get("provider"))
+    needs = [n for n in ("AI_PROVIDER", "AI_API_KEY") if n not in f.env_set]
+    if ai.get("provider") == "custom":
+        needs += [n for n in ("AI_BASE_URL", "AI_MODEL") if n not in f.env_set]
     return _item(
         "ai",
         "AI composer",
         "ai",
-        status,
+        "partial" if (ai.get("key_configured") or provider_set) else "missing",
         "OFF · NOTHING IS GENERATED",
-        f"No model is called and no canned text is offered in its place. Reason: {reason}.",
-        env=("EMERGENT_LLM_KEY",),
-        needs=[] if ai.get("key_configured") else ["EMERGENT_LLM_KEY"],
-        facts=facts,
+        f"{summary} Reason: {reason}.",
+        env=names,
+        needs=needs,
+        facts=[
+            ("provider", str(ai.get("provider") or "not set")),
+            ("api.key", "configured" if ai.get("key_configured") else "not set"),
+        ],
+        test="server",
         hint=(
-            None
-            if ai.get("key_configured")
-            else "Calling a model is billed by its provider; nothing calls one until a key is set."
+            "Groq and Mistral have a free tier. Free tiers have rate limits, and some (Gemini's) may use what is "
+            "sent to improve the provider's products."
         ),
     )
 

@@ -100,5 +100,17 @@ Les deux signatures sont `off` (« NOT NEEDED YET ») tant que leur fournisseur 
 
 <a id="ai"></a>
 ### Compositeur IA
-`EMERGENT_LLM_KEY` et le paquet optionnel `emergentintegrations` (index privé, hors `requirements.txt`). Tant que les deux ne sont pas là, le
-compositeur **refuse** (HTTP 503, aucun texte tout fait qui ferait semblant d'être un message) et la page affiche `OFF · NOTHING IS GENERATED` avec la raison ; il n'affiche `LIVE · MODEL CALLED` que si le modèle est réellement appelable.
+`AI_PROVIDER` (`groq`, `gemini`, `mistral` ou `custom`, sans valeur par défaut) et `AI_API_KEY` ; `AI_MODEL` remplace le modèle par défaut ;
+`AI_BASE_URL` (https) ne sert qu'avec `custom` (Ollama local en `http://localhost`, OpenRouter, une instance à vous…). Aucun paquet à installer :
+l'appel est une requête HTTPS au format OpenAI. Tant que le fournisseur et la clé ne sont pas valides, le compositeur **refuse** (HTTP 503,
+aucun texte tout fait qui ferait semblant d'être un message) et la page affiche `OFF · NOTHING IS GENERATED` avec la raison.
+
+- **Ce qui part chez le fournisseur** : le nom du destinataire, sa société, l'offre, l'objectif, le ton, la langue. Jamais l'adresse e-mail ni le
+  téléphone. Le prompt interdit d'inventer un fait sur le destinataire. Le fournisseur est donc un sous-traitant de ces données : lisez ses
+  conditions (les offres gratuites de Gemini peuvent servir à améliorer les produits de Google ; à éviter pour des noms de personnes).
+- **Limites** : une offre gratuite a un quota par minute et par jour ; l'API répond alors 429 `ai_rate_limited` avec le délai. Côté serveur,
+  30 appels par minute et par organisation au maximum (les 3 variantes comptent pour 3).
+- **Test** : « TEST NOW » demande au fournisseur la liste de ses modèles avec la clé : prouve la clé, l'adresse et le modèle, sans rien générer ni
+  envoyer. Un modèle absent de la liste donne `failed` avec « set AI_MODEL ».
+- **Mise en route gratuite** : créer une clé sur Groq (console.groq.com) ou Mistral (console.mistral.ai), puis dans Render poser `AI_PROVIDER` et
+  `AI_API_KEY`.

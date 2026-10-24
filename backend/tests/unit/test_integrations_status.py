@@ -15,7 +15,7 @@ NOTHING = Facts(
     database_kind="supabase_session_pooler",
     database_port="5432",
     overpass_hosts=("a.example", "b.example"),
-    ai={"key_configured": False, "library_available": False, "active": False, "reason": "EMERGENT_LLM_KEY is not set"},
+    ai={"key_configured": False, "provider": None, "active": False, "reason": "AI_PROVIDER is not set"},
 )
 
 
@@ -38,7 +38,7 @@ def test_variables_named_by_an_entry_are_all_tracked():
 def test_a_bare_server_reports_what_is_missing_and_fakes_nothing():
     items = by_id(NOTHING)
     assert items["ai"]["status"] == "missing" and items["ai"]["label"] == "OFF · NOTHING IS GENERATED"
-    assert items["ai"]["needs"] == ["EMERGENT_LLM_KEY"]
+    assert items["ai"]["needs"] == ["AI_PROVIDER", "AI_API_KEY"] and items["ai"]["test"] == "server"
     assert items["smtp"]["status"] == "missing" and items["smtp"]["needs"] == [
         "SMTP_HOST",
         "SMTP_USERNAME",
@@ -141,17 +141,29 @@ def test_sending_mode_follows_the_safety_switches(patch, status, label):
     assert item["status"] == status and label in item["label"]
 
 
-def test_ai_is_ready_only_when_the_model_is_really_called():
-    live = {"key_configured": True, "library_available": True, "active": True, "reason": None}
-    assert by_id(Facts(**{**NOTHING.__dict__, "ai": live}))["ai"]["status"] == "ready"
-    no_lib = {
+def test_ai_is_configured_only_when_a_provider_can_really_be_called_and_says_where_names_go():
+    live = {
         "key_configured": True,
-        "library_available": False,
-        "active": False,
-        "reason": "the emergentintegrations package is not installed",
+        "provider": "groq",
+        "model": "llama-3.3-70b-versatile",
+        "host": "api.groq.com",
+        "active": True,
+        "reason": None,
     }
-    item = by_id(Facts(**{**NOTHING.__dict__, "ai": no_lib}))["ai"]
-    assert item["status"] == "partial" and item["needs"] == [] and "not installed" in item["summary"]
+    item = by_id(Facts(**{**NOTHING.__dict__, "ai": live}))["ai"]
+    assert item["status"] == "unchecked" and item["test"] == "server" and item["needs"] == []
+    assert ("sent to", "api.groq.com") in [tuple(f) for f in item["facts"]]
+    assert "e-mail and phone never are" in item["hint"]  # what leaves the server is said
+    no_key = {"key_configured": False, "provider": "groq", "active": False, "reason": "AI_API_KEY is not set"}
+    item = by_id(Facts(**{**NOTHING.__dict__, "ai": no_key}))["ai"]
+    assert (
+        item["status"] == "partial"
+        and item["needs"] == ["AI_PROVIDER", "AI_API_KEY"]
+        and "AI_API_KEY" in item["summary"]
+    )
+    custom = {"key_configured": True, "provider": "custom", "active": False, "reason": "AI_BASE_URL is not set"}
+    facts = Facts(**{**NOTHING.__dict__, "ai": custom, "env_set": frozenset({"AI_PROVIDER", "AI_API_KEY"})})
+    assert by_id(facts)["ai"]["needs"] == ["AI_BASE_URL", "AI_MODEL"]  # a custom provider needs its address and model
 
 
 @pytest.mark.parametrize(

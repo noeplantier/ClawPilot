@@ -96,8 +96,8 @@ python3 -m venv /tmp/dev && /tmp/dev/bin/pip install -r requirements-dev.in && /
 ```
 
 The previous `pip freeze` of ~130 packages (LLM SDKs, `boto3`, `stripe`, `pandas`, `numpy`, `huggingface_hub`, `litellm`, `openai`,
-`google-*`, `jq`, `s5cmd`, …) was not imported by any code and was removed. `emergentintegrations` (AI composer) is optional and
-installed from a private index; without it the composer refuses and says why (see Settings).
+`google-*`, `jq`, `s5cmd`, …) was not imported by any code and was removed. The AI composer needs no SDK: it calls any
+OpenAI-compatible provider over HTTPS with `requests` (see `AI_PROVIDER` below); without a provider it refuses and says why.
 
 ## Environment variables
 
@@ -128,7 +128,10 @@ set (Settings > Integrations): nothing is ever recorded as sent, generated or fo
 | `FEATURE_DEMO_DATA` | `true` offers the built-in demo directory (fictional businesses) as a source; off by default so only real data is shown |
 | `OUTREACH_TEST_SINK` | Automated tests only: records sends in-process (ids start with `sink:`) instead of calling a provider. Ignored when `APP_ENV=production` |
 | `SEND_KILL_SWITCH` | `true` halts every send immediately (dispatch, SMTP test, SendGrid, Twilio) |
-| `EMERGENT_LLM_KEY` | AI composer (refuses, with the reason, when unset: no canned text) |
+| `AI_PROVIDER` | AI composer: `groq`, `gemini`, `mistral` or `custom`. No default: you choose who receives the recipient's name and company. Unset, the composer refuses with the reason (no canned text) |
+| `AI_API_KEY` | The provider's key (a free one exists at Groq and Mistral). Never shown, never logged |
+| `AI_MODEL` | Optional: replaces the provider's default model |
+| `AI_BASE_URL` | Only with `AI_PROVIDER=custom`: the API root (`https://…/v1`), with `AI_MODEL` |
 | `REACT_APP_BACKEND_URL` (frontend) | API base URL |
 
 ## OutreachOS: local prospect journey (dry-run, no network)
@@ -274,9 +277,9 @@ every call in production — no SendGrid account is needed to run the app, only 
 
 ## Settings page
 
-Settings shows the live configuration of the server (`GET /api/settings/integrations`): the AI composer is "live" only if
-`EMERGENT_LLM_KEY` is set **and** the optional `emergentintegrations` package is installed (otherwise it returns a fixed
-template, and the page says why); SendGrid, Twilio, prospect outreach (dry-run / live / kill switch / sender identity) and
+Settings shows the live configuration of the server (`GET /api/settings/integrations`): the AI composer is configured only if
+`AI_PROVIDER` and `AI_API_KEY` are valid (otherwise it refuses, and the page says why; "TEST NOW" asks the provider for its
+model list, which proves the key and the model without generating anything); SendGrid, Twilio, prospect outreach (dry-run / live / kill switch / sender identity) and
 webhook signatures are each computed, and a banner lists the environment variables still missing. No status is hard-coded,
 and no secret is ever returned.
 
