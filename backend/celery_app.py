@@ -28,7 +28,13 @@ celery_app = Celery(
     # Explicit, not autodiscover_tasks(["tasks"]) — that call looks for a
     # `tasks` *submodule inside* each listed package (Django app convention),
     # not a top-level `tasks` package like this one.
-    include=["tasks.send_tasks", "tasks.automation_tasks", "tasks.webhook_tasks", "tasks.inbox_tasks"],
+    include=[
+        "tasks.send_tasks",
+        "tasks.automation_tasks",
+        "tasks.webhook_tasks",
+        "tasks.inbox_tasks",
+        "tasks.prospecting_tasks",
+    ],
 )
 
 celery_app.conf.update(
@@ -44,6 +50,7 @@ celery_app.conf.update(
         "tasks.automation_tasks.*": {"queue": "automation"},
         "tasks.webhook_tasks.*": {"queue": "webhooks"},
         "tasks.inbox_tasks.*": {"queue": "webhooks"},
+        "tasks.prospecting_tasks.*": {"queue": "automation"},
     },
     beat_schedule={
         # Safety net for apply_async(eta=...) sends that got lost (e.g. a

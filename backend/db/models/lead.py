@@ -82,6 +82,9 @@ class Lead(Base, UUIDPKMixin, TimestampMixin, SoftDeleteMixin):
     email: Mapped[str | None] = mapped_column(CITEXT, nullable=True)
     phone: Mapped[str | None] = mapped_column(String, nullable=True)
     company: Mapped[str | None] = mapped_column(String, nullable=True)
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     title: Mapped[str | None] = mapped_column(String, nullable=True)
     country: Mapped[str | None] = mapped_column(String, nullable=True)
     language: Mapped[str] = mapped_column(String, nullable=False, server_default="en")

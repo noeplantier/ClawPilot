@@ -23,6 +23,7 @@ from routes.messages import router as messages_router
 from routes.notes import router as notes_router
 from routes.outbound import router as outbound_router
 from routes.prospect_imports import router as prospect_imports_router
+from routes.prospecting import router as prospecting_router
 from routes.prospects import router as prospects_router
 from routes.settings import router as settings_router
 from routes.sources import router as sources_router
@@ -70,6 +71,7 @@ api_router.include_router(sources_router)
 api_router.include_router(dashboard_router)
 api_router.include_router(outbound_router)
 api_router.include_router(unsubscribe_router)
+api_router.include_router(prospecting_router)
 
 app.include_router(api_router)
 
