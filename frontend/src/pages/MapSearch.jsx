@@ -277,7 +277,13 @@ function MapView({ canImport }) {
   // A popup must never open under a panel: keep the map's auto-pan away from the search card and the results drawer.
   const pad = useMemo(() => panelPadding({ narrow: window.innerWidth < 768, searchOpen, panelOpen, hidden: overlaysHidden }), [searchOpen, panelOpen, overlaysHidden]);
   // A place already in the prospects is shown by its prospect pin, not offered again.
-  const places = useMemo(() => (result ? result.places.filter((p) => !known.has(p.external_id)) : []), [result, known]);
+  const places = useMemo(() => {
+    const unique = new Map();
+    for (const place of result?.places || []) {
+      if (!known.has(place.external_id) && !unique.has(place.external_id)) unique.set(place.external_id, place);
+    }
+    return [...unique.values()];
+  }, [result, known]);
   const toggle = useCallback((id) => setSelected((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; }), []);
 
   useEffect(() => {
@@ -364,13 +370,13 @@ function MapView({ canImport }) {
   const chosen = places.filter((p) => selected.has(p.external_id));
 
   return (
-    <div ref={root} className="relative w-full h-[calc(100svh-9.5rem)] md:h-[calc(100vh-4.25rem)] min-h-[28rem] overflow-hidden bg-[#E9EEF7]" data-testid="map-page">
+    <div ref={root} className="relative w-full h-[calc(100svh-11rem)] md:h-[calc(100vh-4.25rem)] min-h-0 md:min-h-[28rem] overflow-hidden bg-[#E9EEF7]" data-testid="map-page">
       <div ref={el} className="absolute inset-0 z-0" data-testid="map" aria-label="Interactive map" />
       {added && <AddedCard out={added.out} siteAsked={added.siteAsked} onClose={() => setAdded(null)} className="absolute z-[502] bottom-12 left-3 md:left-1/2 md:-translate-x-1/2" />}
       {places.map((p) => createPortal(<PlacePopup key={p.external_id} place={p} canAdd={canImport} offReason={addOff} onAdded={onAdded} />, hostFor(p.external_id)))}
 
       {/* always visible: hide every panel to see the whole map, or go full screen */}
-      <div className={`absolute z-[503] top-3 left-1/2 -translate-x-1/2 flex gap-1 p-1 ${GLASS} !rounded-full`} role="toolbar" aria-label="Map view">
+      <div className={`absolute z-[503] top-3 right-3 md:left-1/2 md:right-auto md:-translate-x-1/2 flex gap-1 p-1 ${GLASS} !rounded-full`} role="toolbar" aria-label="Map view">
         <button className="btn-ghost !rounded-full !px-3 !py-1 text-xs" onClick={() => setOverlaysHidden((v) => !v)} aria-pressed={overlaysHidden} title="Hide or show every panel (H)" data-testid="map-hide-panels">
           {overlaysHidden ? <Eye size={14} /> : <EyeSlash size={14} />} {overlaysHidden ? "SHOW PANELS" : "FULL MAP"}
         </button>
@@ -381,7 +387,7 @@ function MapView({ canImport }) {
 
       {/* search card, or its small pill */}
       {!overlaysHidden && !searchOpen && (
-        <div className={`absolute z-[500] top-3 left-3 flex items-center gap-2 p-2 ${GLASS} !rounded-full`} data-testid="map-search-pill">
+        <div className={`absolute z-[500] top-14 left-3 md:top-3 flex items-center gap-2 p-2 ${GLASS} !rounded-full`} data-testid="map-search-pill">
           <button className="btn-ghost !rounded-full !px-3 !py-1 text-xs" onClick={() => setSearchOpen(true)} aria-label="Expand the map search panel" aria-expanded="false" data-testid="map-search-expand">
             <CaretDown size={14} /> MAP SEARCH
           </button>
@@ -391,7 +397,7 @@ function MapView({ canImport }) {
         </div>
       )}
       {!overlaysHidden && searchOpen && (
-        <div className={`absolute z-[500] top-3 left-3 right-3 md:right-auto md:w-[26rem] max-h-[calc(100%-1.5rem)] overflow-y-auto p-4 space-y-3 ${GLASS}`} data-testid="map-search-card">
+        <div className={`absolute z-[500] top-14 left-3 right-3 md:top-3 md:right-auto md:w-[26rem] max-h-[calc(100%-4rem)] md:max-h-[calc(100%-1.5rem)] overflow-y-auto p-4 space-y-3 ${GLASS}`} data-testid="map-search-card">
           <div className="flex items-center justify-between gap-2">
             <div>
               <div className="mono-accent">// live.map</div>
@@ -405,7 +411,7 @@ function MapView({ canImport }) {
           <div className="flex gap-1.5 flex-wrap" role="group" aria-label="Business category">
             {Object.entries(CATEGORY_LABELS).map(([k, v]) => (
               <button key={k} onClick={() => setCategory(k)} aria-pressed={category === k} data-testid={`map-cat-${k}`}
-                className={`px-3 py-1 rounded-full text-xs border transition-colors ${category === k ? "bg-[#0B1020] text-white border-[#0B1020] shadow-[0_0_14px_-2px_rgba(99,102,241,0.7)]" : "bg-white/70 border-[#D3DBEA] hover:bg-white"}`}>
+                className={`px-3 py-1 rounded-full text-xs border transition-colors ${category === k ? "bg-brand-violet text-white border-brand-violet" : "bg-white border-[#D3DBEA] hover:bg-[#F7F9FD]"}`}>
                 {v.split(",")[0].split(" (")[0]}
               </button>
             ))}
@@ -469,7 +475,7 @@ function MapView({ canImport }) {
       {/* results drawer */}
       {!overlaysHidden && (
         <>
-          <aside className={`absolute z-[500] bottom-8 left-3 right-3 md:left-auto md:top-3 md:bottom-8 md:w-[24rem] flex flex-col ${panelOpen ? "" : "md:translate-x-[calc(100%+1rem)] translate-y-[calc(100%+1rem)] md:translate-y-0 pointer-events-none"} transition-transform duration-300 max-h-[45%] md:max-h-none`} aria-label="Results" aria-hidden={!panelOpen}>
+          <aside className={`absolute z-[500] bottom-11 left-3 right-3 md:left-auto md:top-3 md:bottom-8 md:w-[24rem] flex flex-col ${panelOpen ? "" : "md:translate-x-[calc(100%+1rem)] translate-y-[calc(100%+1rem)] md:translate-y-0 pointer-events-none"} transition-transform duration-300 max-h-[45%] md:max-h-none`} aria-label="Results" aria-hidden={!panelOpen}>
             <div className={`${GLASS} flex-1 min-h-0 flex flex-col overflow-hidden`}>
               <div className="flex items-center justify-between px-4 pt-3">
                 <div className="mono-accent">// results</div>
@@ -545,7 +551,7 @@ function MapView({ canImport }) {
             onClick={() => setPanelOpen((o) => !o)} aria-label={panelOpen ? "Hide results" : "Show results"} aria-expanded={panelOpen} data-testid="map-panel-toggle">
             {panelOpen ? <CaretDoubleRight size={14} /> : <CaretDoubleLeft size={14} />}
           </button>
-          <button className={`md:hidden absolute z-[501] bottom-1 left-1/2 -translate-x-1/2 ${GLASS} !rounded-full px-4 py-1.5 text-xs font-medium`}
+          <button className={`md:hidden absolute z-[501] bottom-1 left-16 ${GLASS} !rounded-full px-4 py-1.5 text-xs font-medium`}
             onClick={() => setPanelOpen((o) => !o)} aria-expanded={panelOpen} data-testid="map-panel-toggle-mobile">
             {panelOpen ? "Hide results" : result ? `Results (${places.length})` : "Results"}
           </button>

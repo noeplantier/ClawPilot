@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 import {
@@ -28,7 +28,8 @@ const STAGE_COLORS = {
 };
 
 export default function Leads() {
-  const [view, setView] = useState("table");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const view = searchParams.get("view") === "kanban" ? "kanban" : searchParams.get("view") === "map" ? "map" : "table";
   const [search, setSearch] = useState("");
   const [lane, setLane] = useState("all"); // heat filter: all | top | hot | warm | cold
   const [showEmpty, setShowEmpty] = useState(() => readPref("leads.showEmpty", false)); // leads with no e-mail, phone or website
@@ -57,6 +58,9 @@ export default function Leads() {
     return result;
   }, [reachable, lane, priorityFilter, fitSort]);
   const toggleEmpty = () => setShowEmpty((v) => { writePref("leads.showEmpty", !v); return !v; });
+  const setCrmView = (next) => {
+    setSearchParams(next === "table" ? {} : { view: next }, { replace: true });
+  };
 
   const allVisible = leads.map((l) => l.id);
   const toggleOne = (id) =>
@@ -149,15 +153,15 @@ export default function Leads() {
             {live.updatedAt ? `Live · updated ${live.updatedAt.toLocaleTimeString()} · every ${LIVE_MS / 1000} s` : "Loading…"}
           </p>
         </div>
-        <div className="flex gap-2 items-center">
+        <div className="flex flex-wrap gap-2 items-center">
           <div className="flex items-center gap-2 px-3 py-1.5 border border-[#D3DBEA] rounded-md bg-[#FFFFFF]">
             <MagnifyingGlass size={14} className="text-[#6B6B66]" />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, email, company" className="bg-transparent outline-none text-sm w-56 font-mono" data-testid="leads-search" />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, email, company" className="bg-transparent outline-none text-sm w-40 sm:w-56 font-mono" data-testid="leads-search" />
           </div>
-          <button onClick={() => setView(view === "map" ? "table" : "map")} className="btn-ghost" data-testid="toggle-map">
+          <button onClick={() => setCrmView(view === "map" ? "table" : "map")} className="btn-ghost" data-testid="toggle-map">
             {view === "map" ? <Table size={14} /> : <MagnifyingGlass size={14} />} {view === "map" ? "CRM TABLE" : "MAP SEARCH"}
           </button>
-          {view !== "map" && <button onClick={() => setView(view === "table" ? "kanban" : "table")} className="btn-ghost" data-testid="toggle-view">
+          {view !== "map" && <button onClick={() => setCrmView(view === "table" ? "kanban" : "table")} className="btn-ghost" data-testid="toggle-view">
             {view === "table" ? <Kanban size={14} /> : <Table size={14} />} {view === "table" ? "KANBAN" : "TABLE"}
           </button>}
           {view !== "map" && <button onClick={() => setShowBatch(true)} className="btn-ink" data-testid="open-batch-send"><PaperPlaneTilt size={14} weight="fill" /> BATCH SEND</button>}
@@ -170,7 +174,7 @@ export default function Leads() {
       <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filter by heat" data-testid="leads-lanes">
         {LANES.map((k) => [k, `${LANE_LABEL[k]} ${k === "all" ? counts.total : counts[k]}`]).map(([key, label]) => (
           <button key={key} onClick={() => setLane(key)} aria-pressed={lane === key} data-testid={`lane-${key}`}
-            className={`px-3 py-1 rounded-full text-xs border transition-colors ${lane === key ? "bg-[#0B1020] text-white border-[#0B1020] shadow-[0_0_14px_-2px_rgba(99,102,241,0.7)]" : "bg-white/80 border-[#D3DBEA] hover:bg-white"}`}>
+            className={`px-3 py-1 rounded-full text-xs border transition-colors ${lane === key ? "bg-brand-violet text-white border-brand-violet" : "bg-white border-[#D3DBEA] hover:bg-[#F7F9FD]"}`}>
             {label}
           </button>
         ))}
@@ -230,12 +234,9 @@ export default function Leads() {
               </tr>
             </thead>
             <tbody>
-              {leads.map((l, i) => (
-                <motion.tr
+              {leads.map((l) => (
+                <tr
                   key={l.id}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: i * 0.02 }}
                   onClick={() => setDetailLeadId(l.id)}
                   className={`border-b border-[#E6ECF6] hover:bg-[#F6F8FC] transition-colors cursor-pointer ${selected.has(l.id) ? "bg-indigo-50" : live.fresh.has(l.id) ? "bg-cyan-50" : ""}`}
                   data-testid={`lead-row-${l.id}`}
@@ -313,10 +314,10 @@ export default function Leads() {
                       <button onClick={() => writeFor(l)} className="btn-ghost !py-1 !px-2" title="AI write" aria-label={`Write to ${l.full_name} with AI`} data-testid={`ai-${l.id}`}><Sparkle size={12} /></button>
                       {l.email && <a href={`mailto:${l.email}`} className="btn-ghost !py-1 !px-2" aria-label={`E-mail ${l.full_name}`}><Envelope size={12} /></a>}
                       {l.phone && <a href={`tel:${l.phone}`} className="btn-ghost !py-1 !px-2" aria-label={`Call ${l.full_name}`}><Phone size={12} /></a>}
-                      <button onClick={() => remove(l.id)} className="btn-ghost !py-1 !px-2 hover:!border-[#EF4444]" aria-label={`Delete ${l.full_name}`} data-testid={`delete-lead-${l.id}`}><Trash size={12} /></button>
+                      <button onClick={() => remove(l.id)} className="btn-danger !py-1 !px-2" aria-label={`Delete ${l.full_name}`} data-testid={`delete-lead-${l.id}`}><Trash size={12} /></button>
                     </div>
                   </td>
-                </motion.tr>
+                </tr>
               ))}
               {leads.length === 0 && (
                 <tr><td colSpan="10" className="p-10 text-center text-[#5F5F5A]" data-testid="leads-none">

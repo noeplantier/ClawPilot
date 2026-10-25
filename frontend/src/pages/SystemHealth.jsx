@@ -27,6 +27,10 @@ export default function SystemHealth() {
   };
 
   const d = page.data;
+  const healthChecks = checks(d);
+  const criticalFailure = healthChecks.some((check) => ["database", "migrations"].includes(check.key) && !check.ok);
+  const degraded = healthChecks.some((check) => !check.ok && !["smtp", "imap", "groq"].includes(check.key));
+  const healthStatus = criticalFailure ? "failing" : degraded ? "degraded" : "healthy";
   return (
     <div className="p-6 md:p-10 space-y-6 max-w-4xl" data-testid="system-page">
       <div>
@@ -38,9 +42,13 @@ export default function SystemHealth() {
       {page.error && <ErrorBlock message={page.error} onRetry={page.reload} />}
       {d && (
         <>
+          <div role="status" className={`surface p-4 flex items-center justify-between gap-3 ${healthStatus === "healthy" ? "border-emerald-200" : healthStatus === "failing" ? "border-red-300" : "border-amber-300"}`} data-testid="health-overall" data-status={healthStatus}>
+            <div><p className="mono-accent">Overall status</p><p className="text-xl font-bold capitalize">{healthStatus}</p></div>
+            <span className="text-sm text-muted-foreground">{healthStatus === "healthy" ? "Core checks are responding." : criticalFailure ? "Database or migrations need immediate attention." : "One or more core services need attention."}</span>
+          </div>
           <p className="text-xs text-[#5F5F5A]" data-testid="health-checked-at">Last checked {new Date(d.generated_at).toLocaleString()}</p>
           <ul className="surface divide-y divide-[#E9EEF7]" data-testid="health-checks">
-            {checks(d).map((c) => (
+            {healthChecks.map((c) => (
               <li key={c.key} className="p-4 flex items-start gap-3" data-testid={`health-${c.key}`} data-ok={c.ok}>
                 {c.ok ? <CheckCircle size={20} weight="fill" className="text-[#15803D] shrink-0" /> : <WarningCircle size={20} weight="fill" className="text-[#4338CA] shrink-0" />}
                 <div><div className="font-semibold">{c.label}</div><div className="text-sm text-[#5F5F5A]">{c.detail}</div></div>

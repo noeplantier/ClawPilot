@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ArrowsClockwise } from "@phosphor-icons/react";
+import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { canDecide, dashboardApi, outboundApi, useAsync } from "@/lib/outreach";
 import { describeApiError } from "@/lib/outreachFormat";
@@ -46,6 +47,13 @@ export default function Dashboard() {
         </div>
         <button className="btn-ghost" onClick={reload} disabled={page.loading} data-testid="dashboard-refresh"><ArrowsClockwise size={14} /> REFRESH</button>
       </div>
+
+      {d?.kpis?.pending_review > 0 && (
+        <Link to="/app/prospects/review" className="surface flex flex-wrap items-center justify-between gap-3 p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-violet" data-testid="dashboard-review-action">
+          <span><strong>{d.kpis.pending_review} prospects awaiting review</strong><span className="block text-sm text-muted-foreground">Check their sources and decide what belongs in your CRM.</span></span>
+          <span className="btn-primary">OPEN REVIEW QUEUE</span>
+        </Link>
+      )}
 
       {page.loading && !d && <LoadingBlock label="Reading your data…" />}
       {page.error && <ErrorBlock message={page.error} onRetry={reload} />}
