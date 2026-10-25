@@ -56,6 +56,8 @@ test("with no data, every widget shows an explicit empty state and no invented n
 
 test("with data, the widgets show the real figures and link to the prospect", async () => {
   await show(FULL);
+  expect(byId("dashboard-review-action").getAttribute("href")).toBe("/app/prospects/review");
+  expect(byId("dashboard-review-action").textContent).toContain("2 prospects awaiting review");
   expect(byId("kpi-prospects-value").textContent).toBe("3");
   expect(byId("kpi-avg_score-value").textContent).toBe("41.5");
   expect(byId("kpi-replies-hint").textContent).toBe("50% of 2 sent");

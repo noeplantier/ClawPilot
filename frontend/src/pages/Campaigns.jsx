@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 import {
-  Plus, Play, Pause, Trash, Target, PaperPlaneTilt, Eye, ChatCircleDots, Rocket, X, ArrowRight, Sparkle, ArrowSquareOut, Users,
+  Plus, Play, Pause, Trash, Target, PaperPlaneTilt, Eye, ChatCircleDots, Rocket, X, ArrowRight, ArrowSquareOut, Users,
 } from "@phosphor-icons/react";
 import CampaignDetailDrawer from "@/components/CampaignDetailDrawer";
 import Suggestions from "@/components/campaigns/Suggestions";
@@ -18,11 +18,18 @@ const STATUS_CHIP = {
 
 export default function Campaigns() {
   const [list, setList] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [drawerId, setDrawerId] = useState(null);
 
-  const load = () => api.get("/campaigns").then((r) => setList(r.data));
+  const load = () => {
+    setLoading(true);
+    return api.get("/campaigns").then((r) => { setList(r.data); setError(null); })
+      .catch((e) => setError(e?.response?.data?.detail || "Campaigns are temporarily unavailable."))
+      .finally(() => setLoading(false));
+  };
 
   useEffect(() => { load(); }, []);
 
@@ -73,6 +80,9 @@ export default function Campaigns() {
 
       <Suggestions onCreated={load} />
 
+      {error && <div role="alert" className="surface p-4 text-sm" data-testid="campaigns-error"><p>{error}</p><button onClick={load} className="btn-ghost mt-2">RETRY</button></div>}
+      {loading && list.length === 0 && <p role="status" className="surface p-4 text-sm">Loading campaigns…</p>}
+
       <div className="grid lg:grid-cols-2 gap-4">
         {list.map((c, i) => (
           <motion.div
@@ -93,16 +103,16 @@ export default function Campaigns() {
                 <p className="text-sm text-[#5F5F5A] mt-1 line-clamp-1">{c.goal || "—"}</p>
               </div>
               <div className="flex gap-2">
-                <button onClick={() => setDrawerId(c.id)} className="btn-ghost !py-1.5 !px-2" title="open" data-testid={`view-campaign-${c.id}`}>
+                <button onClick={() => setDrawerId(c.id)} className="btn-ghost !py-1.5 !px-2" title={`Open ${c.name}`} aria-label={`Open ${c.name}`} data-testid={`view-campaign-${c.id}`}>
                   <ArrowSquareOut size={14} weight="bold" />
                 </button>
-                <button onClick={() => toggle(c)} className="btn-ghost !py-1.5 !px-2" title="toggle" data-testid={`toggle-${c.id}`}>
+                <button onClick={() => toggle(c)} className="btn-ghost !py-1.5 !px-2" title={c.status === "running" ? `Pause ${c.name}` : `Resume ${c.name}`} aria-label={c.status === "running" ? `Pause ${c.name}` : `Resume ${c.name}`} data-testid={`toggle-${c.id}`}>
                   {c.status === "running" ? <Pause size={14} weight="fill" /> : <Play size={14} weight="fill" />}
                 </button>
-                <button onClick={() => launch(c.id)} className="btn-ghost !py-1.5 !px-2" title="launch" data-testid={`launch-${c.id}`}>
+                <button onClick={() => launch(c.id)} className="btn-ghost !py-1.5 !px-2" title={`Launch ${c.name}`} aria-label={`Launch ${c.name}`} data-testid={`launch-${c.id}`}>
                   <Rocket size={14} weight="fill" />
                 </button>
-                <button onClick={() => remove(c.id)} className="btn-ghost !py-1.5 !px-2 hover:!border-[#EF4444] hover:!text-[#EF4444]" data-testid={`delete-${c.id}`}>
+                <button onClick={() => remove(c.id)} className="btn-danger !py-1.5 !px-2" aria-label={`Delete ${c.name}`} data-testid={`delete-${c.id}`}>
                   <Trash size={14} />
                 </button>
               </div>
@@ -126,7 +136,7 @@ export default function Campaigns() {
           </motion.div>
         ))}
 
-        {list.length === 0 && (
+        {!loading && !error && list.length === 0 && (
           <div className="surface p-10 text-center col-span-full text-[#5F5F5A]">
             No campaigns yet. <button onClick={() => setOpen(true)} className="text-[#4F46E5] hover:underline">Create your first.</button>
           </div>

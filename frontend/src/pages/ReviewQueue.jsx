@@ -77,7 +77,7 @@ export default function ReviewQueue() {
           <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Queues by heat">
             {LANES.map((k) => [k, `${LANE_LABEL[k]} ${k === "all" ? (server ? server.total : loaded.total) : (server ? server[k] : loaded[k])}`]).map(([key, label]) => (
               <button key={key} onClick={() => setLane(key)} aria-pressed={lane === key} data-testid={`queue-lane-${key}`}
-                className={`px-3 py-1 rounded-full text-xs border transition-colors ${lane === key ? "bg-[#0B1020] text-white border-[#0B1020] shadow-[0_0_14px_-2px_rgba(99,102,241,0.7)]" : "bg-white/80 border-[#D3DBEA] hover:bg-white"}`}>
+                className={`px-3 py-1 rounded-full text-xs border transition-colors ${lane === key ? "bg-brand-violet text-white border-brand-violet" : "bg-white border-[#D3DBEA] hover:bg-[#F7F9FD]"}`}>
                 {label}
               </button>
             ))}

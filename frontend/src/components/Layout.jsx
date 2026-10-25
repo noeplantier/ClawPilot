@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -21,7 +21,8 @@ const GROUPS = [
     { to: "/app/prospects/review", label: "À vérifier", icon: ListChecks, testId: "nav-review-queue" },
   ] },
   { id: "crm", label: "CRM", icon: Users, items: [
-    { to: "/app/leads", label: "Contacts, pipeline et priorités", icon: Users, testId: "nav-leads-crm" },
+    { to: "/app/leads", label: "Contacts et entreprises", icon: Users, testId: "nav-leads-crm" },
+    { to: "/app/leads?view=kanban", label: "Pipeline", icon: ListChecks, testId: "nav-pipeline" },
   ] },
   { id: "outreach", label: "Outreach", icon: PaperPlaneTilt, items: [
     { to: "/app/campaigns", label: "Campagnes", icon: Target, testId: "nav-campaigns" },
@@ -37,7 +38,10 @@ const GROUPS = [
 ];
 
 function groupForPath(pathname) {
-  return GROUPS.find((group) => group.items.some((item) => pathname === item.to || pathname.startsWith(`${item.to}/`)))?.id || "overview";
+  return GROUPS.find((group) => group.items.some((item) => {
+    const itemPath = item.to.split("?")[0];
+    return pathname === itemPath || pathname.startsWith(`${itemPath}/`);
+  }))?.id || "overview";
 }
 
 function NavGroups({ folded, openGroup, setOpenGroup, setFolded, onNavigate, testPrefix = "" }) {
@@ -82,10 +86,12 @@ function NavGroups({ folded, openGroup, setOpenGroup, setFolded, onNavigate, tes
                     <div id={`nav-group-${group.id}`} className="ml-[1.15rem] mt-1 space-y-0.5 border-l border-white/10 pl-2">
                       {group.items.map((item) => {
                         const ItemIcon = item.icon;
-                        return <NavLink key={item.testId} to={item.to} end onClick={onNavigate} data-testid={`${testPrefix}${item.testId}`}
-                          className={({ isActive }) => `flex min-h-9 items-center gap-2 rounded-md px-2 text-[13px] leading-4 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-lilac ${isActive ? "bg-brand-violet/20 text-white" : "text-sidebar-muted hover:bg-white/[0.06] hover:text-white"}`}>
+                        const [itemPath, itemQuery] = item.to.split("?");
+                        const active = location.pathname === itemPath && (itemQuery ? location.search === `?${itemQuery}` : location.search !== "?view=kanban");
+                        return <Link key={item.testId} to={item.to} onClick={onNavigate} data-testid={`${testPrefix}${item.testId}`} aria-current={active ? "page" : undefined}
+                          className={`flex min-h-9 items-center gap-2 rounded-md px-2 text-[13px] leading-4 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-lilac ${active ? "bg-brand-violet/20 text-white" : "text-sidebar-muted hover:bg-white/[0.06] hover:text-white"}`}>
                           <ItemIcon size={16} weight="duotone" /><span>{item.label}</span>
-                        </NavLink>;
+                        </Link>;
                       })}
                     </div>
                   )}
@@ -128,7 +134,7 @@ export default function Layout() {
     return () => window.removeEventListener("keydown", onKey);
   }, [mobileOpen]);
 
-  // The original ClawPilot shortcut stays available and ignores focused text fields.
+  // Keep the sidebar shortcut available and ignore focused text fields.
   useEffect(() => {
     const onKey = (event) => {
       if (event.key === "[" && !isTypingTarget(event.target) && !event.ctrlKey && !event.metaKey && !event.altKey) setFolded((value) => !value);

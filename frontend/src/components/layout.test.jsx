@@ -13,7 +13,7 @@ global.IS_REACT_ACT_ENVIRONMENT = true;
 let container;
 let root;
 const byId = (id) => container.querySelector(`[data-testid="${id}"]`);
-const render = async () => { await act(async () => root.render(<MemoryRouter initialEntries={["/app/dashboard"]}><Layout /></MemoryRouter>)); };
+const render = async (path = "/app/dashboard") => { await act(async () => root.render(<MemoryRouter initialEntries={[path]}><Layout /></MemoryRouter>)); };
 const click = async (el) => { await act(async () => { el.dispatchEvent(new MouseEvent("click", { bubbles: true })); }); };
 
 beforeEach(() => { window.localStorage.clear(); container = document.createElement("div"); document.body.appendChild(container); root = createRoot(container); });
@@ -65,12 +65,21 @@ test("mobile navigation opens an accessible drawer with grouped destinations", a
   expect(byId("mobile-nav")).toBeNull();
   await click(byId("mobile-nav-toggle"));
   expect(byId("mobile-drawer")).not.toBeNull();
-  expect(byId("mobile-drawer").querySelectorAll("a")).toHaveLength(2);
+  expect(byId("mobile-drawer").querySelectorAll("a")).toHaveLength(1);
   await click(byId("mobile-nav-group-prospecting"));
-  expect(byId("mobile-drawer").querySelectorAll("a")).toHaveLength(6);
+  expect(byId("mobile-drawer").querySelectorAll("a")).toHaveLength(5);
+  await click(byId("mobile-nav-group-crm"));
   expect(byId("mobile-nav-leads-crm")).not.toBeNull();
+  expect(byId("mobile-nav-pipeline")).not.toBeNull();
   expect(byId("mobile-drawer").parentElement.getAttribute("aria-modal")).toBe("true");
   expect(byId("mobile-drawer").getAttribute("aria-label")).toContain("Navigation");
   await act(async () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
   expect(byId("mobile-drawer")).toBeNull();
+});
+
+test("Pipeline is a distinct CRM destination and marks the Kanban route active", async () => {
+  await render("/app/leads?view=kanban");
+  expect(byId("nav-pipeline").getAttribute("href")).toBe("/app/leads?view=kanban");
+  expect(byId("nav-pipeline").getAttribute("aria-current")).toBe("page");
+  expect(byId("nav-leads-crm").getAttribute("aria-current")).toBeNull();
 });
