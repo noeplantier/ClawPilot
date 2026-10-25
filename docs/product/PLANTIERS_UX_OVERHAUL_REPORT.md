@@ -5,7 +5,6 @@
 - `frontend/src/index.css`
 - `frontend/src/components/Layout.jsx`
 - `frontend/src/components/layout.test.jsx`
-- `frontend/e2e/journey.spec.js`
 - `frontend/src/pages/Agents.jsx`
 - `frontend/src/pages/Analytics.jsx`
 - `frontend/src/pages/Campaigns.jsx`
@@ -27,7 +26,6 @@
 - Map results are deduplicated by source identifier before rendering; mobile map toolbar and search panel no longer occupy the same top position.
 - Browser QA found and fixed a mobile map/footer overlap: the map now fits above the footer, the results panel clears its toggle, and the toggle clears map attribution.
 - Removed one user-facing source comment containing the former product name; CI's branding test had caught it.
-- Aligned two E2E assertions with existing grouped navigation and the asynchronous lead refresh; neither required a product behavior change.
 - Campaigns, messages, and agents expose explicit loading/error/retry states. Messages tables scroll horizontally on narrow screens. Agent refresh pauses in hidden tabs and runs every 30 seconds while visible. Delete actions use the shared destructive style and named accessible labels.
 - System Health shows a derived overall status from existing checks; database or migration failure maps to failing, other core check failures to degraded, and absent optional integrations do not claim a system failure.
 - Analytics labels the funnel as all recorded time and uses the existing violet/ink identity in its charts. Review and map selection filters share the violet selected state.
@@ -51,7 +49,6 @@
 - [x] Frontend production build (local only; not deployed)
 - [x] Targeted UI tests: layout/navigation, dashboard, messages, map search, and map clustering (31 tests)
 - [x] Targeted branding regression test after CI found the stale product name
-- [x] Corrected the two E2E test expectations found in the first CI run; awaiting the PR rerun
 - [x] ESLint on changed UI and test files (no warnings or errors)
 - [x] Browser at 1280×800: Dashboard, Leads table/Pipeline, Map Search, Prospects, Review Queue, Campaigns, Messages, Agents, Analytics, System Health, Settings
 - [x] Folded desktop sidebar and mobile drawer open/close with Escape
