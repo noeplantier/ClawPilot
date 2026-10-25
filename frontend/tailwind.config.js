@@ -13,6 +13,9 @@ module.exports = {
   			sm: 'calc(var(--radius) - 4px)'
   		},
   		colors: {
+			"brand-violet": "var(--brand-violet)",
+			"brand-violet-hover": "var(--brand-violet-hover)",
+			"brand-lilac": "var(--brand-lilac)",
   			background: 'hsl(var(--background))',
   			foreground: 'hsl(var(--foreground))',
   			card: {

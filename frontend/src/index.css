@@ -4,22 +4,42 @@
 @tailwind utilities;
 
 :root {
-  --bg-page: #E9EEF7;
-  --bg-surface: #FFFFFF;
-  --bg-surface-hover: #F7F9FD;
+  /* Plantiers identity and shared interface tokens. */
+  --brand-ink: #100D1B;
+  --brand-violet: #6D42C1;
+  --brand-violet-hover: #7C4DDB;
+  --brand-lilac: #C4A8FF;
+  --surface-dark: #171322;
+  --surface-dark-raised: #211B31;
+  --surface-page: #E9EEF7;
+  --surface-card: #FFFFFF;
+  --surface-hover: #F7F9FD;
+  --sidebar-muted: #B6AEC7;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --radius-sm: 0.375rem;
+  --radius-control: 0.625rem;
+  --radius-card: 0.875rem;
+  --font-interface: 'IBM Plex Sans', system-ui, sans-serif;
+  --bg-page: var(--surface-page);
+  --bg-surface: var(--surface-card);
+  --bg-surface-hover: var(--surface-hover);
   --text-primary: #0A0A0A;
   --text-secondary: #595955;
   --text-muted: #6B6B66;
-  --accent-red: #4F46E5; /* brand accent: electric indigo (the name is kept for old class names); errors use #DC2626 inline */
-  --accent-red-dark: #3730A3;
-  --accent-ink: #0B1020;
+  --accent-red: var(--brand-violet); /* legacy token name; errors use #DC2626 inline */
+  --accent-red-dark: #563097;
+  --accent-ink: var(--brand-ink);
   --accent-slate: #475569;
   --accent-success: #10B981;
   --accent-danger: #EF4444;
   --accent-warning: #F59E0B;
   --border-default: #D3DBEA;
   --border-strong: #B4C0D6;
-  --border-glow: rgba(79, 70, 229, 0.35);
+  --border-glow: rgba(109, 66, 193, 0.3);
   /* Legacy aliases kept for backward compatibility */
   --accent-cyan: var(--accent-red);
   --accent-blue: var(--accent-slate);
@@ -52,7 +72,7 @@
     --card-foreground: 0 0% 4%;
     --popover: 0 0% 100%;
     --popover-foreground: 0 0% 4%;
-    --primary: 243 75% 59%;
+    --primary: 262 50% 51%;
     --primary-foreground: 0 0% 100%;
     --secondary: 219 30% 93%;
     --secondary-foreground: 0 0% 10%;
@@ -64,16 +84,23 @@
     --destructive-foreground: 0 0% 100%;
     --border: 219 30% 86%;
     --input: 0 0% 100%;
-    --ring: 243 75% 59%;
+    --ring: 262 50% 51%;
     --radius: 0.375rem;
   }
 
   * { border-color: hsl(var(--border)); }
+  :focus-visible { outline: 2px solid var(--brand-lilac); outline-offset: 2px; }
 }
 
 /* Utility classes */
 .font-mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
 .font-display { font-family: 'Chivo', sans-serif; }
+
+.bg-sidebar { background-color: var(--brand-ink); }
+.text-brand-lilac { color: var(--brand-lilac); }
+.text-sidebar-muted { color: var(--sidebar-muted); }
+.bg-brand-violet { background-color: var(--brand-violet); }
+.bg-brand-violet-hover:hover { background-color: var(--brand-violet-hover); }
 
 .mono-accent {
   font-family: 'JetBrains Mono', monospace;
