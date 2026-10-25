@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
@@ -15,16 +15,19 @@ export default function Agents() {
   const [list, setList] = useState([]);
   const [logs, setLogs] = useState({});
   const [showCreate, setShowCreate] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  const load = async () => {
-    const { data } = await api.get("/agents");
-    setList(data);
-  };
+  const load = useCallback(async () => {
+    try { const { data } = await api.get("/agents"); setList(data); setError(null); }
+    catch (e) { setError(e?.response?.data?.detail || "Agent activity is temporarily unavailable."); }
+    finally { setLoading(false); }
+  }, []);
   useEffect(() => {
     load();
-    const id = setInterval(load, 8000);
+    const id = setInterval(() => { if (!document.hidden) load(); }, 30000);
     return () => clearInterval(id);
-  }, []);
+  }, [load]);
 
   const toggle = async (id) => {
     await api.post(`/agents/${id}/toggle`);
@@ -58,15 +61,15 @@ export default function Agents() {
         <button onClick={() => setShowCreate(true)} className="btn-primary" data-testid="spawn-agent-button"><Plus size={14} weight="bold" /> SPAWN AGENT</button>
       </div>
 
+      {error && <div role="alert" className="surface p-4 text-sm" data-testid="agents-error"><p>{error}</p><button onClick={load} className="btn-ghost mt-2">RETRY</button></div>}
+      {loading && list.length === 0 && <p role="status" className="surface p-4 text-sm">Loading agent status…</p>}
+      {!loading && !error && list.length === 0 && <p className="surface p-8 text-sm text-muted-foreground" data-testid="agents-empty">No agents are configured. Create one only when an operator is ready to supervise it.</p>}
       <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        {list.map((a, i) => {
+        {list.map((a) => {
           const st = STATUS_STYLE[a.status] || STATUS_STYLE.idle;
           return (
-            <motion.div
+            <div
               key={a.id}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.05 }}
               className={`surface surface-hover p-5 relative ${a.status === "running" ? "border-beam" : ""}`}
               data-testid={`agent-card-${a.id}`}
             >
@@ -100,7 +103,7 @@ export default function Agents() {
                   {a.status === "running" ? <><Pause size={12} weight="fill" /> PAUSE</> : <><Play size={12} weight="fill" /> START</>}
                 </button>
                 <button onClick={() => showLogs(a.id)} className="btn-ghost" data-testid={`logs-${a.id}`}><Terminal size={12} /></button>
-                <button onClick={() => remove(a.id)} className="btn-ghost hover:!border-[#EF4444] hover:!text-[#EF4444]" data-testid={`delete-agent-${a.id}`}><Trash size={12} /></button>
+                <button onClick={() => remove(a.id)} className="btn-danger !py-1.5 !px-2" aria-label={`Delete agent ${a.name}`} data-testid={`delete-agent-${a.id}`}><Trash size={12} /></button>
               </div>
 
               {logs[a.id] && (
@@ -110,7 +113,7 @@ export default function Agents() {
                   ))}
                 </div>
               )}
-            </motion.div>
+            </div>
           );
         })}
       </div>

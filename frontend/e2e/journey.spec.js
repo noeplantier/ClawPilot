@@ -120,6 +120,7 @@ test("manual scoring selection creates and tracks a real account-scoped job", as
   await page.getByTestId("lead-full_name").fill(leadName);
   await page.getByTestId("save-lead-button").click();
   await expect(page.getByTestId("close-create-lead")).toHaveCount(0);
+  await expect(page.getByTestId("leads-empty-toggle")).toBeVisible(); // wait for the post-save lead refresh
   await page.getByTestId("leads-empty-toggle").click();
   const leadRow = page.locator('[data-testid^="lead-row-"]').filter({ hasText: leadName });
   await leadRow.getByRole("checkbox", { name: `Select ${leadName}` }).check();
@@ -198,6 +199,7 @@ test("the map shows real places from the search, marks what is published and nev
 
 test("sources: discover from the world demo, see explained signals, page, add to the review queue; live sources say why they are off", async ({ page }) => {
   await register(page);
+  await page.getByTestId("nav-group-prospecting").click();
   await page.getByTestId("nav-sources").click();
   await expect(page.getByTestId("sources-page")).toBeVisible();
   // The server runs with the flags off: live providers are shown but disabled, with the reason.

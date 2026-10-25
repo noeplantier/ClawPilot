@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { api } from "@/lib/api";
@@ -19,12 +19,17 @@ export default function Messages() {
   const [filter, setFilter] = useState("all");
   const [composer, setComposer] = useState({ open: false, channel: "email" });
   const [batchChannel, setBatchChannel] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  const load = () => {
+  const load = useCallback(() => {
     const params = filter === "all" ? {} : { channel: filter };
-    api.get("/messages", { params }).then((r) => setList(r.data));
-  };
-  useEffect(() => { load(); }, [filter]); // eslint-disable-line
+    setLoading(true);
+    api.get("/messages", { params }).then((r) => { setList(r.data); setError(null); })
+      .catch((e) => setError(e?.response?.data?.detail || "Messages are temporarily unavailable."))
+      .finally(() => setLoading(false));
+  }, [filter]);
+  useEffect(() => { load(); }, [load]);
 
   return (
     <div className="p-6 md:p-10 space-y-6">
@@ -49,7 +54,10 @@ export default function Messages() {
       </div>
 
       <div className="surface overflow-hidden">
-        <table className="w-full text-sm">
+        {error && <div role="alert" className="p-4 text-sm" data-testid="messages-error"><p>{error}</p><button onClick={load} className="btn-ghost mt-2">RETRY</button></div>}
+        {loading && list.length === 0 && <p role="status" className="p-4 text-sm">Loading messages…</p>}
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[42rem] text-sm">
           <thead className="bg-[#F6F8FC] border-b border-[#D3DBEA]">
             <tr className="text-left mono-accent">
               <th className="p-3">Channel</th>
@@ -60,8 +68,8 @@ export default function Messages() {
             </tr>
           </thead>
           <tbody>
-            {list.map((m, i) => (
-              <motion.tr key={m.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.02 }}
+            {list.map((m) => (
+              <tr key={m.id}
                 className="border-b border-[#E6ECF6] hover:bg-[#F6F8FC]">
                 <td className="p-3">
                   {m.channel === "email"
@@ -76,11 +84,12 @@ export default function Messages() {
                 </td>
                 <td className="p-3"><span className={`chip ${STATUS_CHIP[m.status]}`}>{m.status === "mock" ? "not sent" : m.status}</span></td>
                 <td className="p-3 font-mono text-xs text-[#6B6B66]">{new Date(m.created_at).toLocaleString()}</td>
-              </motion.tr>
+              </tr>
             ))}
-            {list.length === 0 && <tr><td colSpan="5" className="p-10 text-center text-[#5F5F5A]">No messages yet.</td></tr>}
+            {!loading && !error && list.length === 0 && <tr><td colSpan="5" className="p-10 text-center text-[#5F5F5A]">No messages in this channel yet.</td></tr>}
           </tbody>
         </table>
+        </div>
       </div>
 
       {composer.open && <Composer channel={composer.channel} onClose={() => setComposer({ ...composer, open: false })} onSent={() => { setComposer({ ...composer, open: false }); load(); }} />}
