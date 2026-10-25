@@ -68,3 +68,12 @@
 ## Rollback
 
 Revert the corrective-pass changes on this feature branch. No migration, backend/data change, deployment, or production action is part of this pass.
+
+## PR #59 synchronization follow-up (2026-10-26)
+
+- Initial verification found local and remote branch HEAD at `ed2ed1e` (merge of `main` into the feature branch), not the previously reported `da05545`.
+- Added and pushed empty commit `5edb751` because the requested `ci-retrigger` label does not exist. The normal push succeeded.
+- GitHub still reports PR head `a3937ac`; its check rollup is the old run. Backend, frontend build/lint, Alembic, and secret-scan checks passed there; E2E failed on the two stale expectations already corrected on the branch. No check result is available for `5edb751`.
+- Render deployment remains skipped. The Netlify Deploy Preview is automatically created by the PR integration; no production deployment was triggered.
+- Merge remains blocked until GitHub synchronizes PR #59 to the branch tip and E2E passes on that tip. Reviewers still need to decide whether live OSM tile verification is required before merge.
+- Rollback: revert the Plantiers UX corrective-pass commit; the empty retrigger commit can be reverted separately if needed.
