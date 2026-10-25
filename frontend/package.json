@@ -63,7 +63,8 @@
     "build": "craco build",
     "test": "craco test",
     "lint": "eslint src",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "e2e:navigation": "playwright test --config playwright.nav.config.js"
   },
   "browserslist": {
     "production": [

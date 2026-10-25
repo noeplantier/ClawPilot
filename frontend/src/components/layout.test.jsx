@@ -23,24 +23,27 @@ test("the sidebar starts unfolded with its labels and the organisation", async (
   await render();
   expect(byId("sidebar").getAttribute("data-folded")).toBe("false");
   expect(byId("sidebar").textContent).toContain("OUTREACHOS");
-  expect(byId("sidebar").textContent).toContain("/// command.center");
+  expect(byId("sidebar").textContent).toContain("PLANTIERS");
   expect(byId("org-name").textContent).toBe("Acme");
   expect(byId("sidebar-toggle").getAttribute("aria-expanded")).toBe("true");
 });
 
-test("folding keeps every destination reachable by icon with an accessible name, and remembers the choice", async () => {
+test("folding keeps every destination reachable through accessible group controls and remembers the choice", async () => {
   await render();
   await click(byId("sidebar-toggle"));
   expect(byId("sidebar").getAttribute("data-folded")).toBe("true");
   expect(byId("sidebar").textContent).not.toContain("OUTREACHOS");
-  expect(byId("nav-map-search").getAttribute("aria-label")).toBe("Map search");
-  expect(byId("nav-settings").getAttribute("title")).toBe("Settings");
+  expect(byId("nav-group-prospecting").getAttribute("aria-label")).toBe("Prospection");
+  expect(byId("nav-group-control").getAttribute("title")).toBe("Pilotage");
   expect(byId("sidebar-toggle").getAttribute("aria-expanded")).toBe("false");
   expect(window.localStorage.getItem("pos.ui.sidebar.folded")).toBe("true");
   await act(async () => root.unmount());
   root = createRoot(container);
   await render(); // a later visit
   expect(byId("sidebar").getAttribute("data-folded")).toBe("true");
+  await click(byId("nav-group-prospecting"));
+  expect(byId("sidebar").getAttribute("data-folded")).toBe("false");
+  expect(byId("nav-map-search")).not.toBeNull();
 });
 
 test("the [ key folds and unfolds, except while typing in a field", async () => {
@@ -57,7 +60,17 @@ test("the [ key folds and unfolds, except while typing in a field", async () => 
   expect(byId("sidebar").getAttribute("data-folded")).toBe("false");
 });
 
-test("a mobile navigation lists the same destinations", async () => {
+test("mobile navigation opens an accessible drawer with grouped destinations", async () => {
   await render();
-  expect(byId("mobile-nav").querySelectorAll("a")).toHaveLength(13);
+  expect(byId("mobile-nav")).toBeNull();
+  await click(byId("mobile-nav-toggle"));
+  expect(byId("mobile-drawer")).not.toBeNull();
+  expect(byId("mobile-drawer").querySelectorAll("a")).toHaveLength(2);
+  await click(byId("mobile-nav-group-prospecting"));
+  expect(byId("mobile-drawer").querySelectorAll("a")).toHaveLength(6);
+  expect(byId("mobile-nav-leads-crm")).not.toBeNull();
+  expect(byId("mobile-drawer").parentElement.getAttribute("aria-modal")).toBe("true");
+  expect(byId("mobile-drawer").getAttribute("aria-label")).toContain("Navigation");
+  await act(async () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
+  expect(byId("mobile-drawer")).toBeNull();
 });

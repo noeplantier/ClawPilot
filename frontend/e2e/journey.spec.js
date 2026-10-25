@@ -353,7 +353,8 @@ test("the system page reports the real database and migrations, and probes OpenS
   await register(page);
   await page.route("**/api/system/health/overpass", (route) =>
     route.fulfill({ json: { ok: false, servers: [{ host: "overpass-api.de", ok: false, error: "OSError: Network is unreachable", ms: 3 }] } }));
-  await page.getByText("System health").first().click();
+  await page.getByTestId("nav-group-control").click();
+  await page.getByTestId("nav-system-health").click();
   await expect(page.getByTestId("system-page")).toBeVisible();
   await expect(page.getByTestId("health-database")).toHaveAttribute("data-ok", "true");
   await expect(page.getByTestId("health-migrations")).toHaveAttribute("data-ok", "true");
@@ -375,7 +376,8 @@ test("the sidebar folds and remembers it; the map has one real basemap and every
   await expect(page.getByTestId("sidebar")).toHaveAttribute("data-folded", "true");
   await page.reload();
   await expect(page.getByTestId("sidebar")).toHaveAttribute("data-folded", "true"); // remembered
-  await page.getByTestId("nav-map-search").click(); // still reachable by its icon
+  await page.getByTestId("nav-group-prospecting").click();
+  await page.getByTestId("nav-map-search").click();
 
   await expect(page.getByTestId("map")).toBeVisible();
   await expect(page.getByTestId("map-base-dark")).toHaveCount(0); // no light / dark variants
