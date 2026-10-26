@@ -296,10 +296,10 @@ def test_a_bounce_about_another_address_and_unknown_mail_change_nothing(sent):
 def test_legacy_campaign_reply_is_recorded_once_and_cancels_only_that_tenant_leads_sequence():
     account_id = _register_account()
     other_account_id = _register_account()
-    provider_id = f"<campaign-{uuid.uuid4().hex}@mail.example>"
+    provider_id = f"campaign-{uuid.uuid4().hex}@mail.example"
     ids = _seed_sequence(account_id, "sequence@example.test", provider_id, "sequence-task-a")
     other_ids = _seed_sequence(
-        other_account_id, "other@example.test", f"<other-{uuid.uuid4().hex}@mail.example>", "sequence-task-b"
+        other_account_id, "other@example.test", f"other-{uuid.uuid4().hex}@mail.example", "sequence-task-b"
     )
     raw = _reply(provider_id, "sequence@example.test", "Please send a proposal", inbound="campaign-reply-1")
     box = FakeMailbox([raw, raw])
