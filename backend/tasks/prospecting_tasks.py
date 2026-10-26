@@ -367,7 +367,7 @@ def _enrich(job_id: str) -> bool:
         lead = await session.get(Lead, job.lead_id)
         if not lead or not lead.company:
             job.status = "completed"
-            return True
+            return False
         rows = await session.execute(
             select(DiscoveredPlace.website)
             .where(
@@ -380,7 +380,7 @@ def _enrich(job_id: str) -> bool:
         url = rows.scalar_one_or_none()
         if not url:
             job.status = "completed"
-            return True
+            return False
         await session.execute(select(func.pg_advisory_xact_lock(func.hashtextextended(url, 0))))
         cached = await session.scalar(
             select(PublicPageCache).where(
@@ -390,15 +390,17 @@ def _enrich(job_id: str) -> bool:
         )
         if cached:
             data = cached.data
+            cache_status = cached.status
         else:
             robots = await _load_robots(session, url)
             data = await _scrape(url, robots) if robots else {"error": "robots_unavailable"}
+            cache_status = "failed" if data.get("error") else "completed"
         now = datetime.now(timezone.utc)
         if not cached:
             ttl = timedelta(hours=6) if data.get("error") else timedelta(days=30)
             cache_stmt = insert(PublicPageCache).values(
                 url=url,
-                status="failed" if data.get("error") else "completed",
+                status=cache_status,
                 data=data,
                 collected_at=now,
                 expires_at=now + ttl,
@@ -406,7 +408,7 @@ def _enrich(job_id: str) -> bool:
             stmt = cache_stmt.on_conflict_do_update(
                 index_elements=["url"],
                 set_={
-                    "status": "failed" if data.get("error") else "completed",
+                    "status": cache_status,
                     "data": data,
                     "collected_at": now,
                     "expires_at": now + ttl,
@@ -433,7 +435,7 @@ def _enrich(job_id: str) -> bool:
             if data.get("phones") and not contact.phone:
                 contact.phone = data["phones"][0]
         job.status = "completed"
-        return True
+        return cache_status == "completed"
 
     from tasks._bridge import run_async
 
@@ -451,6 +453,11 @@ def discover_task(self, job_id: str):
 @celery_app.task(name="tasks.prospecting_tasks.enrich", bind=True, max_retries=2)
 def enrich_task(self, job_id: str):
     try:
-        return _enrich(job_id)
+        ready_for_qualification = _enrich(job_id)
+        if ready_for_qualification:
+            from tasks.qualification_tasks import score_enriched_leads
+
+            score_enriched_leads.apply_async(queue="automation")
+        return ready_for_qualification
     except Exception as exc:
         raise self.retry(exc=exc, countdown=15 * (self.request.retries + 1))

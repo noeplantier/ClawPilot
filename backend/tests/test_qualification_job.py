@@ -3,12 +3,14 @@
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 
 import requests
 from sqlalchemy import select
 
-from db.models import Company, Lead, PublicPageCache
+from db.models import Company, DiscoveredPlace, DiscoveryJob, EnrichmentJob, Lead, PublicPageCache
 from tasks._bridge import run_async
+from tasks.prospecting_tasks import enrich_task
 from tasks.qualification_tasks import score_enriched_leads
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
@@ -35,6 +37,8 @@ def test_celery_job_scores_completed_cache_once_and_leaves_unenriched_leads_unkn
     account_id, headers = _register()
     lead_id = uuid.uuid4()
     unenriched_id = uuid.uuid4()
+    discovery_id = uuid.uuid4()
+    enrichment_id = uuid.uuid4()
     website = f"https://qualification-{uuid.uuid4().hex[:12]}.example"
 
     async def seed(session):
@@ -48,6 +52,15 @@ def test_celery_job_scores_completed_cache_once_and_leaves_unenriched_leads_unkn
         await session.flush()
         session.add_all(
             [
+                DiscoveryJob(
+                    id=discovery_id,
+                    account_id=account_id,
+                    cache_key=uuid.uuid4().hex,
+                    bbox=[2.2, 48.8, 2.5, 49.0],
+                    category="retail",
+                    status="completed",
+                    expires_at=datetime.now(timezone.utc) + timedelta(days=1),
+                ),
                 Lead(
                     id=lead_id,
                     account_id=account_id,
@@ -60,6 +73,18 @@ def test_celery_job_scores_completed_cache_once_and_leaves_unenriched_leads_unkn
                     title="Owner",
                 ),
                 Lead(id=unenriched_id, account_id=account_id, full_name="Not enriched"),
+                DiscoveredPlace(
+                    account_id=account_id,
+                    job_id=discovery_id,
+                    source_key=f"test:{uuid.uuid4()}",
+                    name="Persisted company",
+                    latitude=48.9,
+                    longitude=2.3,
+                    category="retail",
+                    website=website,
+                    lead_id=lead_id,
+                ),
+                EnrichmentJob(id=enrichment_id, account_id=account_id, lead_id=lead_id, status="queued"),
                 PublicPageCache(
                     url=website,
                     status="completed",
@@ -76,6 +101,19 @@ def test_celery_job_scores_completed_cache_once_and_leaves_unenriched_leads_unkn
         )
 
     run_async(seed)
+    with patch("tasks.qualification_tasks.score_enriched_leads.apply_async") as enqueue:
+        assert enrich_task(str(enrichment_id)) is True
+    enqueue.assert_called_once_with(queue="automation")
+
+    async def load_enrichment(session):
+        job = await session.get(EnrichmentJob, enrichment_id)
+        page = await session.scalar(select(PublicPageCache).where(PublicPageCache.url == website))
+        return job, page
+
+    enrichment_job, cached_page = run_async(load_enrichment)
+    assert enrichment_job.status == "completed"
+    assert cached_page.status == "completed"
+
     assert score_enriched_leads() == 1
     assert score_enriched_leads() == 0
 

@@ -39,6 +39,7 @@ beforeEach(() => {
 afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
+  jest.useRealTimers();
 });
 
 it("creates a name-only lead by sending blank optional fields as null", async () => {
@@ -55,4 +56,23 @@ it("creates a name-only lead by sending blank optional fields as null", async ()
   expect(toast.success).toHaveBeenCalledWith("Lead added");
   expect(toast.error).not.toHaveBeenCalled();
   expect(byId("close-create-lead")).toBeNull();
+});
+
+it("shows a newly persisted qualification score through the live refresh", async () => {
+  jest.useFakeTimers();
+  const lead = {
+    id: "lead-1", full_name: "Scored company", company: "Scored company", country: "FR", stage: "new", score: 0,
+    heat: { value: 20, tier: "cold", known: ["website"], missing: [], scored: false, top: false, has_contact: true },
+    enrichment_status: "completed", fit_score: null, website_quality: null, digital_maturity: null, priority: null,
+  };
+  api.get.mockReset()
+    .mockResolvedValueOnce({ data: [lead] })
+    .mockResolvedValueOnce({ data: [{ ...lead, fit_score: 82, website_quality: 75, digital_maturity: 70, priority: "high" }] });
+
+  await act(async () => root.render(<MemoryRouter><Leads /></MemoryRouter>));
+  expect(byId("qualification-lead-1").textContent).toContain("Scoring requis");
+
+  await act(async () => { jest.advanceTimersByTime(15000); await Promise.resolve(); });
+  expect(byId("qualification-lead-1").textContent).toContain("Fit 82");
+  expect(api.get).toHaveBeenCalledTimes(2);
 });
