@@ -103,15 +103,25 @@ def test_celery_job_scores_completed_cache_once_and_leaves_unenriched_leads_unkn
             ]
         )
 
-    run_async(seed)
-    with patch("tasks.qualification_tasks.score_enriched_leads.apply_async") as enqueue:
-        assert enrich_task(str(enrichment_id)) is True
-    enqueue.assert_called_once_with(queue="automation")
-
     async def load_enrichment(session):
         job = await session.get(EnrichmentJob, enrichment_id)
         page = await session.scalar(select(PublicPageCache).where(PublicPageCache.url == website))
         return job, page
+
+    run_async(seed)
+
+    def assert_enrichment_committed_before_enqueue(*, queue):
+        assert queue == "automation"
+        job, page = run_async(load_enrichment)
+        assert job.status == "completed"
+        assert page.status == "completed"
+
+    with patch(
+        "tasks.qualification_tasks.score_enriched_leads.apply_async",
+        side_effect=assert_enrichment_committed_before_enqueue,
+    ) as enqueue:
+        assert enrich_task(str(enrichment_id)) is True
+    enqueue.assert_called_once_with(queue="automation")
 
     enrichment_job, cached_page = run_async(load_enrichment)
     assert enrichment_job.status == "completed"

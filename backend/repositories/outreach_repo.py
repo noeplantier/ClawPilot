@@ -14,7 +14,7 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.models import Contact, EmailSend, OutreachEvent, WebhookEvent, WhatsappSend
+from db.models import Contact, EmailSend, Lead, OutreachEvent, WebhookEvent, WhatsappSend
 
 
 def email_to_message(s: EmailSend, lead_id: Optional[uuid.UUID] = None) -> dict:
@@ -60,6 +60,70 @@ async def create_email_send(session: AsyncSession, account_id: uuid.UUID, **kwar
     session.add(send)
     await session.flush()
     return send
+
+
+async def find_email_sends_by_provider_ids(
+    session: AsyncSession, provider_ids: list[str]
+) -> list[tuple[EmailSend, Optional[uuid.UUID]]]:
+    """Match legacy campaign sends and their CRM lead through the linked contact."""
+    if not provider_ids:
+        return []
+    result = await session.execute(
+        select(EmailSend, Lead.id)
+        .outerjoin(
+            Contact,
+            (Contact.id == EmailSend.contact_id) & (Contact.account_id == EmailSend.account_id),
+        )
+        .outerjoin(Lead, (Lead.id == Contact.lead_id) & (Lead.account_id == EmailSend.account_id))
+        .where(EmailSend.provider_message_id.in_(provider_ids))
+        .order_by(EmailSend.created_at.desc())
+    )
+    return list(result.all())
+
+
+async def has_inbound_message(session: AsyncSession, account_id: uuid.UUID, inbound_id: str) -> bool:
+    result = await session.execute(
+        select(OutreachEvent.id)
+        .where(
+            OutreachEvent.account_id == account_id,
+            OutreachEvent.direction == "inbound",
+            OutreachEvent.meta["inbound_message_id"].astext == inbound_id,
+        )
+        .limit(1)
+    )
+    return result.first() is not None
+
+
+async def has_inbound_reply(session: AsyncSession, account_id: uuid.UUID, lead_id: uuid.UUID) -> bool:
+    result = await session.execute(
+        select(OutreachEvent.id)
+        .where(
+            OutreachEvent.account_id == account_id,
+            OutreachEvent.lead_id == lead_id,
+            OutreachEvent.direction == "inbound",
+            OutreachEvent.event_type == "replied",
+        )
+        .limit(1)
+    )
+    return result.first() is not None
+
+
+async def lock_lead_for_outreach(session: AsyncSession, account_id: uuid.UUID, lead_id: uuid.UUID) -> None:
+    """Serialize reply ingestion with a campaign send's final reply check."""
+    await session.execute(select(Lead.id).where(Lead.account_id == account_id, Lead.id == lead_id).with_for_update())
+
+
+async def queued_events_for_lead(
+    session: AsyncSession, account_id: uuid.UUID, lead_id: uuid.UUID
+) -> list[OutreachEvent]:
+    result = await session.execute(
+        select(OutreachEvent).where(
+            OutreachEvent.account_id == account_id,
+            OutreachEvent.lead_id == lead_id,
+            OutreachEvent.event_type == "queued",
+        )
+    )
+    return list(result.scalars())
 
 
 async def create_whatsapp_send(session: AsyncSession, account_id: Optional[uuid.UUID], **kwargs) -> WhatsappSend:

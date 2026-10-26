@@ -131,9 +131,12 @@ class _Task:
         return _Retry(kwargs)
 
 
+LEAD_ID = "00000000-0000-0000-0000-000000000001"
+
+
 def _wire_impl(monkeypatch, blocked, provider_calls):
     lead = {
-        "id": "l1",
+        "id": LEAD_ID,
         "email": "a@b.example",
         "phone": "+33600000000",
         "email_consent": "unknown",
@@ -157,8 +160,16 @@ def _wire_impl(monkeypatch, blocked, provider_calls):
         if blocked:
             raise blocked
 
+    async def no_reply(*a, **k):
+        return False
+
+    async def no_lock(*a, **k):
+        return None
+
     monkeypatch.setattr(send_tasks.campaign_repo, "get_campaign", get_campaign)
     monkeypatch.setattr(send_tasks.lead_repo, "get_leads_by_ids", get_leads)
+    monkeypatch.setattr(send_tasks.outreach_repo, "has_inbound_reply", no_reply)
+    monkeypatch.setattr(send_tasks.outreach_repo, "lock_lead_for_outreach", no_lock)
     monkeypatch.setattr(send_tasks, "_check_window_or_get_eta", no_window)
     monkeypatch.setattr(send_tasks.send_gate, "check", gate)
 
@@ -187,7 +198,7 @@ def test_a_blocked_task_retries_and_never_reaches_the_provider(monkeypatch, impl
     _wire_impl(monkeypatch, send_gate.SendBlocked(code, "blocked", retry_at), calls)
 
     with pytest.raises(_Retry) as raised:
-        asyncio.run(impl(None, _Task(), uuid.uuid4(), "c1", "s1", "l1"))
+        asyncio.run(impl(None, _Task(), uuid.uuid4(), "c1", "s1", LEAD_ID))
 
     assert calls == []
     assert raised.value.args[0]["max_retries"] is None
@@ -207,9 +218,25 @@ def test_an_unblocked_task_reaches_the_provider_once(monkeypatch, impl, channel)
         monkeypatch.setattr(send_tasks.outreach_repo, name, ok)
     monkeypatch.setattr(send_tasks.campaign_repo, "increment_counters", ok)
 
-    result = asyncio.run(impl(None, _Task(), uuid.uuid4(), "c1", "s1", "l1"))
+    result = asyncio.run(impl(None, _Task(), uuid.uuid4(), "c1", "s1", LEAD_ID))
     assert result["status"] == "sent"
     assert calls == [channel]
+
+
+@pytest.mark.parametrize(
+    "impl, channel", [(send_tasks._send_email_impl, "email"), (send_tasks._send_whatsapp_impl, "whatsapp")]
+)
+def test_a_replying_lead_is_stopped_before_any_sequence_channel_reaches_the_provider(monkeypatch, impl, channel):
+    calls: list[str] = []
+    _wire_impl(monkeypatch, None, calls)
+
+    async def replied(*a, **k):
+        return True
+
+    monkeypatch.setattr(send_tasks.outreach_repo, "has_inbound_reply", replied)
+    result = asyncio.run(impl(None, _Task(), uuid.uuid4(), "c1", "s1", LEAD_ID))
+    assert result == {"status": "skipped", "reason": "recipient_replied"}
+    assert calls == []
 
 
 @pytest.mark.parametrize(
@@ -219,7 +246,7 @@ def test_a_task_without_a_provider_fails_with_the_reason_instead_of_retrying_for
     calls: list[str] = []
     _wire_impl(monkeypatch, send_gate.SendBlocked("provider_not_configured", "no provider"), calls)
 
-    result = asyncio.run(impl(None, _Task(), uuid.uuid4(), "c1", "s1", "l1"))
+    result = asyncio.run(impl(None, _Task(), uuid.uuid4(), "c1", "s1", LEAD_ID))
 
     assert result == {"status": "failed", "reason": "provider_not_configured"}
     assert calls == []
