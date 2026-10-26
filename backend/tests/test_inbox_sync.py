@@ -317,7 +317,7 @@ def test_legacy_campaign_reply_is_recorded_once_and_cancels_only_that_tenant_lea
     replies = [event for event in events if event.event_type == "replied"]
     assert len(replies) == 1
     assert replies[0].campaign_id == ids["campaign"]
-    assert replies[0].meta["inbound_message_id"] == "campaign-reply-1"
+    assert replies[0].meta["inbound_message_id"] == "campaign-reply-1@client.example"
     other_status, other_events = _legacy_state(other_ids["send"], other_account_id, other_ids["lead"])
     assert other_status == "sent" and other_events == []
 
