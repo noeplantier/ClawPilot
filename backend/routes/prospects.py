@@ -289,6 +289,7 @@ async def list_prospects(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     hide_empty: bool = Query(default=False, description="leave out leads with no e-mail, phone or website"),
+    segment: str = Query(default="strict", pattern="^(strict|hot|to_enrich)$"),
     user: dict = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
@@ -302,6 +303,7 @@ async def list_prospects(
         limit=limit,
         offset=offset,
         hide_empty=hide_empty,
+        segment=segment,
     )
     return ProspectList(items=[ProspectSummary(**_summary(*row)) for row in rows], total=total)
 
@@ -310,12 +312,15 @@ async def list_prospects(
 async def queue_counts(
     review_status: Optional[str] = Query(default="pending", pattern="^(pending|approved|rejected)$"),
     hide_empty: bool = Query(default=False, description="leave out leads with no e-mail, phone or website"),
+    segment: str = Query(default="to_enrich", pattern="^(strict|hot|to_enrich)$"),
     user: dict = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
     """The queues of the review page: how many prospects are hot, warm and cold, how many are TOP, and how many are
     empty (no e-mail, phone or website): counted, never estimated."""
-    return QueueCountsOut(**await prospect_repo.tier_counts(session, _account(user), review_status, hide_empty))
+    return QueueCountsOut(
+        **await prospect_repo.tier_counts(session, _account(user), review_status, hide_empty, segment)
+    )
 
 
 @router.get("/{lead_id}", response_model=ProspectDetail)
@@ -362,6 +367,7 @@ async def get_prospect(
         signals=[_signal_out(s, dismissed) for s in stored],
         score_detail=score_out,
         drafts=[_draft_out(d) for d in drafts],
+        eligibility=await prospect_repo.eligibility_for(session, _account(user), lead),
     )
 
 

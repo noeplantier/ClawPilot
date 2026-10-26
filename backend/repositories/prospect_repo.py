@@ -13,7 +13,7 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import Subquery, func, or_, select, update
+from sqlalchemy import Subquery, and_, func, not_, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,11 +26,14 @@ from db.models import (
     ProspectScore,
     ProspectSignal,
     ProspectSource,
+    PublicPageCache,
     ScoreVersion,
     SignalDismissal,
 )
 from repositories import consent_repo, heat_sql, lead_repo, suppression_repo
 from services.outreach_os import heat as heat_rules
+from services.outreach_os.eligibility import exclude_confirmed_demo, hot_expression, strict_expression
+from services.outreach_os.eligibility import evaluate as evaluate_eligibility
 from services.outreach_os.normalize import normalize_email, normalize_phone
 from services.outreach_os.scoring import ScoreConfig, ScoreResult
 from services.outreach_os.types import Candidate, RawListing, SignalResult, SignalState
@@ -327,11 +330,20 @@ async def list_prospects(
     limit: int = 50,
     offset: int = 0,
     hide_empty: bool = False,
+    segment: str = "to_enrich",
 ) -> tuple[list[tuple[Lead, Optional[int], Optional[float]]], int]:
     """`order`: "heat" (hottest first: real information and score), "score" or "recent".
     `hide_empty` leaves out the leads with no e-mail, no phone and no website (nothing to reach them with)."""
     latest = _latest_scores_subquery()
-    conditions = [Lead.account_id == account_id, ACTIVE, IN_DISCOVERY]
+    conditions = [Lead.account_id == account_id, ACTIVE, IN_DISCOVERY, exclude_confirmed_demo()]
+    if segment == "strict":
+        conditions.append(strict_expression())
+    elif segment == "hot":
+        conditions.append(hot_expression())
+    elif segment == "to_enrich":
+        conditions.append(not_(strict_expression()))
+    else:
+        raise ValueError(f"unknown prospect segment: {segment}")
     if review_status:
         conditions.append(Lead.review_status == review_status)
     if hide_empty:
@@ -360,12 +372,24 @@ async def list_prospects(
 
 
 async def tier_counts(
-    session: AsyncSession, account_id: uuid.UUID, review_status: Optional[str] = None, hide_empty: bool = False
+    session: AsyncSession,
+    account_id: uuid.UUID,
+    review_status: Optional[str] = None,
+    hide_empty: bool = False,
+    segment: str = "to_enrich",
 ) -> dict[str, int]:
     """How many prospects sit in each heat tier (the queues of the review page), how many of the hot ones are TOP, and
     how many leads are empty (no e-mail, phone or website). With `hide_empty` the empty ones are not in the tiers."""
     latest = _latest_scores_subquery()
-    conditions = [Lead.account_id == account_id, ACTIVE, IN_DISCOVERY]
+    conditions = [Lead.account_id == account_id, ACTIVE, IN_DISCOVERY, exclude_confirmed_demo()]
+    if segment == "strict":
+        conditions.append(strict_expression())
+    elif segment == "hot":
+        conditions.append(hot_expression())
+    elif segment == "to_enrich":
+        conditions.append(not_(strict_expression()))
+    else:
+        raise ValueError(f"unknown prospect segment: {segment}")
     if review_status:
         conditions.append(Lead.review_status == review_status)
     heat = heat_sql.heat_sql(latest.c.score)
@@ -407,7 +431,7 @@ async def city_heat_rows(session: AsyncSession, account_id: uuid.UUID) -> list[t
         .where(
             Lead.account_id == account_id,
             ACTIVE,
-            or_(Lead.review_status.is_(None), Lead.review_status != "rejected"),
+            or_(Lead.review_status.is_(None), and_(Lead.review_status != "rejected", strict_expression())),
             heat_sql.known(Lead.city) == 1,
         )
         .group_by(city, tier)
@@ -421,7 +445,11 @@ async def get(session: AsyncSession, account_id: uuid.UUID, lead_id: str) -> Opt
     except ValueError:
         return None
     return (
-        await session.execute(select(Lead).where(Lead.id == lid, Lead.account_id == account_id, ACTIVE, IN_DISCOVERY))
+        await session.execute(
+            select(Lead).where(
+                Lead.id == lid, Lead.account_id == account_id, ACTIVE, IN_DISCOVERY, exclude_confirmed_demo()
+            )
+        )
     ).scalar_one_or_none()
 
 
@@ -505,6 +533,7 @@ async def list_positions(session: AsyncSession, account_id: uuid.UUID, limit: in
         .join(ranked, ranked.c.lead_id == Lead.id)
         .outerjoin(latest, latest.c.lead_id == Lead.id)
         .where(ranked.c.rn == 1, Lead.account_id == account_id, ACTIVE, IN_DISCOVERY)
+        .where(strict_expression())
         .order_by(Lead.created_at.desc())
         .limit(limit * 2)
     )
@@ -538,6 +567,62 @@ async def sources_of(session: AsyncSession, lead_id: uuid.UUID) -> list[Prospect
         select(ProspectSource).where(ProspectSource.lead_id == lead_id).order_by(ProspectSource.created_at)
     )
     return list(rows.scalars())
+
+
+async def eligibility_for(session: AsyncSession, account_id: uuid.UUID, lead: Lead) -> dict:
+    """Build the structured, explainable status from stored provenance only; never fetches external data."""
+    from services.outreach_os.normalize import normalize_domain, normalize_email, normalize_phone
+
+    sources = await sources_of(session, lead.id)
+    signals = await current_signals(session, lead.id)
+    page = None
+    if lead.website:
+        page = await session.scalar(select(PublicPageCache).where(PublicPageCache.url == lead.website))
+    suppressed = await suppression_repo.is_suppressed(
+        session,
+        account_id,
+        email=normalize_email(lead.email),
+        phone=normalize_phone(lead.phone),
+        domain=normalize_domain(lead.website),
+    )
+    return evaluate_eligibility(
+        {
+            "id": lead.id,
+            "account_id": lead.account_id,
+            "email": lead.email,
+            "phone": lead.phone,
+            "website": lead.website,
+            "fit_score": lead.fit_score,
+            "qualification_scored_at": lead.qualification_scored_at,
+        },
+        sources=[
+            {
+                "id": source.id,
+                "account_id": source.account_id,
+                "lead_id": source.lead_id,
+                "source_name": source.source_name,
+                "source_url": source.source_url,
+                "license_note": source.license_note,
+                "fetched_at": source.fetched_at,
+                "fields": source.fields,
+            }
+            for source in sources
+        ],
+        signals=[
+            {
+                "source_id": signal.source_id,
+                "signal_key": signal.signal_key,
+                "state": signal.state,
+                "evidence": signal.evidence,
+                "created_at": signal.created_at,
+            }
+            for signal in signals
+        ],
+        website_check=(
+            {**(page.data or {}), "status": page.status, "collected_at": page.collected_at} if page else None
+        ),
+        suppressed=suppressed,
+    )
 
 
 async def score_version_by_id(session: AsyncSession, version_id: uuid.UUID) -> Optional[ScoreVersion]:

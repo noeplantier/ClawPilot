@@ -18,6 +18,7 @@ from sqlalchemy.orm import selectinload
 from db.models import Contact, Lead, LeadScore, LeadSource, OutreachEvent, ProspectScore
 from repositories import consent_repo, heat_sql
 from services import feature_flags, scoring
+from services.outreach_os.eligibility import exclude_confirmed_demo
 
 ACTIVE = Lead.deleted_at.is_(None)
 
@@ -161,7 +162,7 @@ async def list_leads(
         select(Lead)
         .outerjoin(latest, latest.c.lead_id == Lead.id)
         .options(selectinload(Lead.contacts))
-        .where(Lead.account_id == account_id, ACTIVE)
+        .where(Lead.account_id == account_id, ACTIVE, exclude_confirmed_demo())
     )
     if stage:
         stmt = stmt.where(Lead.stage == stage)
@@ -344,7 +345,9 @@ async def get_leads_by_ids(session: AsyncSession, account_id: uuid.UUID, lead_id
     except ValueError:
         return []
     result = await session.execute(
-        select(Lead).where(Lead.id.in_(ids), Lead.account_id == account_id, ACTIVE, _sendable_clause())
+        select(Lead).where(
+            Lead.id.in_(ids), Lead.account_id == account_id, ACTIVE, exclude_confirmed_demo(), _sendable_clause()
+        )
     )
     leads = result.scalars().all()
     if not leads:

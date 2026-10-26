@@ -58,7 +58,7 @@ def adapters() -> dict[str, DiscoveryAdapter]:
         source_adapters.OsmAdapter(lambda query: overpass_svc.default_fetcher(query)),
         source_adapters.FrenchRegistryAdapter(lambda params: registry_svc.fetch_page(params)),
     ]
-    if feature_flags.is_enabled("demo_data"):  # fictional places: only when explicitly asked for, never by default
+    if feature_flags.is_enabled("demo_data"):  # development/test only; production flag is fail-closed
         found.insert(0, discovery.WorldFixtureAdapter())
     return {a.name: a for a in found}
 

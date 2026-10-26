@@ -553,6 +553,17 @@ class DraftOut(BaseModel):
     created_at: datetime
 
 
+class EligibilityOut(BaseModel):
+    eligible: bool
+    status: Literal["qualified", "to_enrich"]
+    is_hot: bool
+    reasons: List[str]
+    missing_fields: List[str]
+    freshness: dict[str, int]
+    policy_version: str
+    evaluated_at: datetime
+
+
 class ProspectDetail(ProspectSummary):
     contact_email: Optional[str] = None
     contact_phone: Optional[str] = None
@@ -561,6 +572,7 @@ class ProspectDetail(ProspectSummary):
     score_detail: Optional[ScoreOut] = None
     drafts: List[DraftOut]
     reviewed_at: Optional[datetime] = None
+    eligibility: EligibilityOut
 
 
 class ReviewIn(BaseModel):

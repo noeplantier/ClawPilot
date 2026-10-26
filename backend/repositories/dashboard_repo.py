@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import Campaign, Lead, OutboundEvent, OutboundMessage, ProspectSignal, SuppressionEntry
 from repositories.prospect_repo import ACTIVE, IN_DISCOVERY, _latest_scores_subquery, detected_by_lead
+from services.outreach_os.eligibility import strict_expression
 
 
 def _pairs(result) -> dict:
@@ -24,7 +25,7 @@ async def prospect_kpis(session: AsyncSession, account_id: uuid.UUID) -> dict:
         for status, n in (
             await session.execute(
                 select(Lead.review_status, func.count())
-                .where(Lead.account_id == account_id, ACTIVE, IN_DISCOVERY)
+                .where(Lead.account_id == account_id, ACTIVE, IN_DISCOVERY, strict_expression())
                 .group_by(Lead.review_status)
             )
         ).all()
@@ -35,7 +36,7 @@ async def prospect_kpis(session: AsyncSession, account_id: uuid.UUID) -> dict:
             select(func.count(latest.c.score), func.avg(latest.c.score))
             .select_from(Lead)
             .join(latest, latest.c.lead_id == Lead.id)
-            .where(Lead.account_id == account_id, ACTIVE, IN_DISCOVERY)
+            .where(Lead.account_id == account_id, ACTIVE, IN_DISCOVERY, strict_expression())
         )
     ).one()
     return {
@@ -124,7 +125,7 @@ async def latest_prospects(session: AsyncSession, account_id: uuid.UUID, limit: 
     rows = await session.execute(
         select(Lead.id, Lead.company, Lead.full_name, Lead.city, Lead.review_status, Lead.created_at, latest.c.score)
         .outerjoin(latest, latest.c.lead_id == Lead.id)
-        .where(Lead.account_id == account_id, ACTIVE, IN_DISCOVERY)
+        .where(Lead.account_id == account_id, ACTIVE, IN_DISCOVERY, strict_expression())
         .order_by(Lead.created_at.desc(), Lead.id)
         .limit(limit)
     )
@@ -157,6 +158,7 @@ async def latest_detected_signals(session: AsyncSession, account_id: uuid.UUID, 
             ProspectSignal.state == "detected",
             Lead.deleted_at.is_(None),
             IN_DISCOVERY,
+            strict_expression(),
         )
         .order_by(ProspectSignal.created_at.desc(), ProspectSignal.id)
         .limit(limit)
@@ -230,7 +232,7 @@ async def geography(session: AsyncSession, account_id: uuid.UUID, limit: int) ->
     """Prospects by country and by city, counted as stored. Missing country/city stay in `unknown`, not guessed."""
     rows = await session.execute(
         select(Lead.country, Lead.city, func.count())
-        .where(Lead.account_id == account_id, ACTIVE, IN_DISCOVERY)
+        .where(Lead.account_id == account_id, ACTIVE, IN_DISCOVERY, strict_expression())
         .group_by(Lead.country, Lead.city)
     )
     countries: dict[str, int] = {}

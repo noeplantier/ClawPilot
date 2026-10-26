@@ -2,6 +2,7 @@
 
 import random
 import uuid
+import os
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,6 +11,8 @@ from repositories import campaign_repo, lead_repo
 
 
 async def seed_demo_data(session: AsyncSession, org_id: str) -> None:
+    if os.environ.get("APP_ENV", "").strip().lower() == "production":
+        raise RuntimeError("seed_demo_data is disabled in production")
     account_id = uuid.UUID(org_id)
 
     # Avoid double-seeding

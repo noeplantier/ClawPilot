@@ -26,6 +26,10 @@ KNOWN_FLAGS = ("live_sending", "external_sources", "prospect_import", "demo_data
 def is_enabled(name: str) -> bool:
     if name not in KNOWN_FLAGS:
         raise KeyError(f"unknown feature flag: {name}")
+    # Fictional records are useful in isolated development/test environments only.
+    # A misconfigured deployment flag must never make them discoverable in production.
+    if name == "demo_data" and os.environ.get("APP_ENV", "").strip().lower() == "production":
+        return False
     return os.environ.get(f"FEATURE_{name.upper()}", "").strip().lower() in {"1", "true", "yes", "on"}
 
 

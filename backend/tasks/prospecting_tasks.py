@@ -307,6 +307,7 @@ async def _scrape(url: str, robots: RobotFileParser) -> dict:
         *(urljoin(base, path) for path in ("/contact", "/about", "/impressum", "/privacy")),
     ]
     emails, phones, socials, forms, signals = set(), set(), set(), False, set()
+    homepage_http_status = None
     connector = aiohttp.TCPConnector(limit_per_host=1, resolver=_PublicResolver())
     async with aiohttp.ClientSession(
         timeout=aiohttp.ClientTimeout(total=8, connect=3),
@@ -325,6 +326,8 @@ async def _scrape(url: str, robots: RobotFileParser) -> dict:
                         await asyncio.sleep(wait_for)
                 last_request_at = asyncio.get_running_loop().time()
                 async with session.get(page_url, allow_redirects=False) as response:
+                    if page_url == urls[0]:
+                        homepage_http_status = response.status
                     if response.status != 200 or "text/html" not in response.headers.get("Content-Type", ""):
                         continue
                     html = (await response.content.read(1_000_000)).decode(
@@ -349,10 +352,14 @@ async def _scrape(url: str, robots: RobotFileParser) -> dict:
                 continue
     return {
         "emails": sorted(emails),
+        # This records syntax only. It does not claim that the mailbox or its delivery works.
+        "email_verification": {email.lower(): "syntax_valid" for email in sorted(emails)},
         "phones": sorted(phones),
         "socials": sorted(socials),
+        "whatsapp_urls": sorted(url for url in socials if "wa.me/" in url.lower() or "whatsapp.com/" in url.lower()),
         "has_form": forms,
         "technologies": sorted(signals),
+        "homepage_http_status": homepage_http_status,
     }
 
 

@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from db.models import Lead
 from repositories import lead_repo, prospect_repo
 from services.outreach_os import heat as heat_rules
+from services.outreach_os.eligibility import exclude_confirmed_demo, strict_expression
 from services.outreach_os.suggestions import Candidate
 
 MAX_CANDIDATES = 5000
@@ -20,7 +21,12 @@ async def load_candidates(session: AsyncSession, account_id: uuid.UUID) -> list[
     rows = await session.execute(
         select(Lead, latest.c.score, lead_repo.sendable_clause().label("sendable"))
         .outerjoin(latest, latest.c.lead_id == Lead.id)
-        .where(Lead.account_id == account_id, prospect_repo.ACTIVE)
+        .where(
+            Lead.account_id == account_id,
+            prospect_repo.ACTIVE,
+            exclude_confirmed_demo(),
+            (Lead.review_status.is_(None) | strict_expression()),
+        )
         .order_by(Lead.created_at.desc(), Lead.id)
         .limit(MAX_CANDIDATES)
     )

@@ -1,10 +1,8 @@
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { toast } from "sonner";
-import { ArrowsClockwise, CaretLeft, CaretRight, ListChecks, MapTrifold } from "@phosphor-icons/react";
-import { useAuth } from "@/contexts/AuthContext";
-import { canDecide, prospectsApi, useAsync } from "@/lib/outreach";
-import { REVIEW_META, describeApiError, domainOf } from "@/lib/outreachFormat";
+import { CaretLeft, CaretRight, ListChecks, MapTrifold } from "@phosphor-icons/react";
+import { prospectsApi, useAsync } from "@/lib/outreach";
+import { REVIEW_META, domainOf } from "@/lib/outreachFormat";
 import ScoreBadge from "@/components/outreach/ScoreBadge";
 import HeatBadge from "@/components/outreach/HeatBadge";
 import EmptyToggle from "@/components/outreach/EmptyToggle";
@@ -26,14 +24,10 @@ const MIN_SCORES = [
 ];
 
 export default function Prospects() {
-  const { user } = useAuth();
   const [params, setParams] = useSearchParams();
   const status = params.get("status") || "";
   const minScore = params.get("min") || "";
   const page = Math.max(0, parseInt(params.get("page") || "0", 10) || 0);
-  const [running, setRunning] = useState(false);
-  const [lastRun, setLastRun] = useState(null);
-  const [runError, setRunError] = useState(null);
   const [showEmpty, setShowEmpty] = useState(() => readPref("prospects.showEmpty", false)); // no e-mail, phone or website
   const toggleEmpty = () => setShowEmpty((v) => { writePref("prospects.showEmpty", !v); return !v; });
 
@@ -45,17 +39,15 @@ export default function Prospects() {
         ...(status ? { review_status: status } : {}),
         ...(minScore ? { min_score: minScore } : {}),
         ...(showEmpty ? {} : { hide_empty: true }),
+        segment: "strict",
       }),
     [status, minScore, page, showEmpty]
   );
-  // The built-in demo directory (fictional businesses) is offered only when the server explicitly enables it.
-  const settings = useAsync(() => prospectsApi.settings().catch(() => null), []);
-  const demoOn = !!(settings.data && settings.data.flags && settings.data.flags.demo_data);
   // Real totals per review status (one tiny request each, counted by the server), shown on the tabs, and how many empty leads
   // (no e-mail, phone or website) each holds.
   const counts = useAsync(async () => {
     const [pending, approved, rejected] = await Promise.all(
-      ["pending", "approved", "rejected"].map((s) => prospectsApi.queues(s, { hideEmpty: !showEmpty }))
+      ["pending", "approved", "rejected"].map((s) => prospectsApi.queues(s, { hideEmpty: !showEmpty, segment: "strict" }))
     );
     return {
       pending: pending.total, approved: approved.total, rejected: rejected.total,
@@ -71,22 +63,6 @@ export default function Prospects() {
     setParams(next, { replace: true });
   };
 
-  const runDiscovery = async () => {
-    setRunning(true);
-    setRunError(null);
-    try {
-      const r = await prospectsApi.runDiscovery();
-      setLastRun(r);
-      toast.success(`${r.listings_found} listings → ${r.entities} businesses (${r.duplicates_merged} duplicates merged)`);
-      list.reload();
-      counts.reload();
-    } catch (e) {
-      setRunError(describeApiError(e));
-    } finally {
-      setRunning(false);
-    }
-  };
-
   const items = list.data ? list.data.items : [];
   const total = list.data ? list.data.total : 0;
   const filtered = !!(status || minScore);
@@ -98,7 +74,7 @@ export default function Prospects() {
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
           <div className="mono-accent">// outreach.discovery</div>
-          <h1 className="text-4xl font-black tracking-tighter">Prospects</h1>
+        <h1 className="text-4xl font-black tracking-tighter">Strictly qualified</h1>
           <p className="text-[#5F5F5A] mt-1 max-w-2xl">
             Businesses found in authorised sources, scored from verifiable signals. Nothing is contacted until a person approves it.
           </p>
@@ -113,29 +89,12 @@ export default function Prospects() {
           <Link to="/app/map" className="btn-primary" data-testid="open-map-search">
             <MapTrifold size={14} weight="bold" /> FIND ON THE MAP
           </Link>
-          {demoOn && (
-            <button
-              className="btn-ghost"
-              onClick={runDiscovery}
-              disabled={running || !canDecide(user)}
-              title={canDecide(user) ? "Reads the built-in demo directory (fictional businesses); no network" : "Requires owner or admin"}
-              data-testid="run-discovery"
-            >
-              <ArrowsClockwise size={14} weight="bold" className={running ? "animate-spin" : ""} /> LOAD THE DEMO DIRECTORY
-            </button>
-          )}
         </div>
       </div>
 
-      {runError && <ErrorBlock message={runError} />}
-      {lastRun && (
-        <div className="surface p-4 text-sm" data-testid="last-run">
-          <div className="mono-accent mb-1">last discovery run · source {lastRun.source} · dry-run</div>
-          {lastRun.listings_found} listings read, {lastRun.entities} distinct businesses ({lastRun.duplicates_merged} duplicates merged),{" "}
-          {lastRun.prospects_created} new, {lastRun.prospects_updated} already known, {lastRun.suppressed} skipped as suppressed;{" "}
-          {lastRun.sites_checked} homepages checked, {lastRun.signals_recorded} signal observations and {lastRun.scores_recorded} scores recorded.
-        </div>
-      )}
+      <p className="text-xs text-[#5F5F5A]" role="status" data-testid="active-qualification-segment">
+        Segment actif : strictement qualifiés · email sourcé, WhatsApp publié, site officiel vérifié récemment et adéquation ICP.
+      </p>
 
       <div className="flex flex-wrap items-center gap-2 justify-between">
         <div className="flex gap-1 flex-wrap" role="tablist">
@@ -178,21 +137,17 @@ export default function Prospects() {
         </EmptyBlock>
       )}
       {list.data && items.length === 0 && !filtered && counts.data && !(emptyCount > 0 && !showEmpty) && (
-        <EmptyBlock title="No prospect yet" testId="empty-no-prospects">
+        <EmptyBlock title="No strictly qualified prospect" testId="empty-no-prospects">
           <p>
-            Find real businesses on the map: search an area, click a place and add it to your CRM in one click. You can also import
-            a list you own. Nothing is contacted until a person approves it.
+            No prospect currently meets every source, freshness, email, WhatsApp, website and ICP requirement. Incomplete prospects remain in
+            the review queue to enrich; the criteria are not relaxed to fill this list.
           </p>
           <div className="flex gap-2 justify-center flex-wrap">
+            <Link to="/app/prospects/review" className="btn-ghost">OPEN “À ENRICHIR”</Link>
             <Link to="/app/map" className="btn-primary" data-testid="empty-open-map">
               <MapTrifold size={14} weight="bold" /> FIND ON THE MAP
             </Link>
             <Link to="/app/prospects/import" className="btn-ghost">IMPORT A LIST</Link>
-            {demoOn && canDecide(user) && (
-              <button className="btn-ghost" onClick={runDiscovery} disabled={running} data-testid="empty-run-discovery">
-                LOAD THE DEMO DIRECTORY
-              </button>
-            )}
           </div>
         </EmptyBlock>
       )}
@@ -210,7 +165,7 @@ export default function Prospects() {
             <thead className="bg-[#F6F8FC] border-b border-[#D3DBEA]">
               <tr className="text-left mono-accent">
                 <th className="p-3">business</th>
-                <th className="p-3">heat</th>
+                <th className="p-3">priority</th>
                 <th className="p-3">score</th>
                 <th className="p-3">review</th>
                 <th className="p-3 hidden md:table-cell">website</th>

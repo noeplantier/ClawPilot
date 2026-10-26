@@ -118,6 +118,19 @@ export default function ProspectDetail() {
         <div role="alert" className="text-sm text-[#991B1B] bg-[#FEF2F2] border border-[#FCA5A5] rounded-md p-3" data-testid="detail-error">{error}</div>
       )}
 
+      <Section title="Commercial qualification" hint={`Policy ${p.eligibility.policy_version} · evaluated ${new Date(p.eligibility.evaluated_at).toLocaleString()}`} testId="section-eligibility">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={`chip ${p.eligibility.is_hot ? "chip-hot" : p.eligibility.eligible ? "chip-warm" : ""}`} data-testid="qualification-status">
+            {p.eligibility.is_hot ? "HOT · intent observed" : p.eligibility.eligible ? "PRIORITY · qualified" : "TO ENRICH"}
+          </span>
+          {!p.eligibility.eligible && p.eligibility.missing_fields.length > 0 && (
+            <span className="text-sm text-[#5F5F5A]">Missing evidence: {p.eligibility.missing_fields.join(", ")}</span>
+          )}
+          {p.eligibility.reasons.map((reason) => <span key={reason} className="text-sm text-[#991B1B]">{reason}</span>)}
+        </div>
+        <p className="text-xs text-[#5F5F5A]">Freshness windows: source {p.eligibility.freshness.source_days}d · website {p.eligibility.freshness.website_days}d · fit {p.eligibility.freshness.fit_days}d.</p>
+      </Section>
+
       <Section title="Review" hint="A person decides. Approving makes the prospect eligible for a draft; it never sends anything." testId="section-review">
         <textarea className="neo-input" rows={2} maxLength={1000} placeholder="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} data-testid="detail-note" />
         <div className="flex flex-wrap gap-2 items-center">
