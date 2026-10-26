@@ -217,7 +217,7 @@ export default function Leads() {
                     type="checkbox"
                     checked={selected.size > 0 && selected.size === allVisible.length}
                     onChange={toggleAll}
-                    className="accent-[#4F46E5]"
+                    className="accent-brand-violet"
                     aria-label="Select all visible leads"
                     data-testid="leads-select-all"
                   />
@@ -246,7 +246,7 @@ export default function Leads() {
                       type="checkbox"
                       checked={selected.has(l.id)}
                       onChange={() => toggleOne(l.id)}
-                      className="accent-[#4F46E5]"
+                      className="accent-brand-violet"
                       aria-label={`Select ${l.full_name}`}
                       data-testid={`lead-check-${l.id}`}
                     />
@@ -304,8 +304,8 @@ export default function Leads() {
                   <td className="p-3 min-w-48" data-testid={`qualification-${l.id}`}>
                     {l.enrichment_status !== "completed" ? <span className="text-xs text-[#92400E]">Enrichissement requis</span> : l.fit_score == null ? <span className="text-xs text-[#6B6B66]">Scoring requis</span> : (
                       <div className="space-y-1">
-                        <div className="flex items-center gap-2"><span className={`chip ${l.priority === "high" ? "chip-danger" : l.priority === "medium" ? "chip-warn" : "chip-success"}`}>{l.priority[0].toUpperCase() + l.priority.slice(1)}</span><span className="font-mono text-xs">Fit {l.fit_score}</span></div>
-                        <div className="text-[10px] text-[#5F5F5A]">Website {l.website_quality} · Digital {l.digital_maturity}</div>
+                        <div className="flex items-center gap-2"><span className={`chip ${l.priority === "high" ? "chip-purple" : l.priority === "medium" ? "chip-warn" : "chip-ink"}`}>{l.priority ? (l.priority === "high" ? "Priority" : l.priority[0].toUpperCase() + l.priority.slice(1)) : "Unknown"}</span><span className="font-mono text-xs">Fit {l.fit_score}</span></div>
+                        <div className="text-[10px] text-[#5F5F5A]">Website {l.website_quality ?? "Unknown"} · Digital {l.digital_maturity ?? "Unknown"}</div>
                       </div>
                     )}
                   </td>

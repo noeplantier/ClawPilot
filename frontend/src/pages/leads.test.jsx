@@ -74,5 +74,20 @@ it("shows a newly persisted qualification score through the live refresh", async
 
   await act(async () => { jest.advanceTimersByTime(15000); await Promise.resolve(); });
   expect(byId("qualification-lead-1").textContent).toContain("Fit 82");
+  expect(byId("qualification-lead-1").textContent).toContain("Website 75 · Digital 70");
   expect(api.get).toHaveBeenCalledTimes(2);
+});
+
+it("shows unavailable qualification fields as unknown rather than empty or negative", async () => {
+  const lead = {
+    id: "lead-unknown", full_name: "Unknown data", company: "Unknown data", country: "FR", stage: "new", score: 0,
+    heat: { value: 20, tier: "cold", known: ["website"], missing: [], scored: true, top: false, has_contact: true },
+    enrichment_status: "completed", fit_score: 20, website_quality: null, digital_maturity: null, priority: null,
+  };
+  api.get.mockResolvedValue({ data: [lead] });
+  await act(async () => root.render(<MemoryRouter><Leads /></MemoryRouter>));
+  const qualification = byId("qualification-lead-unknown");
+  expect(qualification.textContent).toContain("Unknown");
+  expect(qualification.textContent).toContain("Website Unknown · Digital Unknown");
+  expect(qualification.querySelector(".chip").className).toContain("chip-ink");
 });

@@ -112,13 +112,22 @@ export default function Layout() {
   const [folded, setFolded] = useState(() => readPref("sidebar.folded", false));
   const [openGroup, setOpenGroup] = useState(() => groupForPath(window.location.pathname));
   const [mobileOpen, setMobileOpen] = useState(false);
+  const mobileToggleRef = useRef(null);
   const mobileCloseRef = useRef(null);
   const mobileDialogRef = useRef(null);
+  const restoreMobileFocusRef = useRef(false);
 
   useEffect(() => writePref("sidebar.folded", folded), [folded]);
   useEffect(() => setOpenGroup(groupForPath(location.pathname)), [location.pathname]);
   useEffect(() => {
-    if (!mobileOpen) return undefined;
+    if (!mobileOpen) {
+      if (restoreMobileFocusRef.current) {
+        restoreMobileFocusRef.current = false;
+        mobileToggleRef.current.focus();
+      }
+      return undefined;
+    }
+    restoreMobileFocusRef.current = true;
     mobileCloseRef.current?.focus();
     const onKey = (event) => {
       if (event.key === "Escape") { setMobileOpen(false); return; }
@@ -177,7 +186,7 @@ export default function Layout() {
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <header className="flex h-12 shrink-0 items-center justify-between border-b border-white/10 bg-sidebar px-3 text-white md:hidden">
           <div className="flex items-center gap-2"><img src="/favicon.svg" alt="" aria-hidden="true" className="h-7 w-7 rounded-lg" /><span className="text-sm font-semibold">Plantiers</span></div>
-          <button type="button" onClick={() => setMobileOpen(true)} className="flex h-9 items-center gap-2 rounded-lg px-3 text-sm text-sidebar-muted hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-lilac" aria-haspopup="dialog" aria-expanded={mobileOpen} aria-label="Ouvrir la navigation" data-testid="mobile-nav-toggle"><List size={18} /> Menu</button>
+          <button ref={mobileToggleRef} type="button" onClick={() => setMobileOpen(true)} className="flex h-9 items-center gap-2 rounded-lg px-3 text-sm text-sidebar-muted hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-lilac" aria-haspopup="dialog" aria-expanded={mobileOpen} aria-label="Ouvrir la navigation" data-testid="mobile-nav-toggle"><List size={18} /> Menu</button>
         </header>
         <main className="grid-bg min-h-0 flex-1 overflow-y-auto">
           <motion.div key={location.pathname} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}><Outlet /></motion.div>

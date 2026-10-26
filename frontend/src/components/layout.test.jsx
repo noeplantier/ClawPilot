@@ -75,6 +75,7 @@ test("mobile navigation opens an accessible drawer with grouped destinations", a
   expect(byId("mobile-drawer").getAttribute("aria-label")).toContain("Navigation");
   await act(async () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
   expect(byId("mobile-drawer")).toBeNull();
+  expect(document.activeElement).toBe(byId("mobile-nav-toggle"));
 });
 
 test("Pipeline is a distinct CRM destination and marks the Kanban route active", async () => {

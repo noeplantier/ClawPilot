@@ -4,7 +4,8 @@ const H = (tier, value, known, scored = true, score = 70) => ({ tier, value, inf
 
 test("the title says what the heat is made of and what is missing, with no invented figure", () => {
   const t = heatTitle(H("hot", 72, ["email", "phone", "website", "city"]));
-  expect(t).toContain("Hot · heat 72/100");
+  expect(t).toContain("Priority · heat 72/100");
+  expect(t).toContain("not a confirmed purchase intent");
   expect(t).toContain("score 70 and 4 of 8 real fields known");
   expect(t).toContain("Known: e-mail, phone, website, city.");
   expect(t).toContain("Missing: company, category, country, job title.");
@@ -33,7 +34,7 @@ test("TOP leads are the ones the server flags (heat 80 and more), counted and fi
   expect(LANE_LABEL.top).toBe("TOP");
   expect(laneCounts(items)).toMatchObject({ top: 2, hot: 3, cold: 1, total: 4 }); // TOP leads are also hot: the lanes overlap on purpose
   expect(inLane(items, "top").map((i) => i.id)).toEqual([1, 2]);
-  expect(heatTitle(T(95))).toContain("TOP lead (heat 80 or more): work it first.");
+  expect(heatTitle(T(95))).toContain("TOP priority (heat 80 or more): work it first.");
   expect(heatTitle(T(70))).not.toContain("TOP");
 });
 

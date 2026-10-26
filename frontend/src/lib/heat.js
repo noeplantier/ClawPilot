@@ -1,5 +1,5 @@
 // Lead heat as the API reports it: real information + score. Pure helpers, no invented figures.
-export const TIER_LABEL = { hot: "Hot", warm: "Warm", cold: "Cold" };
+export const TIER_LABEL = { hot: "Priority", warm: "Warm", cold: "Cold" };
 export const FIELD_LABEL = {
   email: "e-mail", phone: "phone", website: "website", city: "city", company: "company", vertical: "category", country: "country", title: "job title",
 };
@@ -11,14 +11,14 @@ const names = (keys) => keys.map((k) => FIELD_LABEL[k] || k).join(", ");
 // The tooltip / screen-reader sentence: what the figure is made of and what is missing.
 export function heatTitle(heat) {
   if (!heat) return "Heat not available";
-  const top = heat.top ? `TOP lead (heat ${TOP_FROM} or more): work it first. ` : "";
+  const top = heat.top ? `TOP priority (heat ${TOP_FROM} or more): work it first. ` : "";
   const total = heat.known.length + heat.missing.length;
   const basis = heat.scored
     ? `score ${heat.score} and ${heat.known.length} of ${total} real fields known`
     : `not scored: ranked on the ${heat.known.length} of ${total} real fields known alone`;
   const known = heat.known.length ? ` Known: ${names(heat.known)}.` : "";
   const missing = heat.missing.length ? ` Missing: ${names(heat.missing)}.` : "";
-  return `${top}${TIER_LABEL[heat.tier]} · heat ${heat.value}/100 (${basis}).${known}${missing}`;
+  return `${top}${TIER_LABEL[heat.tier]} · heat ${heat.value}/100 (${basis}). Priority is not a confirmed purchase intent.${known}${missing}`;
 }
 
 // Lanes: every lead, the TOP ones (heat 80+), then one per tier.
