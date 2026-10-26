@@ -127,7 +127,8 @@ test("manual scoring selection creates and tracks a real account-scoped job", as
   await page.getByTestId("score-selected").click();
   await expect(page.getByTestId("scoring-job")).toContainText("Scoring failed");
   await expect(leadRow.locator('[data-testid^="qualification-"]')).toContainText("Enrichissement requis");
-  await expect(page.getByTestId("scoring-job")).toContainText("1 / 1");
+  await expect(page.getByTestId("scoring-job")).toContainText("0 / 1");
+  await expect(page.getByTestId("scoring-job")).toContainText("1 failed");
 });
 
 test("system health uses live service state and does not expose provider credentials", async ({ page }) => {
