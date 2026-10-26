@@ -126,7 +126,7 @@ test("manual scoring selection creates and tracks a real account-scoped job", as
   await leadRow.getByRole("checkbox", { name: `Select ${leadName}` }).check();
   await page.getByTestId("score-selected").click();
   await expect(page.getByTestId("scoring-job")).toContainText("Scoring failed");
-  await expect(page.locator('[data-testid^="qualification-"]').first()).toContainText("Enrichissement requis");
+  await expect(leadRow.locator('[data-testid^="qualification-"]')).toContainText("Enrichissement requis");
   await expect(page.getByTestId("scoring-job")).toContainText("1 / 1");
 });
 
