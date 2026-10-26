@@ -32,4 +32,8 @@ test("grouped navigation stays reachable when folded and in the mobile drawer", 
   await drawer.getByTestId("mobile-nav-settings").click();
   await expect(page).toHaveURL(/\/app\/settings$/);
   await expect(page.getByTestId("mobile-drawer")).toHaveCount(0);
+  await page.getByTestId("mobile-nav-toggle").click();
+  await expect(drawer.getByLabel("Fermer la navigation")).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("mobile-nav-toggle")).toBeFocused();
 });
