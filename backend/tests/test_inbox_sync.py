@@ -7,12 +7,16 @@ real mail client would answer. `sync` runs in this process against the same data
 import asyncio
 import os
 import uuid
+from datetime import datetime, timezone
+from unittest.mock import patch
 
 import pytest
 import requests
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
+from db.models import Campaign, CampaignLead, CampaignStep, Contact, EmailSend, Lead, OutreachEvent
 from db.url import async_database_url
 from services import inbox_sync
 
@@ -39,6 +43,103 @@ def _sync(mailbox):
         try:
             async with async_sessionmaker(engine, expire_on_commit=False)() as session:
                 return await inbox_sync.sync(session, mailbox)
+        finally:
+            await engine.dispose()
+
+    return asyncio.run(run())
+
+
+def _register_account():
+    uid = uuid.uuid4().hex[:8]
+    body = requests.post(
+        f"{API}/auth/register",
+        json={
+            "email": f"sequence_{uid}@test.example",
+            "password": uuid.uuid4().hex,
+            "full_name": "Sequence",
+            "organization_name": f"Sequence {uid}",
+        },
+    ).json()
+    return uuid.UUID(body["user"]["org_id"])
+
+
+def _seed_sequence(account_id, email, provider_id, task_id):
+    ids = {key: uuid.uuid4() for key in ("lead", "contact", "campaign", "step", "send")}
+
+    async def seed(session):
+        session.add(Lead(id=ids["lead"], account_id=account_id, full_name="Sequence recipient", email=email))
+        await session.flush()
+        session.add(
+            Contact(
+                id=ids["contact"],
+                account_id=account_id,
+                lead_id=ids["lead"],
+                full_name="Sequence recipient",
+                email=email,
+            )
+        )
+        session.add(Campaign(id=ids["campaign"], account_id=account_id, name="Test sequence", status="running"))
+        await session.flush()
+        session.add(
+            CampaignStep(id=ids["step"], campaign_id=ids["campaign"], step_index=0, channel="email", body="Follow up")
+        )
+        session.add(CampaignLead(campaign_id=ids["campaign"], lead_id=ids["lead"]))
+        session.add(
+            EmailSend(
+                id=ids["send"],
+                account_id=account_id,
+                campaign_id=ids["campaign"],
+                campaign_step_id=ids["step"],
+                contact_id=ids["contact"],
+                to_email=email,
+                subject="Hello",
+                body="Hello",
+                status="sent",
+                provider_message_id=provider_id,
+            )
+        )
+        session.add(
+            OutreachEvent(
+                account_id=account_id,
+                campaign_id=ids["campaign"],
+                campaign_step_id=ids["step"],
+                lead_id=ids["lead"],
+                channel="email",
+                event_type="queued",
+                meta={"celery_task_id": task_id, "eta": datetime.now(timezone.utc).isoformat()},
+            )
+        )
+        await session.commit()
+
+    async def run():
+        engine = create_async_engine(async_database_url(), poolclass=NullPool)
+        try:
+            async with async_sessionmaker(engine, expire_on_commit=False)() as session:
+                await seed(session)
+        finally:
+            await engine.dispose()
+
+    asyncio.run(run())
+    return ids
+
+
+def _legacy_state(send_id, account_id, lead_id):
+    async def load(session):
+        send = await session.get(EmailSend, send_id)
+        events = await session.execute(
+            select(OutreachEvent).where(
+                OutreachEvent.account_id == account_id,
+                OutreachEvent.lead_id == lead_id,
+                OutreachEvent.direction == "inbound",
+            )
+        )
+        return send.status, list(events.scalars())
+
+    async def run():
+        engine = create_async_engine(async_database_url(), poolclass=NullPool)
+        try:
+            async with async_sessionmaker(engine, expire_on_commit=False)() as session:
+                return await load(session)
         finally:
             await engine.dispose()
 
@@ -190,6 +291,35 @@ def test_a_bounce_about_another_address_and_unknown_mail_change_nothing(sent):
     result = _sync(FakeMailbox([_bounce(m["provider_message_id"], "other@client.example"), stranger]))
     assert result.bounces == 0 and result.unmatched == 1 and result.ignored == 1
     assert _detail(h, m)["status"] == "sent"
+
+
+def test_legacy_campaign_reply_is_recorded_once_and_cancels_only_that_tenant_leads_sequence():
+    account_id = _register_account()
+    other_account_id = _register_account()
+    provider_id = f"<campaign-{uuid.uuid4().hex}@mail.example>"
+    ids = _seed_sequence(account_id, "sequence@example.test", provider_id, "sequence-task-a")
+    other_ids = _seed_sequence(
+        other_account_id, "other@example.test", f"<other-{uuid.uuid4().hex}@mail.example>", "sequence-task-b"
+    )
+    raw = _reply(provider_id, "sequence@example.test", "Please send a proposal", inbound="campaign-reply-1")
+    box = FakeMailbox([raw, raw])
+
+    with patch("services.scheduler.AsyncResult") as async_result, patch(
+        "services.scheduler.celery_app.control.revoke"
+    ) as revoke:
+        async_result.return_value.state = "PENDING"
+        result = _sync(box)
+
+    assert result.replies == 1 and result.duplicates == 1
+    revoke.assert_called_once_with("sequence-task-a")  # other tenant's scheduled follow-up stays queued
+    status, events = _legacy_state(ids["send"], account_id, ids["lead"])
+    assert status == "replied"
+    replies = [event for event in events if event.event_type == "replied"]
+    assert len(replies) == 1
+    assert replies[0].campaign_id == ids["campaign"]
+    assert replies[0].meta["inbound_message_id"] == "campaign-reply-1"
+    other_status, other_events = _legacy_state(other_ids["send"], other_account_id, other_ids["lead"])
+    assert other_status == "sent" and other_events == []
 
 
 def test_the_manual_sync_endpoint_refuses_without_imap_and_needs_a_login():

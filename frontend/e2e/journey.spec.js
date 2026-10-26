@@ -697,9 +697,9 @@ test("the TOP leads are marked and have their own lane; empty leads are hidden, 
   await expect(rows).toHaveCount(2); // the two empty leads are not listed
   await expect(page.getByTestId("lane-all")).toHaveText("All 2");
   await expect(page.getByTestId("lane-top")).toHaveText("TOP 1");
-  await expect(page.getByTestId("lane-hot")).toHaveText("Hot 2"); // a TOP lead is also hot: the lanes overlap on purpose
+  await expect(page.getByTestId("lane-hot")).toHaveText("Priority 2"); // a TOP priority also belongs to this lane
   await expect(rows.first().getByTestId("heat-top")).toHaveText("TOP");
-  await expect(rows.first().getByTestId("heat-badge")).toHaveAttribute("title", /TOP lead \(heat 80 or more\)/);
+  await expect(rows.first().getByTestId("heat-badge")).toHaveAttribute("title", /TOP priority \(heat 80 or more\)/);
   await expect(rows.last().getByTestId("heat-top")).toHaveCount(0);
   await expect(page.getByTestId("leads-empty-toggle-note")).toHaveText("2 empty leads hidden (no e-mail, phone or website).");
 

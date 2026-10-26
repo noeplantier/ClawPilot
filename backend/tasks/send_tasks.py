@@ -69,6 +69,10 @@ async def _send_email_impl(
     campaign = await campaign_repo.get_campaign(session, account_id, campaign_id)
     if not campaign:
         return {"status": "failed", "reason": "campaign missing"}
+    lead_uuid = uuid.UUID(lead_id)
+    await outreach_repo.lock_lead_for_outreach(session, account_id, lead_uuid)
+    if await outreach_repo.has_inbound_reply(session, account_id, lead_uuid):
+        return {"status": "skipped", "reason": "recipient_replied"}
     if campaign.status == "paused":
         raise task.retry(countdown=3600, max_retries=None)
 
@@ -145,6 +149,10 @@ async def _send_whatsapp_impl(
     campaign = await campaign_repo.get_campaign(session, account_id, campaign_id)
     if not campaign:
         return {"status": "failed", "reason": "campaign missing"}
+    lead_uuid = uuid.UUID(lead_id)
+    await outreach_repo.lock_lead_for_outreach(session, account_id, lead_uuid)
+    if await outreach_repo.has_inbound_reply(session, account_id, lead_uuid):
+        return {"status": "skipped", "reason": "recipient_replied"}
     if campaign.status == "paused":
         raise task.retry(countdown=3600, max_retries=None)
 

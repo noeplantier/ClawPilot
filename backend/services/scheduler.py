@@ -106,3 +106,17 @@ async def cancel_campaign(session: AsyncSession, campaign_id: str, org_id: str) 
             celery_app.control.revoke(task_id)
             cancelled += 1
     return cancelled
+
+
+async def cancel_lead_sequences(session: AsyncSession, account_id: uuid.UUID, lead_id: uuid.UUID) -> int:
+    """Revoke this tenant's pending sequence steps for a lead after an inbound reply."""
+    queued_events = await outreach_repo.queued_events_for_lead(session, account_id, lead_id)
+    cancelled = 0
+    for event in queued_events:
+        task_id = event.meta.get("celery_task_id")
+        if not task_id:
+            continue
+        if AsyncResult(task_id, app=celery_app).state in ("PENDING", "RETRY"):
+            celery_app.control.revoke(task_id)
+            cancelled += 1
+    return cancelled
