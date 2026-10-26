@@ -42,6 +42,18 @@ def test_celery_job_scores_completed_cache_once_and_leaves_unenriched_leads_unkn
     website = f"https://qualification-{uuid.uuid4().hex[:12]}.example"
 
     async def seed(session):
+        discovery = DiscoveryJob(
+            id=discovery_id,
+            account_id=account_id,
+            cache_key=uuid.uuid4().hex,
+            bbox=[2.2, 48.8, 2.5, 49.0],
+            category="retail",
+            status="completed",
+            expires_at=datetime.now(timezone.utc) + timedelta(days=1),
+        )
+        session.add(discovery)
+        await session.flush()
+
         company = Company(
             account_id=account_id,
             source_key=f"test:{uuid.uuid4()}",
@@ -52,15 +64,6 @@ def test_celery_job_scores_completed_cache_once_and_leaves_unenriched_leads_unkn
         await session.flush()
         session.add_all(
             [
-                DiscoveryJob(
-                    id=discovery_id,
-                    account_id=account_id,
-                    cache_key=uuid.uuid4().hex,
-                    bbox=[2.2, 48.8, 2.5, 49.0],
-                    category="retail",
-                    status="completed",
-                    expires_at=datetime.now(timezone.utc) + timedelta(days=1),
-                ),
                 Lead(
                     id=lead_id,
                     account_id=account_id,
