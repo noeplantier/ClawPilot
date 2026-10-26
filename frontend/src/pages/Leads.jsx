@@ -386,7 +386,11 @@ function CreateLead({ onClose, onSaved }) {
     if (!f.full_name) { toast.error("Name required"); return; }
     setSaving(true);
     try {
-      await api.post("/leads", f);
+      const payload = { ...f };
+      ["email", "phone", "company", "title", "country"].forEach((key) => {
+        payload[key] = f[key].trim() || null;
+      });
+      await api.post("/leads", payload);
       toast.success("Lead added");
       onSaved();
     } catch (e) {
