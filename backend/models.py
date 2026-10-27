@@ -551,6 +551,16 @@ class DraftOut(BaseModel):
     review_note: Optional[str] = None
     reviewed_at: Optional[datetime] = None
     created_at: datetime
+    # `body` is `message` + `footer`: the person edits the message; the footer (sender coordinates, data origin,
+    # unsubscribe link) is rebuilt by the server on every save and can neither be edited nor dropped.
+    message: str = ""
+    footer: str = ""
+    edited_at: Optional[datetime] = None
+
+
+class DraftEditIn(BaseModel):
+    subject: str = Field(min_length=1, max_length=300)
+    message: str = Field(min_length=1, max_length=8000)
 
 
 class ProspectDetail(ProspectSummary):
@@ -913,6 +923,13 @@ class MapProspectOut(BaseModel):
     signals: List[str] = Field(default_factory=list)  # keys detected now; a dismissed signal does not count
     created_at: Optional[datetime] = None
     heat: Optional[dict] = None  # {value, tier, info_pct}: the hottest prospects are listed first on the map
+    # The map shows only `map_ready` leads: hot, with a phone and an e-mail really known (the server decides).
+    map_ready: bool = False
+    has_phone: bool = False
+    has_website: bool = False
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    website: Optional[str] = None
 
 
 class CityHeatOut(BaseModel):

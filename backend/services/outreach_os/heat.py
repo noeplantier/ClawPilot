@@ -6,7 +6,8 @@ heat = (score + information + 1) // 2, both 0..100, where
 - `score` is the explainable score when the lead has been scored. A lead that was never scored is ranked on its
   information alone and says so (`scored: false`): "not scored" is not 0.
 Tiers: hot >= 65, warm >= 40, cold below; a hot lead at 80 or more is TOP (the ones to work first). A lead is *empty*
-when it has no e-mail, no phone and no website: nothing to reach it with, so lists hide it unless asked. The same
+when it has no e-mail, no phone and no website: nothing to reach it with, so lists hide it unless asked. The map shows
+only *map-ready* leads: hot, with a phone and an e-mail really known (a website ranks them higher). The same
 arithmetic runs in SQL (`repositories/heat_sql.py`) for ordering and counts; integer maths on both sides keeps the two
 identical.
 """
@@ -61,6 +62,11 @@ def is_top(value: int) -> bool:
 
 def has_contact(values: Mapping[str, object]) -> bool:
     return any(is_known(values.get(f)) for f in CONTACT_FIELDS)
+
+
+def is_map_ready(values: Mapping[str, object], score: Optional[int]) -> bool:
+    """Shown on the map: a hot lead that can be both called and e-mailed. A website is a bonus, never required."""
+    return heat_of(values, score).tier == "hot" and is_known(values.get("phone")) and is_known(values.get("email"))
 
 
 def heat_of(values: Mapping[str, object], score: Optional[int]) -> Heat:

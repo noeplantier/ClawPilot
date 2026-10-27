@@ -66,6 +66,8 @@ export const prospectsApi = {
   erase: (id) => api.post(`/prospects/${id}/erase`),
   runDiscovery: () => api.post("/prospects/discovery/run", { source: "fixture_directory" }).then((r) => r.data),
   createDraft: (id) => api.post(`/prospects/${id}/drafts`).then((r) => r.data),
+  // Subject and message only: the footer (coordinates, data origin, unsubscribe link) is rebuilt by the server.
+  editDraft: (draftId, body) => api.patch(`/prospects/drafts/${draftId}`, body).then((r) => r.data),
   reviewDraft: (draftId, decision) => api.post(`/prospects/drafts/${draftId}/review`, { decision }).then((r) => r.data),
   settings: () => api.get("/prospects/settings").then((r) => r.data),
 };
