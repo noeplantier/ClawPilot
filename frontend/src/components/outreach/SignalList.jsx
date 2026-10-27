@@ -30,10 +30,10 @@ function DismissBox({ signal, prospectId, onChanged }) {
   if (!open) return <button className="btn-ghost mt-2" onClick={() => setOpen(true)} data-testid={`dismiss-${signal.key}`}>THIS IS WRONG</button>;
   return (
     <div className="mt-2 space-y-2" data-testid={`dismiss-box-${signal.key}`}>
-      <label className="block text-xs text-[#5F5F5A]">Why is it wrong? (kept with the decision, at least {MIN_REASON} characters)
+      <label className="block text-xs text-soft">Why is it wrong? (kept with the decision, at least {MIN_REASON} characters)
         <input className="neo-input w-full mt-1" value={reason} onChange={(e) => setReason(e.target.value)} data-testid={`dismiss-reason-${signal.key}`} />
       </label>
-      {error && <div role="alert" className="text-xs text-[#991B1B]">{error}</div>}
+      {error && <div role="alert" className="text-xs text-red-300">{error}</div>}
       <div className="flex gap-2">
         <button className="btn-ink" disabled={busy || !ok} onClick={send} data-testid={`dismiss-confirm-${signal.key}`}>{busy ? "…" : "DISMISS SIGNAL"}</button>
         <button className="btn-ghost" onClick={() => setOpen(false)}>CANCEL</button>
@@ -61,23 +61,23 @@ function RestoreButton({ signal, prospectId, onChanged }) {
 
 export default function SignalList({ signals, prospectId, canReview = false, onChanged = () => {} }) {
   if (!signals || signals.length === 0) {
-    return <p className="text-sm text-[#5F5F5A]">No signal has been recorded for this prospect.</p>;
+    return <p className="text-sm text-soft">No signal has been recorded for this prospect.</p>;
   }
   return (
     <ul className="grid md:grid-cols-2 gap-3" data-testid="signal-list">
       {signals.map((s) => (
-        <li key={s.key} className="border border-[#D3DBEA] rounded-md p-3 bg-white" data-testid={`signal-${s.key}`}>
+        <li key={s.key} className="border border-border rounded-md p-3 bg-card" data-testid={`signal-${s.key}`}>
           <div className="flex items-center justify-between gap-2">
             <span className="font-display font-semibold text-sm">{s.label}</span>
             <StateChip state={s.state} />
           </div>
-          <p className="text-sm text-[#475569] mt-2">{s.evidence}</p>
+          <p className="text-sm text-soft mt-2">{s.evidence}</p>
           {s.dismissed && (
-            <p className="text-sm mt-2 text-[#92400E]" data-testid={`dismissed-${s.key}`}>
+            <p className="text-sm mt-2 text-amber-300" data-testid={`dismissed-${s.key}`}>
               Dismissed by a reviewer ({s.dismissed_reason || "no reason given"}). Observed: {s.observed_state}. Counts as unknown.
             </p>
           )}
-          <p className="mono-accent text-[#6B6B66] mt-2">observed {formatDateTime(s.observed_at)}</p>
+          <p className="mono-accent text-faint mt-2">observed {formatDateTime(s.observed_at)}</p>
           {canReview && prospectId && s.dismissed && <RestoreButton signal={s} prospectId={prospectId} onChanged={onChanged} />}
           {canReview && prospectId && !s.dismissed && s.state !== "unknown" && <DismissBox signal={s} prospectId={prospectId} onChanged={onChanged} />}
         </li>

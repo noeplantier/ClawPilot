@@ -7,6 +7,7 @@ import {
 } from "@phosphor-icons/react";
 const AIComposerModal = lazy(() => import("@/components/AIComposerModal")); // only fetched when the composer is opened
 import Footer from "@/components/Footer";
+import { LogoMark } from "@/components/Logo";
 import { isTypingTarget, readPref, writePref } from "@/lib/uiPrefs";
 import { prefetchAll, prefetchPath, whenIdle } from "@/lib/routes";
 
@@ -163,11 +164,11 @@ export default function Layout() {
   );
 
   const sidebar = (mobile = false) => (
-    <aside className={`${mobile ? "flex fixed inset-y-0 left-0 z-[1001] w-[min(20rem,86vw)] shadow-2xl" : `hidden md:flex ${folded ? "w-[4.5rem]" : "w-64"} sticky top-0 h-screen`} shrink-0 flex-col overflow-y-auto bg-sidebar text-slate-100 border-r border-white/10 transition-[width] duration-200`}
+    <aside className={`${mobile ? "flex fixed inset-y-0 left-0 z-[1001] w-[min(20rem,86vw)] shadow-2xl" : `hidden md:flex ${folded ? "w-[4.5rem]" : "w-64"} sticky top-0 h-screen`} shrink-0 flex-col overflow-y-auto bg-sidebar text-white border-r border-white/10 transition-[width] duration-200`}
       data-testid={mobile ? "mobile-drawer" : "sidebar"} data-folded={!mobile && folded} aria-label="Navigation Plantiers OutreachOS">
       <div className={`flex min-h-[4.5rem] items-center gap-3 border-b border-white/10 ${folded && !mobile ? "justify-center px-2" : "px-4"}`}>
-        <img src="/favicon.svg" alt="" aria-hidden="true" className="h-9 w-9 shrink-0 rounded-xl" />
-        {(!folded || mobile) && <div className="min-w-0 flex-1"><div className="font-display font-bold tracking-tight text-sm text-white">PLANTIERS</div><div className="mt-0.5 text-[11px] tracking-wide text-brand-lilac">OUTREACHOS</div></div>}
+        <LogoMark decorative className="h-9" />
+        {(!folded || mobile) && <div className="min-w-0 flex-1 leading-none"><div className="text-base font-extrabold tracking-tight text-white">PLANTIERS</div><div className="mt-1 font-mono text-[9px] tracking-[0.25em] text-brand-lilac/80">OUTREACHOS</div></div>}
         {mobile ? <button ref={mobileCloseRef} type="button" onClick={() => setMobileOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-lg text-sidebar-muted hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-lilac" aria-label="Fermer la navigation"><X size={18} /></button> : foldButton}
       </div>
       {(!folded || mobile) && <div className="border-b border-white/10 px-5 py-3"><div className="text-[10px] font-medium uppercase tracking-[0.14em] text-sidebar-muted">Espace de travail</div><div className="mt-1 truncate text-sm font-medium text-white" data-testid="org-name">{org?.name || "—"}</div></div>}
@@ -184,11 +185,11 @@ export default function Layout() {
   );
 
   return (
-    <div className="min-h-screen md:h-screen flex bg-sidebar text-[#0A0A0A]">
+    <div className="min-h-screen md:h-screen flex bg-sidebar text-foreground">
       {sidebar()}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <header className="flex h-12 shrink-0 items-center justify-between border-b border-white/10 bg-sidebar px-3 text-white md:hidden">
-          <div className="flex items-center gap-2"><img src="/favicon.svg" alt="" aria-hidden="true" className="h-7 w-7 rounded-lg" /><span className="text-sm font-semibold">Plantiers</span></div>
+          <div className="flex items-center gap-2"><LogoMark decorative className="h-7" /><span className="text-sm font-extrabold tracking-tight">PLANTIERS</span></div>
           <button ref={mobileToggleRef} type="button" onClick={() => setMobileOpen(true)} className="flex h-9 items-center gap-2 rounded-lg px-3 text-sm text-sidebar-muted hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-lilac" aria-haspopup="dialog" aria-expanded={mobileOpen} aria-label="Ouvrir la navigation" data-testid="mobile-nav-toggle"><List size={18} /> Menu</button>
         </header>
         <main className="grid-bg min-h-0 flex-1 overflow-y-auto">

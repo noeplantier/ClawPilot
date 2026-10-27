@@ -51,13 +51,13 @@ export default function PlacePopup({ place, canAdd, offReason, onAdded }) {
       <a href={place.source_url} target="_blank" rel="noopener noreferrer" className="underline block">source on OpenStreetMap</a>
 
       {out ? (
-        <p className="rounded-lg border border-emerald-500/40 bg-emerald-50 p-2 font-semibold" role="status" data-testid="place-done">
+        <p className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-2 font-semibold" role="status" data-testid="place-done">
           {out.in_crm ? "Added to your CRM." : "Added: it waits for review."}
         </p>
       ) : !canAdd ? (
-        <p className="text-[#92400E]" data-testid="place-add-off">{offReason}</p>
+        <p className="text-amber-300" data-testid="place-add-off">{offReason}</p>
       ) : (
-        <div className="space-y-2 border-t border-[#D3DBEA] pt-2">
+        <div className="space-y-2 border-t border-border pt-2">
           {place.website && (
             <label className="flex items-start gap-2">
               <input type="checkbox" checked={readSite} onChange={(e) => setReadSite(e.target.checked)} className="mt-0.5" data-testid="place-read-site" />
@@ -76,7 +76,7 @@ export default function PlacePopup({ place, canAdd, offReason, onAdded }) {
               {busy === "review" ? <CircleNotch size={12} className="animate-spin" /> : <Plus size={12} />} FOR REVIEW
             </button>
           </div>
-          {error && <p role="alert" className="text-[#991B1B]" data-testid="place-error">{error}</p>}
+          {error && <p role="alert" className="text-red-300" data-testid="place-error">{error}</p>}
         </div>
       )}
     </div>

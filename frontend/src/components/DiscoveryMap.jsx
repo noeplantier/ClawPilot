@@ -66,7 +66,7 @@ export default function DiscoveryMap() {
   };
 
   return <section className="surface p-5 space-y-4">
-    <div><div className="mono-accent">// public_sources.overpass</div><h2 className="text-2xl font-bold">Map discovery</h2><p className="text-sm text-[#6B6B66]">Search a small area. Results come from OpenStreetMap and are stored in your CRM workspace.</p></div>
+    <div><div className="mono-accent">// public_sources.overpass</div><h2 className="text-2xl font-bold">Map discovery</h2><p className="text-sm text-faint">Search a small area. Results come from OpenStreetMap and are stored in your CRM workspace.</p></div>
     <form onSubmit={search} className="grid grid-cols-2 md:grid-cols-6 gap-2 items-end">
       <label className="text-xs">South<input aria-label="South latitude" className="neo-input w-full" type="number" step="any" value={bounds[0]} onChange={(e) => setBounds((v) => v.map((x, i) => i === 0 ? e.target.value : x))} /></label>
       <label className="text-xs">West<input aria-label="West longitude" className="neo-input w-full" type="number" step="any" value={bounds[1]} onChange={(e) => setBounds((v) => v.map((x, i) => i === 1 ? e.target.value : x))} /></label>
@@ -76,16 +76,16 @@ export default function DiscoveryMap() {
       <button className="btn-primary" disabled={busy}>{busy ? "QUEUING…" : "SEARCH MAP"}</button>
     </form>
     {job && <p className="mono-accent" role="status">Job {job.status}{job.result_count !== undefined ? ` · ${job.result_count} results` : ""}{job.error_code ? ` · ${job.error_code}` : ""}</p>}
-    <div className="relative h-[420px] overflow-hidden rounded border border-[#D6D3C8] bg-[#E7E9DF]" aria-label="Map of discovered places">
+    <div className="relative h-[420px] overflow-hidden rounded border border-border bg-white/[0.04]" aria-label="Map of discovered places">
       {bounds.every((value) => value !== "") && bbox.every(Number.isFinite) && <iframe title="OpenStreetMap search area" className="absolute inset-0 w-full h-full border-0 pointer-events-none" src={`https://www.openstreetmap.org/export/embed.html?bbox=${bbox[1]},${bbox[0]},${bbox[3]},${bbox[2]}&layer=mapnik`} />}
       {places.map((place) => <button key={place.id} type="button" title={place.name} aria-label={`Select ${place.name}`} onClick={() => setSelected(place)} className={`absolute -translate-x-1/2 -translate-y-1/2 w-7 h-7 rounded-full border-2 border-white shadow bg-brand-violet text-white text-xs font-bold ${selected?.id === place.id ? "ring-4 ring-brand-violet/30" : ""}`} style={position(place)}>•</button>)}
-      {!places.length && <div className="absolute inset-0 flex items-center justify-center text-sm text-[#6B6B66]">Enter a bounding box and search to load real OpenStreetMap places.</div>}
-      <div className="absolute bottom-2 right-2 text-[10px] bg-white/90 px-2 py-1 rounded">© OpenStreetMap contributors</div>
+      {!places.length && <div className="absolute inset-0 flex items-center justify-center text-sm text-faint">Enter a bounding box and search to load real OpenStreetMap places.</div>}
+      <div className="absolute bottom-2 right-2 text-[10px] bg-white/90 text-slate-800 px-2 py-1 rounded">© OpenStreetMap contributors</div>
     </div>
-    {selected && <div className="flex flex-wrap items-center justify-between gap-3 border border-[#D6D3C8] p-3 rounded">
-      <div><strong>{selected.name}</strong><div className="text-xs text-[#6B6B66]">{selected.address || selected.category}{selected.website ? ` · ${selected.website}` : ""}</div></div>
+    {selected && <div className="flex flex-wrap items-center justify-between gap-3 border border-border p-3 rounded">
+      <div><strong>{selected.name}</strong><div className="text-xs text-faint">{selected.address || selected.category}{selected.website ? ` · ${selected.website}` : ""}</div></div>
       {selected.lead_id ? <div className="flex gap-2"><button className="btn-purple" onClick={() => enrich(selected)}>ENRICH</button><a className="btn-ghost" href={`/leads?lead=${selected.lead_id}`}>IN CRM</a></div> : <button className="btn-primary" onClick={() => convert(selected)}>ADD TO CRM</button>}
     </div>}
-    <p className="text-[11px] text-[#6B6B66]">Data © OpenStreetMap contributors, available under the Open Database License (ODbL).</p>
+    <p className="text-[11px] text-faint">Data © OpenStreetMap contributors, available under the Open Database License (ODbL).</p>
   </section>;
 }

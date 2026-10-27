@@ -62,7 +62,7 @@ export default function BulkLeadsModal({ open, onClose, onDone }) {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-50 bg-[#0F172A]/60 backdrop-blur-sm flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
           onClick={closeReset}
         >
           <motion.div
@@ -72,16 +72,16 @@ export default function BulkLeadsModal({ open, onClose, onDone }) {
             onClick={(e) => e.stopPropagation()}
             data-testid="bulk-leads-modal"
           >
-            <button onClick={closeReset} className="absolute top-4 right-4 text-[#595955] hover:text-[#4F46E5]" data-testid="close-bulk-leads">
+            <button onClick={closeReset} className="absolute top-4 right-4 text-soft hover:text-brand-lilac" data-testid="close-bulk-leads">
               <X size={20} />
             </button>
             <div className="mono-accent">/// leads.bulk.import</div>
             <h2 className="text-2xl font-black tracking-tighter mt-1 flex items-center gap-2">
-              <UploadSimple size={22} weight="duotone" className="text-[#4F46E5]" />
+              <UploadSimple size={22} weight="duotone" className="text-brand-lilac" />
               Bulk Import Leads
             </h2>
-            <p className="text-[#595955] mt-1 text-sm">
-              One lead per line · comma-separated: <span className="font-mono text-[#0F172A]">name, email, company, title, country</span>
+            <p className="text-soft mt-1 text-sm">
+              One lead per line · comma-separated: <span className="font-mono text-foreground">name, email, company, title, country</span>
             </p>
 
             <div className="mt-6 grid md:grid-cols-2 gap-4">
@@ -100,14 +100,14 @@ export default function BulkLeadsModal({ open, onClose, onDone }) {
               </div>
               <div>
                 <span className="mono-accent block mb-2">preview</span>
-                <div className="surface bg-[#F6F8FC] max-h-[300px] overflow-y-auto divide-y divide-[#D3DBEA]">
+                <div className="surface bg-white/[0.04] max-h-[300px] overflow-y-auto divide-y divide-border">
                   {parsed.length === 0 && (
-                    <div className="p-4 text-[#6B6B66] text-sm italic">No valid rows yet.</div>
+                    <div className="p-4 text-faint text-sm italic">No valid rows yet.</div>
                   )}
                   {parsed.slice(0, 50).map((r, i) => (
                     <div key={i} className="p-2.5 text-xs font-mono">
-                      <div className="text-[#0A0A0A] font-semibold">{r.full_name}</div>
-                      <div className="text-[#595955] truncate">
+                      <div className="text-foreground font-semibold">{r.full_name}</div>
+                      <div className="text-soft truncate">
                         {r.email && <span>{r.email} · </span>}
                         {r.company || ""}
                       </div>
@@ -115,22 +115,22 @@ export default function BulkLeadsModal({ open, onClose, onDone }) {
                   ))}
                 </div>
                 {parsed.length > 50 && (
-                  <div className="mono-accent text-[#6B6B66] mt-2">+ {parsed.length - 50} more…</div>
+                  <div className="mono-accent text-faint mt-2">+ {parsed.length - 50} more…</div>
                 )}
               </div>
             </div>
 
             {result && (
-              <div className="surface bg-[#F4FDF9] border-[#10B981]/40 p-4 mt-4 flex gap-3" data-testid="bulk-result">
-                <CheckCircle size={22} weight="fill" className="text-[#10B981] flex-shrink-0 mt-0.5" />
+              <div className="surface bg-emerald-500/10 border-emerald-400/40 p-4 mt-4 flex gap-3" data-testid="bulk-result">
+                <CheckCircle size={22} weight="fill" className="text-emerald-400 flex-shrink-0 mt-0.5" />
                 <div className="text-sm">
                   <div className="font-display font-bold">Import complete</div>
-                  <div className="text-[#595955] mt-1 font-mono">
+                  <div className="text-soft mt-1 font-mono">
                     {result.created} created · {result.skipped} skipped (duplicate emails)
                     {result.errors?.length > 0 && ` · ${result.errors.length} errors`}
                   </div>
                   {result.errors?.length > 0 && (
-                    <ul className="mt-2 text-xs text-[#991B1B] list-disc pl-4">
+                    <ul className="mt-2 text-xs text-red-300 list-disc pl-4">
                       {result.errors.slice(0, 3).map((e, i) => <li key={i}>{e}</li>)}
                     </ul>
                   )}
@@ -143,7 +143,7 @@ export default function BulkLeadsModal({ open, onClose, onDone }) {
                 {loading ? "IMPORTING..." : <><UploadSimple size={14} weight="bold" /> IMPORT {parsed.length} LEADS</>}
               </button>
               <button onClick={closeReset} className="btn-ghost">CLOSE</button>
-              <div className="ml-auto flex items-center gap-1.5 text-xs font-mono text-[#595955]">
+              <div className="ml-auto flex items-center gap-1.5 text-xs font-mono text-soft">
                 <Info size={12} /> duplicates are auto-skipped by email
               </div>
             </div>

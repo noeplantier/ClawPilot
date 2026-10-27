@@ -101,7 +101,7 @@ export default function Prospects() {
         <div>
           <div className="mono-accent">// outreach.discovery</div>
           <h1 className="text-4xl font-black tracking-tighter">Prospects</h1>
-          <p className="text-[#5F5F5A] mt-1 max-w-2xl">
+          <p className="text-soft mt-1 max-w-2xl">
             Businesses found in authorised sources, scored from verifiable signals. Nothing is contacted until a person approves it.
           </p>
         </div>
@@ -148,7 +148,7 @@ export default function Prospects() {
               aria-selected={status === t.key}
               onClick={() => setParam("status", t.key)}
               className={`px-3 py-1.5 rounded-md text-sm border font-display ${
-                status === t.key ? "bg-[#0F172A] text-white border-[#0F172A]" : "bg-white text-[#475569] border-[#D3DBEA] hover:border-[#0F172A]"
+                status === t.key ? "bg-brand-violet text-white border-white/20" : "bg-card text-soft border-border hover:border-white/20"
               }`}
               data-testid={`tab-${t.key || "all"}`}
             >
@@ -158,7 +158,7 @@ export default function Prospects() {
           ))}
         </div>
         <EmptyToggle empty={emptyCount} showEmpty={showEmpty} onToggle={toggleEmpty} testId="prospects-empty-toggle" />
-        <label className="flex items-center gap-2 text-sm text-[#475569]">
+        <label className="flex items-center gap-2 text-sm text-soft">
           <span className="mono-accent">min score</span>
           <select className="neo-input !w-auto" value={minScore} onChange={(e) => setParam("min", e.target.value)} data-testid="min-score">
             {MIN_SCORES.map((m) => (
@@ -209,7 +209,7 @@ export default function Prospects() {
       {items.length > 0 && (
         <div className="surface overflow-hidden">
           <table className="w-full text-sm" data-testid="prospects-table">
-            <thead className="bg-[#F6F8FC] border-b border-[#D3DBEA]">
+            <thead className="bg-white/[0.04] border-b border-border">
               <tr className="text-left mono-accent">
                 <th className="p-3">business</th>
                 <th className="p-3">heat</th>
@@ -221,9 +221,9 @@ export default function Prospects() {
             </thead>
             <tbody>
               {items.map((p) => (
-                <tr key={p.id} className="border-b border-[#E9EEF7] hover:bg-[#F7F9FD]" data-testid="prospect-row">
+                <tr key={p.id} className="border-b border-border hover:bg-white/[0.04]" data-testid="prospect-row">
                   <td className="p-3">
-                    <Link to={`/app/prospects/${p.id}`} className="font-display font-semibold hover:text-[#4F46E5]" data-testid="prospect-link">
+                    <Link to={`/app/prospects/${p.id}`} className="font-display font-semibold hover:text-brand-lilac" data-testid="prospect-link">
                       {p.name}
                     </Link>
                   </td>
@@ -234,13 +234,13 @@ export default function Prospects() {
                   <td className="p-3">
                     <span className={`chip ${REVIEW_META[p.review_status].chip}`}>{REVIEW_META[p.review_status].label}</span>
                   </td>
-                  <td className="p-3 hidden md:table-cell font-mono text-xs">{domainOf(p.website) || <span className="text-[#6B6B66]">none listed</span>}</td>
-                  <td className="p-3 hidden md:table-cell text-[#475569]">{p.city || "—"}</td>
+                  <td className="p-3 hidden md:table-cell font-mono text-xs">{domainOf(p.website) || <span className="text-faint">none listed</span>}</td>
+                  <td className="p-3 hidden md:table-cell text-soft">{p.city || "—"}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-          <div className="flex items-center justify-between p-3 border-t border-[#D3DBEA] text-sm text-[#5F5F5A]">
+          <div className="flex items-center justify-between p-3 border-t border-border text-sm text-soft">
             <span data-testid="prospects-total">{total} prospect{total === 1 ? "" : "s"}</span>
             <span className="flex items-center gap-2">
               <button className="btn-ghost" disabled={page === 0} onClick={() => setParam("page", String(page - 1))} aria-label="Previous page">

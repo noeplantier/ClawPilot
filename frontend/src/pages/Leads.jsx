@@ -23,7 +23,7 @@ const REVIEW_LABEL = { pending: "to review", approved: "approved", rejected: "re
 const REVIEW_CHIP = { pending: "chip-warn", approved: "chip-success", rejected: "chip-danger" };
 const STAGES = ["new", "contacted", "engaged", "qualified", "won", "lost"];
 const STAGE_COLORS = {
-  new: "#4F46E5", contacted: "#475569", engaged: "#0F172A",
+  new: "#9B74FA", contacted: "#94A3B8", engaged: "#C4B5FD",
   qualified: "#F59E0B", won: "#10B981", lost: "#EF4444",
 };
 
@@ -144,18 +144,18 @@ export default function Leads() {
         <div>
           <div className="mono-accent">// crm.pipeline</div>
           <h1 className="text-4xl font-black tracking-tighter">Leads</h1>
-          <p className="text-[#5F5F5A] mt-1">
+          <p className="text-soft mt-1">
             {leads.length}{lane !== "all" ? ` ${LANE_LABEL[lane].toLowerCase()}` : ""} contact{leads.length === 1 ? "" : "s"} across the pipeline, hottest first.
           </p>
-          <p className="text-xs mt-1 inline-flex items-center gap-2 text-[#4338CA]" role="status" aria-live="polite" data-testid="leads-live">
+          <p className="text-xs mt-1 inline-flex items-center gap-2 text-brand-lilac" role="status" aria-live="polite" data-testid="leads-live">
             <span className="pos-live-dot" aria-hidden="true" />
             {live.stale ? "Refresh failed: showing the last data. " : ""}
             {live.updatedAt ? `Live · updated ${live.updatedAt.toLocaleTimeString()} · every ${LIVE_MS / 1000} s` : "Loading…"}
           </p>
         </div>
         <div className="flex flex-wrap gap-2 items-center">
-          <div className="flex items-center gap-2 px-3 py-1.5 border border-[#D3DBEA] rounded-md bg-[#FFFFFF]">
-            <MagnifyingGlass size={14} className="text-[#6B6B66]" />
+          <div className="flex items-center gap-2 px-3 py-1.5 border border-border rounded-md bg-card">
+            <MagnifyingGlass size={14} className="text-faint" />
             <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, email, company" className="bg-transparent outline-none text-sm w-40 sm:w-56 font-mono" data-testid="leads-search" />
           </div>
           <button onClick={() => setCrmView(view === "map" ? "table" : "map")} className="btn-ghost" data-testid="toggle-map">
@@ -174,11 +174,11 @@ export default function Leads() {
       <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filter by heat" data-testid="leads-lanes">
         {LANES.map((k) => [k, `${LANE_LABEL[k]} ${k === "all" ? counts.total : counts[k]}`]).map(([key, label]) => (
           <button key={key} onClick={() => setLane(key)} aria-pressed={lane === key} data-testid={`lane-${key}`}
-            className={`px-3 py-1 rounded-full text-xs border transition-colors ${lane === key ? "bg-brand-violet text-white border-brand-violet" : "bg-white border-[#D3DBEA] hover:bg-[#F7F9FD]"}`}>
+            className={`px-3 py-1 rounded-full text-xs border transition-colors ${lane === key ? "bg-brand-violet text-white border-brand-violet" : "bg-card border-border hover:bg-white/[0.04]"}`}>
             {label}
           </button>
         ))}
-        <span className="text-xs text-[#5F5F5A]">Heat = real information known + score; TOP = 80 or more. Hover a badge to see what is missing.</span>
+        <span className="text-xs text-soft">Heat = real information known + score; TOP = 80 or more. Hover a badge to see what is missing.</span>
         <EmptyToggle empty={empty} showEmpty={showEmpty} onToggle={toggleEmpty} testId="leads-empty-toggle" />
       </div>
 
@@ -194,23 +194,23 @@ export default function Leads() {
         <button type="button" onClick={startScoring} disabled={!selected.size || selected.size > 200 || scoringActive} className="btn-primary !py-1 !px-3" data-testid="score-selected">
           {scoringActive ? "SCORING…" : `SCORER LA SÉLECTION${selected.size ? ` (${selected.size})` : ""}`}
         </button>
-        {selected.size > 200 && <span className="text-xs text-[#991B1B]" role="alert">Select at most 200 leads.</span>}
+        {selected.size > 200 && <span className="text-xs text-red-300" role="alert">Select at most 200 leads.</span>}
       </div>
 
-      {scoringError && <div role="alert" className="text-sm text-[#991B1B]" data-testid="scoring-error">{scoringError}</div>}
+      {scoringError && <div role="alert" className="text-sm text-red-300" data-testid="scoring-error">{scoringError}</div>}
       {scoringJob && <section className="surface p-4 space-y-2" role="status" aria-live="polite" data-testid="scoring-job">
         <div className="flex justify-between text-sm"><strong>{scoringJob.status === "running" ? "Scoring en cours" : scoringJob.status === "queued" ? "Scoring en attente" : `Scoring ${scoringJob.status}`}</strong>
           <span>{scoringJob.processed_items || 0} / {scoringJob.total_items} · {scoringJob.failed_items || 0} failed</span></div>
         <progress className="w-full" max={scoringJob.total_items || 1} value={(scoringJob.processed_items || 0) + (scoringJob.failed_items || 0)} aria-label="Scoring progress" />
-        {scoringJob.error && <p className="text-sm text-[#991B1B]">{scoringJob.error}</p>}
+        {scoringJob.error && <p className="text-sm text-red-300">{scoringJob.error}</p>}
       </section>}
 
-      {live.error && <div role="alert" className="text-sm text-[#991B1B]" data-testid="leads-error">{live.error}</div>}
+      {live.error && <div role="alert" className="text-sm text-red-300" data-testid="leads-error">{live.error}</div>}
 
       {view === "map" ? <DiscoveryMap /> : view === "table" ? (
         <div className="surface overflow-hidden overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-[#F6F8FC] border-b border-[#D3DBEA]">
+            <thead className="bg-white/[0.04] border-b border-border">
               <tr className="text-left mono-accent">
                 <th className="p-3 w-10">
                   <input
@@ -238,7 +238,7 @@ export default function Leads() {
                 <tr
                   key={l.id}
                   onClick={() => setDetailLeadId(l.id)}
-                  className={`border-b border-[#E6ECF6] hover:bg-[#F6F8FC] transition-colors cursor-pointer ${selected.has(l.id) ? "bg-indigo-50" : live.fresh.has(l.id) ? "bg-cyan-50" : ""}`}
+                  className={`border-b border-border hover:bg-white/[0.04] transition-colors cursor-pointer ${selected.has(l.id) ? "bg-white/10" : live.fresh.has(l.id) ? "bg-brand-violet/10" : ""}`}
                   data-testid={`lead-row-${l.id}`}
                 >
                   <td className="p-3" onClick={(e) => e.stopPropagation()}>
@@ -253,7 +253,7 @@ export default function Leads() {
                   </td>
                   <td className="p-3">
                     <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#4F46E5]/30 to-[#0F172A]/30 flex items-center justify-center text-xs font-bold">
+                      <div className="w-7 h-7 rounded-full bg-gradient-to-br from-brand-violet/30 to-void-surface/30 flex items-center justify-center text-xs font-bold">
                         {(l.full_name || "?").charAt(0)}
                       </div>
                       <div>
@@ -266,21 +266,21 @@ export default function Leads() {
                             </Link>
                           )}
                         </div>
-                        <div className="mono-accent text-[#6B6B66] text-[10px]">{l.title || "—"}</div>
+                        <div className="mono-accent text-faint text-[10px]">{l.title || "—"}</div>
                       </div>
                     </div>
                   </td>
-                  <td className="p-3 text-[#5F5F5A]">{l.company}</td>
-                  <td className="p-3 font-mono text-xs text-[#5F5F5A]">
-                    <div>{l.email || <span className="text-[#6B6B66]">e-mail not known</span>}</div>
-                    <div>{l.phone || <span className="text-[#6B6B66]">phone not known</span>}</div>
+                  <td className="p-3 text-soft">{l.company}</td>
+                  <td className="p-3 font-mono text-xs text-soft">
+                    <div>{l.email || <span className="text-faint">e-mail not known</span>}</div>
+                    <div>{l.phone || <span className="text-faint">phone not known</span>}</div>
                   </td>
                   <td className="p-3 font-mono text-xs">{l.country}</td>
                   <td className="p-3" onClick={(e) => e.stopPropagation()}>
                     <select
                       value={l.stage}
                       onChange={(e) => updateStage(l.id, e.target.value)}
-                      className="bg-transparent border border-[#D3DBEA] rounded px-2 py-1 text-xs font-mono uppercase"
+                      className="bg-transparent border border-border rounded px-2 py-1 text-xs font-mono uppercase"
                       style={{ color: STAGE_COLORS[l.stage] }}
                       aria-label={`Stage of ${l.full_name}`}
                       data-testid={`stage-select-${l.id}`}
@@ -291,21 +291,21 @@ export default function Leads() {
                   <td className="p-3"><HeatBadge heat={l.heat} /></td>
                   <td className="p-3">
                     {l.heat && !l.heat.scored ? (
-                      <span className="text-xs text-[#6B6B66]" data-testid="lead-not-scored">not scored</span>
+                      <span className="text-xs text-faint" data-testid="lead-not-scored">not scored</span>
                     ) : (
                       <div className="flex items-center gap-2">
-                        <div className="w-16 h-1 bg-[#E6ECF6] rounded overflow-hidden">
-                          <div className="h-full bg-gradient-to-r from-[#4F46E5] to-[#0F172A]" style={{ width: `${l.score}%` }} />
+                        <div className="w-16 h-1 bg-white/[0.04] rounded overflow-hidden">
+                          <div className="h-full bg-gradient-to-r from-brand-violet to-void-surface" style={{ width: `${l.score}%` }} />
                         </div>
                         <span className="font-mono text-xs w-6 text-right">{l.score}</span>
                       </div>
                     )}
                   </td>
                   <td className="p-3 min-w-48" data-testid={`qualification-${l.id}`}>
-                    {l.enrichment_status !== "completed" ? <span className="text-xs text-[#92400E]">Enrichissement requis</span> : l.fit_score == null ? <span className="text-xs text-[#6B6B66]">Scoring requis</span> : (
+                    {l.enrichment_status !== "completed" ? <span className="text-xs text-amber-300">Enrichissement requis</span> : l.fit_score == null ? <span className="text-xs text-faint">Scoring requis</span> : (
                       <div className="space-y-1">
                         <div className="flex items-center gap-2"><span className={`chip ${l.priority === "high" ? "chip-purple" : l.priority === "medium" ? "chip-warn" : "chip-ink"}`}>{l.priority ? (l.priority === "high" ? "Priority" : l.priority[0].toUpperCase() + l.priority.slice(1)) : "Unknown"}</span><span className="font-mono text-xs">Fit {l.fit_score}</span></div>
-                        <div className="text-[10px] text-[#5F5F5A]">Website {l.website_quality ?? "Unknown"} · Digital {l.digital_maturity ?? "Unknown"}</div>
+                        <div className="text-[10px] text-soft">Website {l.website_quality ?? "Unknown"} · Digital {l.digital_maturity ?? "Unknown"}</div>
                       </div>
                     )}
                   </td>
@@ -320,7 +320,7 @@ export default function Leads() {
                 </tr>
               ))}
               {leads.length === 0 && (
-                <tr><td colSpan="10" className="p-10 text-center text-[#5F5F5A]" data-testid="leads-none">
+                <tr><td colSpan="10" className="p-10 text-center text-soft" data-testid="leads-none">
                   {everyLead.length === 0 ? "No leads. Add your first or import." : reachable.length === 0 ? "Every lead is empty (no e-mail, phone or website): they are hidden. Show them above, or add contact details." : "No lead in this heat tier."}
                 </td></tr>
               )}
@@ -333,9 +333,9 @@ export default function Leads() {
             const items = leads.filter((l) => l.stage === s);
             return (
               <div key={s} className="kanban-column p-3 min-h-[400px]" data-testid={`kanban-${s}`}>
-                <div className="flex items-center justify-between mb-3 pb-2 border-b border-[#D3DBEA]">
+                <div className="flex items-center justify-between mb-3 pb-2 border-b border-border">
                   <span className="mono-accent" style={{ color: STAGE_COLORS[s] }}>{s}</span>
-                  <span className="font-mono text-xs text-[#5F5F5A]">{items.length}</span>
+                  <span className="font-mono text-xs text-soft">{items.length}</span>
                 </div>
                 <div className="space-y-2">
                   {items.map((l) => (
@@ -344,13 +344,13 @@ export default function Leads() {
                       initial={{ opacity: 0, y: 4 }}
                       animate={{ opacity: 1, y: 0 }}
                       onClick={() => setDetailLeadId(l.id)}
-                      className="surface p-3 text-xs cursor-pointer hover:border-[#4F46E5]/40 transition"
+                      className="surface p-3 text-xs cursor-pointer hover:border-brand-violet/40 transition"
                       data-testid={`kanban-card-${l.id}`}
                     >
-                      <div className="font-semibold text-sm text-[#0A0A0A]">{l.full_name}</div>
-                      <div className="text-[#5F5F5A] mt-0.5">{l.company}</div>
+                      <div className="font-semibold text-sm text-foreground">{l.full_name}</div>
+                      <div className="text-soft mt-0.5">{l.company}</div>
                       <div className="mt-2"><HeatBadge heat={l.heat} compact /></div>
-                      <div className="mono-accent text-[#6B6B66] mt-2 flex items-center justify-between">
+                      <div className="mono-accent text-faint mt-2 flex items-center justify-between">
                         <span>{l.country}</span>
                         <span>{l.heat && !l.heat.scored ? "not scored" : `score · ${l.score}`}</span>
                       </div>
@@ -399,9 +399,9 @@ function CreateLead({ onClose, onSaved }) {
   };
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-50 bg-[#0F172A]/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
       <motion.div initial={{ y: 10 }} animate={{ y: 0 }} className="surface w-full max-w-xl p-8 relative" onClick={(e) => e.stopPropagation()}>
-        <button onClick={onClose} className="absolute top-4 right-4 text-[#5F5F5A] hover:text-[#0A0A0A]" data-testid="close-create-lead"><X size={20} /></button>
+        <button onClick={onClose} className="absolute top-4 right-4 text-soft hover:text-foreground" data-testid="close-create-lead"><X size={20} /></button>
         <div className="mono-accent">/// new.lead</div>
         <h2 className="text-2xl font-black tracking-tighter mt-1">Add Lead</h2>
 

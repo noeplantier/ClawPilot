@@ -33,12 +33,12 @@ export default function Settings() {
       <div>
         <div className="mono-accent">// control.panel</div>
         <h1 className="text-4xl font-black tracking-tighter">Settings</h1>
-        <p className="text-[#5F5F5A] mt-1">Organization profile and the live status of every integration of this server.</p>
+        <p className="text-soft mt-1">Organization profile and the live status of every integration of this server.</p>
       </div>
 
       <section className="surface p-6 space-y-4">
         <div className="flex items-center gap-2">
-          <Shield size={18} className="text-[#4F46E5]" />
+          <Shield size={18} className="text-brand-lilac" />
           <h2 className="font-display text-xl font-bold">Profile</h2>
         </div>
         <div className="grid md:grid-cols-3 gap-4">
@@ -53,7 +53,7 @@ export default function Settings() {
 
       <section className="space-y-5" data-testid="integrations">
         <div className="flex items-center gap-2">
-          <Plugs size={18} className="text-[#4F46E5]" />
+          <Plugs size={18} className="text-brand-lilac" />
           <h2 className="font-display text-xl font-bold">Integrations</h2>
         </div>
         {live.loading && !s && <LoadingBlock label="Reading the server configuration…" />}
@@ -101,7 +101,7 @@ function Integrations({ s, live, canTest }) {
         <Chip tone="unchecked" testId="sum-unchecked">{sum.unchecked} NOT TESTED</Chip>
         <Chip tone={sum.attention ? "missing" : "off"} testId="sum-attention">{sum.attention} NEED ATTENTION</Chip>
         <Chip tone="off" testId="sum-off">{sum.off} OFF</Chip>
-        <span className="text-xs inline-flex items-center gap-2 text-[#4338CA] ml-auto" role="status" aria-live="polite" data-testid="int-live">
+        <span className="text-xs inline-flex items-center gap-2 text-brand-lilac ml-auto" role="status" aria-live="polite" data-testid="int-live">
           <span className="pos-live-dot" aria-hidden="true" />
           {live.stale ? "Refresh failed: showing the last data. " : ""}
           {live.updatedAt ? `Live · updated ${live.updatedAt.toLocaleTimeString()} · every ${SETTINGS_LIVE_MS / 1000} s` : "Loading…"}
@@ -110,8 +110,8 @@ function Integrations({ s, live, canTest }) {
         <button onClick={runAll} disabled={running.size > 0} className="btn-primary" data-testid="int-run-all"><Play size={14} weight="fill" /> RUN CHECKS</button>
       </div>
 
-      <p className="text-sm text-[#5F5F5A] flex gap-2" data-testid="int-secrets-note">
-        <ShieldCheck size={16} className="shrink-0 mt-0.5 text-[#4F46E5]" />
+      <p className="text-sm text-soft flex gap-2" data-testid="int-secrets-note">
+        <ShieldCheck size={16} className="shrink-0 mt-0.5 text-brand-lilac" />
         <span>
           Keys and passwords are never typed or shown here. Add the variable names listed under an integration in your hosting dashboard
           (Render → your API service → Environment), then redeploy; this page re-reads the server and updates by itself.
@@ -152,37 +152,37 @@ function Card({ item, result, busy, canTest, onTest }) {
   return (
     <div className="surface p-5 space-y-3" data-testid={`int-${item.id}`} data-status={shown.status}>
       <div className="flex items-start gap-3">
-        <Icon size={24} weight="duotone" className="text-[#4F46E5] mt-0.5 shrink-0" />
+        <Icon size={24} weight="duotone" className="text-brand-lilac mt-0.5 shrink-0" />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="font-display font-semibold">{item.name}</h3>
             <Chip tone={shown.status} testId={`int-${item.id}-status`}>{shown.label}</Chip>
           </div>
-          <p className="text-sm text-[#5F5F5A] mt-1">{item.summary}</p>
+          <p className="text-sm text-soft mt-1">{item.summary}</p>
         </div>
       </div>
 
       {item.facts.length > 0 && (
         <div className="grid sm:grid-cols-2 gap-x-4 gap-y-1 text-xs font-mono" data-testid={`int-${item.id}-facts`}>
           {item.facts.map(([k, v]) => (
-            <div key={k} className="flex gap-2 min-w-0"><span className="text-[#6B7690]">{k}:</span><span className="truncate" title={v}>{v}</span></div>
+            <div key={k} className="flex gap-2 min-w-0"><span className="text-faint">{k}:</span><span className="truncate" title={v}>{v}</span></div>
           ))}
         </div>
       )}
 
       {item.needs.length > 0 && (
-        <div className="rounded-md border border-[#F59E0B]/40 bg-[#FFFBEB] p-3 text-xs space-y-2" data-testid={`int-${item.id}-needs`}>
-          <div className="font-semibold text-[#92400E] flex items-center gap-2"><Warning size={14} /> Set in your hosting environment:</div>
+        <div className="rounded-md border border-amber-400/40 bg-amber-500/10 p-3 text-xs space-y-2" data-testid={`int-${item.id}-needs`}>
+          <div className="font-semibold text-amber-300 flex items-center gap-2"><Warning size={14} /> Set in your hosting environment:</div>
           <div className="flex flex-wrap gap-1.5">
-            {item.needs.map((n) => <code key={n} className="px-1.5 py-0.5 rounded bg-white border border-[#F59E0B]/40 font-mono">{n}</code>)}
+            {item.needs.map((n) => <code key={n} className="px-1.5 py-0.5 rounded bg-card border border-amber-400/40 font-mono">{n}</code>)}
           </div>
-          <button onClick={() => copyNames(item)} className="inline-flex items-center gap-1 text-[#92400E] underline" data-testid={`int-${item.id}-copy`}>
+          <button onClick={() => copyNames(item)} className="inline-flex items-center gap-1 text-amber-300 underline" data-testid={`int-${item.id}-copy`}>
             <Copy size={12} /> copy the names
           </button>
         </div>
       )}
 
-      {item.hint && <p className="text-xs text-[#6B7690]" data-testid={`int-${item.id}-hint`}>{item.hint}</p>}
+      {item.hint && <p className="text-xs text-faint" data-testid={`int-${item.id}-hint`}>{item.hint}</p>}
 
       <div className="flex items-center gap-3 flex-wrap">
         {item.test && (
@@ -195,10 +195,10 @@ function Card({ item, result, busy, canTest, onTest }) {
       </div>
 
       {result && (
-        <p className={`text-xs ${result.outcome === "passed" ? "text-[#065F46]" : result.outcome === "skipped" ? "text-[#6B7690]" : "text-[#991B1B]"}`}
+        <p className={`text-xs ${result.outcome === "passed" ? "text-emerald-300" : result.outcome === "skipped" ? "text-faint" : "text-red-300"}`}
           role="status" data-testid={`int-${item.id}-result`}>
           {result.outcome === "passed" ? "✔ " : result.outcome === "skipped" ? "– " : "✖ "}
-          {result.detail} <span className="text-[#6B7690]">({result.at.toLocaleTimeString()})</span>
+          {result.detail} <span className="text-faint">({result.at.toLocaleTimeString()})</span>
         </p>
       )}
     </div>

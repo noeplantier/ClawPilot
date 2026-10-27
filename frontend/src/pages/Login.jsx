@@ -4,7 +4,8 @@ import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
-import { Lightning, ArrowRight } from "@phosphor-icons/react";
+import { ArrowRight } from "@phosphor-icons/react";
+import Logo, { LogoMark } from "@/components/Logo";
 
 
 export default function Login() {
@@ -30,12 +31,11 @@ export default function Login() {
 
 
   return (
-    <div className="min-h-screen grid lg:grid-cols-5 bg-[#E9EEF7]">
+    <div className="min-h-screen grid lg:grid-cols-5 grid-bg">
       {/* Left form */}
-      <div className="lg:col-span-2 flex flex-col px-8 md:px-16 py-10 relative bg-[#FFFFFF] border-r-2 border-[#0F172A]">
-        <Link to="/" className="flex items-center gap-2" data-testid="brand-logo">
-          <Lightning size={22} weight="fill" className="text-[#4F46E5]" />
-          <span className="font-display font-black tracking-tight text-xl">OUTREACHOS</span>
+      <div className="lg:col-span-2 flex flex-col px-8 md:px-16 py-10 relative bg-void-elevated/80 backdrop-blur-md border-r border-border">
+        <Link to="/" className="inline-flex" data-testid="brand-logo" aria-label="Plantiers - OutreachOS">
+          <Logo />
         </Link>
 
         <motion.div
@@ -45,10 +45,10 @@ export default function Login() {
           className="flex-1 flex flex-col justify-center max-w-sm w-full"
         >
           <div className="mono-accent mb-4">// SECURE · AUTH</div>
-          <h1 className="text-4xl sm:text-5xl font-black tracking-tighter text-[#0A0A0A]">
-            Qualify. Review.<br /> Then send.
+          <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tighter text-foreground">
+            Qualify. Review.<br /> Then <span className="gradient-word">send.</span>
           </h1>
-          <p className="mt-4 text-[#5F5F5A] leading-relaxed">
+          <p className="mt-4 text-soft leading-relaxed">
             Sign in to run compliant B2B outreach: detect, qualify, validate, then send.
           </p>
 
@@ -87,9 +87,9 @@ export default function Login() {
             </button>
           </form>
 
-          <p className="mt-8 text-sm text-[#5F5F5A]">
+          <p className="mt-8 text-sm text-soft">
             No account?{" "}
-            <Link to="/register" className="text-[#4338CA] underline" data-testid="goto-register-link">
+            <Link to="/register" className="text-brand-lilac underline" data-testid="goto-register-link">
               Request access →
             </Link>
           </p>
@@ -98,31 +98,30 @@ export default function Login() {
         <Footer className="mt-6 !border-0 !bg-transparent !px-0" />
       </div>
 
-      {/* Right visual */}
-      <div className="hidden lg:block lg:col-span-3 relative overflow-hidden bg-[#0F172A]">
-        <div aria-hidden="true" className="absolute inset-0" style={{ background: "radial-gradient(80% 60% at 20% 20%, rgba(37,99,235,0.55), transparent 60%), radial-gradient(60% 50% at 85% 75%, rgba(124,58,237,0.5), transparent 60%), radial-gradient(40% 40% at 60% 10%, rgba(34,211,238,0.25), transparent 60%)" }} />
-        <div className="absolute inset-0 bg-[#0F172A]/60" />
-        <div className="absolute inset-0" style={{ backgroundImage: "linear-gradient(rgba(255,255,255,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.06) 1px, transparent 1px)", backgroundSize: "32px 32px" }} />
-        <div className="absolute inset-0 scanline" />
+      {/* Right visual: the product as the prospecting side of plantiers.com */}
+      <div className="hidden lg:block lg:col-span-3 relative overflow-hidden grain">
+        <div aria-hidden="true" className="absolute inset-0" style={{ background: "radial-gradient(70% 55% at 22% 18%, rgba(124,58,237,0.42), transparent 62%), radial-gradient(55% 45% at 86% 78%, rgba(91,33,182,0.38), transparent 62%), radial-gradient(40% 35% at 60% 100%, rgba(34,197,94,0.10), transparent 62%)" }} />
+        <div className="absolute inset-0" style={{ backgroundImage: "linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px)", backgroundSize: "56px 56px" }} />
 
         <div className="relative z-10 h-full flex flex-col justify-between p-14 text-white">
           <div className="flex items-center gap-2">
-            <span className="w-2 h-2 bg-[#4F46E5] rounded-full pulse-dot" />
-            <span className="mono-accent text-[#4F46E5]">// DRY-RUN BY DEFAULT · HUMAN REVIEW BEFORE SENDING</span>
+            <span className="pos-live-dot" aria-hidden="true" />
+            <span className="mono-accent">// DRY-RUN BY DEFAULT · HUMAN REVIEW BEFORE SENDING</span>
           </div>
 
           <div className="max-w-xl">
-            <div className="mono-accent mb-3 text-[#4F46E5]">/// plantiers.outreachos</div>
-            <h2 className="text-4xl md:text-5xl font-black tracking-tighter leading-[0.95] text-white">
+            <LogoMark decorative className="h-28 mb-8 drop-shadow-[0_0_40px_rgba(124,58,237,0.45)]" />
+            <div className="mono-accent mb-3">/// plantiers.outreachos</div>
+            <h2 className="text-4xl md:text-5xl font-extrabold tracking-tighter leading-[0.98] text-white">
               Detect the need.<br />
-              <span className="text-[#4F46E5]">Reach out responsibly.</span>
+              <span className="gradient-word">Reach out responsibly.</span>
             </h2>
-            <p className="mt-5 text-white/80 max-w-md">
+            <p className="mt-5 text-soft max-w-md">
               Find companies that need digital solutions, explain every score, and send only what a human approved.
             </p>
             <div className="mt-6 flex gap-2 flex-wrap">
               {["signals", "explainable score", "human review", "consent", "audit"].map((t) => (
-                <span key={t} className="chip chip-red !bg-white/10 !text-white !border-white/30">{t}</span>
+                <span key={t} className="chip">{t}</span>
               ))}
             </div>
           </div>

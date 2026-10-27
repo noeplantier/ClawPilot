@@ -64,7 +64,7 @@ export default function ReviewQueue() {
       <div>
         <div className="mono-accent">// human.review</div>
         <h1 className="text-4xl font-black tracking-tighter">Review queue</h1>
-        <p className="text-[#5F5F5A] mt-1">
+        <p className="text-soft mt-1">
           Decide on each prospect from its evidence. An approval makes it eligible for a draft; it does not send anything.
         </p>
       </div>
@@ -77,11 +77,11 @@ export default function ReviewQueue() {
           <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Queues by heat">
             {LANES.map((k) => [k, `${LANE_LABEL[k]} ${k === "all" ? (server ? server.total : loaded.total) : (server ? server[k] : loaded[k])}`]).map(([key, label]) => (
               <button key={key} onClick={() => setLane(key)} aria-pressed={lane === key} data-testid={`queue-lane-${key}`}
-                className={`px-3 py-1 rounded-full text-xs border transition-colors ${lane === key ? "bg-brand-violet text-white border-brand-violet" : "bg-white border-[#D3DBEA] hover:bg-[#F7F9FD]"}`}>
+                className={`px-3 py-1 rounded-full text-xs border transition-colors ${lane === key ? "bg-brand-violet text-white border-brand-violet" : "bg-card border-border hover:bg-white/[0.04]"}`}>
                 {label}
               </button>
             ))}
-            <span className="text-xs inline-flex items-center gap-2 text-[#4338CA]" role="status" aria-live="polite" data-testid="queue-live">
+            <span className="text-xs inline-flex items-center gap-2 text-brand-lilac" role="status" aria-live="polite" data-testid="queue-live">
               <span className="pos-live-dot" aria-hidden="true" />
               {queue.stale ? "Refresh failed: showing the last data. " : ""}
               {queue.updatedAt ? `Live · updated ${queue.updatedAt.toLocaleTimeString()} · every ${LIVE_MS / 1000} s` : ""}
@@ -89,7 +89,7 @@ export default function ReviewQueue() {
             {server && <EmptyToggle empty={server.empty} showEmpty={showEmpty} onToggle={toggleEmpty} testId="queue-empty-toggle" />}
           </div>
           {queue.fresh.size > 0 && (
-            <p className="text-xs text-[#0E7490]" data-testid="queue-new">{queue.fresh.size} new prospect{queue.fresh.size === 1 ? "" : "s"} joined the queue (hottest first).</p>
+            <p className="text-xs text-brand-lilac" data-testid="queue-new">{queue.fresh.size} new prospect{queue.fresh.size === 1 ? "" : "s"} joined the queue (hottest first).</p>
           )}
         </div>
       )}
@@ -113,7 +113,7 @@ export default function ReviewQueue() {
 
       {current && (
         <>
-          <div className="flex items-center justify-between text-sm text-[#5F5F5A]" data-testid="queue-position">
+          <div className="flex items-center justify-between text-sm text-soft" data-testid="queue-position">
             <span>
               {pending.length} of {queue.data.total} pending prospect{queue.data.total === 1 ? "" : "s"} left in this session
             </span>
@@ -126,7 +126,7 @@ export default function ReviewQueue() {
             <div className="flex items-start justify-between gap-4 flex-wrap">
               <div>
                 <h2 className="font-display text-2xl font-bold" data-testid="queue-name">{current.name}</h2>
-                <p className="text-sm text-[#5F5F5A]">
+                <p className="text-sm text-soft">
                   {[current.city, domainOf(current.website) || "no own website listed"].filter(Boolean).join(" · ")}
                 </p>
               </div>
@@ -136,9 +136,9 @@ export default function ReviewQueue() {
               </div>
             </div>
             {current.heat && (
-              <p className="text-xs text-[#5F5F5A]" data-testid="queue-known">
+              <p className="text-xs text-soft" data-testid="queue-known">
                 Known: {current.heat.known.map((k) => FIELD_LABEL[k]).join(", ") || "nothing yet"}
-                {current.heat.missing.length > 0 && <> · <span className="text-[#6B6B66]">not known: {current.heat.missing.map((k) => FIELD_LABEL[k]).join(", ")}</span></>}
+                {current.heat.missing.length > 0 && <> · <span className="text-faint">not known: {current.heat.missing.map((k) => FIELD_LABEL[k]).join(", ")}</span></>}
               </p>
             )}
 
@@ -155,11 +155,11 @@ export default function ReviewQueue() {
             )}
 
             {error && (
-              <div role="alert" className="text-sm text-[#991B1B] bg-[#FEF2F2] border border-[#FCA5A5] rounded-md p-3" data-testid="queue-error">
+              <div role="alert" className="text-sm text-red-300 bg-red-500/10 border border-red-400/40 rounded-md p-3" data-testid="queue-error">
                 {error}
               </div>
             )}
-            <div className="space-y-2 pt-2 border-t border-[#E9EEF7]">
+            <div className="space-y-2 pt-2 border-t border-border">
               <label className="mono-accent block" htmlFor="review-note">
                 note (optional, kept on the prospect, not in the audit trail)
               </label>
@@ -174,19 +174,19 @@ export default function ReviewQueue() {
                 <button className="btn-ghost" disabled={busy} onClick={() => setSkipped((s) => [...s, current.id])} data-testid="queue-skip">
                   <SkipForward size={14} /> SKIP
                 </button>
-                {!canDecide(user) && <span className="mono-accent self-center text-[#6B6B66]">deciding requires owner or admin</span>}
+                {!canDecide(user) && <span className="mono-accent self-center text-faint">deciding requires owner or admin</span>}
               </div>
             </div>
           </section>
           {pending.length > 1 && (
             <section className="surface p-4" data-testid="queue-next">
               <h3 className="font-display font-bold mb-2">Up next</h3>
-              <ul className="divide-y divide-[#E3E9F4]">
+              <ul className="divide-y divide-border">
                 {pending.filter((p) => p.id !== current.id).slice(0, 6).map((p) => (
-                  <li key={p.id} className={`py-2 flex items-center justify-between gap-3 ${queue.fresh.has(p.id) ? "bg-cyan-50" : ""}`} data-testid="queue-next-row">
+                  <li key={p.id} className={`py-2 flex items-center justify-between gap-3 ${queue.fresh.has(p.id) ? "bg-brand-violet/10" : ""}`} data-testid="queue-next-row">
                     <span className="min-w-0">
                       <span className="font-medium block truncate">{p.name}{queue.fresh.has(p.id) && <span className="chip chip-cyan ml-2">new</span>}</span>
-                      <span className="text-xs text-[#5F5F5A]">{[p.city, domainOf(p.website) || "no own website listed"].filter(Boolean).join(" · ")}</span>
+                      <span className="text-xs text-soft">{[p.city, domainOf(p.website) || "no own website listed"].filter(Boolean).join(" · ")}</span>
                     </span>
                     <span className="flex items-center gap-2 shrink-0">
                       <HeatBadge heat={p.heat} compact />

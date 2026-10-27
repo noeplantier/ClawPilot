@@ -60,27 +60,27 @@ export default function LeadsBulkBar({ selectedIds, onCleared, onDone }) {
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         exit={{ y: 20, opacity: 0 }}
-        className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 surface bg-[#0F172A] border-[#0F172A] px-4 py-3 flex items-center gap-3 text-white glow-red"
+        className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 surface bg-brand-violet border-white/20 px-4 py-3 flex items-center gap-3 text-white glow-red"
         data-testid="bulk-toolbar"
       >
-        <span className="mono-accent !text-[#4F46E5]">{count} selected</span>
+        <span className="mono-accent !text-brand-lilac">{count} selected</span>
         <div className="h-5 w-px bg-white/20" />
-        <button onClick={() => setStageOpen(!stageOpen)} className="flex items-center gap-1.5 text-sm hover:text-[#4F46E5] relative" data-testid="bulk-stage-button">
+        <button onClick={() => setStageOpen(!stageOpen)} className="flex items-center gap-1.5 text-sm hover:text-brand-lilac relative" data-testid="bulk-stage-button">
           <Funnel size={14} /> Stage
           {stageOpen && (
-            <div className="absolute bottom-full left-0 mb-2 surface bg-white text-[#0A0A0A] py-1 min-w-[140px] flex flex-col">
+            <div className="absolute bottom-full left-0 mb-2 surface bg-card text-foreground py-1 min-w-[140px] flex flex-col">
               {STAGES.map((s) => (
-                <button key={s} onClick={() => bulkStage(s)} className="px-3 py-1.5 hover:bg-[#FEF2F2] hover:text-[#4F46E5] text-left text-xs font-mono uppercase" data-testid={`bulk-stage-${s}`}>
+                <button key={s} onClick={() => bulkStage(s)} className="px-3 py-1.5 hover:bg-red-500/10 hover:text-brand-lilac text-left text-xs font-mono uppercase" data-testid={`bulk-stage-${s}`}>
                   {s}
                 </button>
               ))}
             </div>
           )}
         </button>
-        <button onClick={() => setTagOpen(!tagOpen)} className="flex items-center gap-1.5 text-sm hover:text-[#4F46E5] relative" data-testid="bulk-tag-button">
+        <button onClick={() => setTagOpen(!tagOpen)} className="flex items-center gap-1.5 text-sm hover:text-brand-lilac relative" data-testid="bulk-tag-button">
           <Tag size={14} /> Tags
           {tagOpen && (
-            <div className="absolute bottom-full left-0 mb-2 surface bg-white text-[#0A0A0A] p-3 w-[260px]" onClick={(e) => e.stopPropagation()}>
+            <div className="absolute bottom-full left-0 mb-2 surface bg-card text-foreground p-3 w-[260px]" onClick={(e) => e.stopPropagation()}>
               <label className="mono-accent block mb-1.5">add.tags (comma-separated)</label>
               <input
                 autoFocus
@@ -97,7 +97,7 @@ export default function LeadsBulkBar({ selectedIds, onCleared, onDone }) {
             </div>
           )}
         </button>
-        <button onClick={bulkDelete} className="flex items-center gap-1.5 text-sm hover:text-[#4F46E5]" data-testid="bulk-delete-button">
+        <button onClick={bulkDelete} className="flex items-center gap-1.5 text-sm hover:text-brand-lilac" data-testid="bulk-delete-button">
           <Trash size={14} /> Delete
         </button>
         <div className="h-5 w-px bg-white/20" />

@@ -132,7 +132,7 @@ export default function BatchComposerModal({ open, onClose, defaultChannel = "em
       {open && (
         <motion.div
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-          className="fixed inset-0 z-50 bg-[#0F172A]/60 backdrop-blur-sm flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
           onClick={onClose}
         >
           <motion.div
@@ -141,16 +141,16 @@ export default function BatchComposerModal({ open, onClose, defaultChannel = "em
             onClick={(e) => e.stopPropagation()}
             data-testid="batch-composer-modal"
           >
-            <button onClick={onClose} className="absolute top-4 right-4 text-[#595955] hover:text-[#4F46E5]" data-testid="close-batch-composer">
+            <button onClick={onClose} className="absolute top-4 right-4 text-soft hover:text-brand-lilac" data-testid="close-batch-composer">
               <X size={20} />
             </button>
 
             <div className="mono-accent">/// batch.dispatch</div>
             <h2 className="text-2xl font-black tracking-tighter mt-1 flex items-center gap-2">
-              {channel === "email" ? <Envelope size={22} weight="duotone" className="text-[#4F46E5]" /> : <WhatsappLogo size={22} weight="fill" className="text-[#4F46E5]" />}
+              {channel === "email" ? <Envelope size={22} weight="duotone" className="text-brand-lilac" /> : <WhatsappLogo size={22} weight="fill" className="text-brand-lilac" />}
               Batch {channel === "email" ? "Email" : "WhatsApp"} Dispatch
             </h2>
-            <p className="text-[#595955] text-sm mt-1">Send personalized messages to multiple leads in one pass.</p>
+            <p className="text-soft text-sm mt-1">Send personalized messages to multiple leads in one pass.</p>
 
             <div className="flex items-center gap-2 mt-4">
               <button onClick={() => setChannel("email")} className={`chip ${channel === "email" ? "chip-red" : ""}`} data-testid="batch-channel-email">
@@ -163,7 +163,7 @@ export default function BatchComposerModal({ open, onClose, defaultChannel = "em
 
             <div className="grid lg:grid-cols-5 gap-5 mt-5">
               {/* Left — lead picker */}
-              <div className="lg:col-span-2 surface bg-[#F6F8FC] p-4 flex flex-col min-h-[380px]">
+              <div className="lg:col-span-2 surface bg-white/[0.04] p-4 flex flex-col min-h-[380px]">
                 <div className="flex items-center justify-between mb-3">
                   <div>
                     <div className="mono-accent">recipients</div>
@@ -180,15 +180,15 @@ export default function BatchComposerModal({ open, onClose, defaultChannel = "em
                   onChange={(e) => setSearch(e.target.value)}
                   data-testid="batch-search-input"
                 />
-                <div className="flex-1 overflow-y-auto -mx-1 px-1 divide-y divide-[#E5E2D3]">
+                <div className="flex-1 overflow-y-auto -mx-1 px-1 divide-y divide-border">
                   {filtered.map((l) => {
                     const checked = selected.has(l.id);
                     return (
                       <label key={l.id} className="flex items-start gap-2 py-2 cursor-pointer group" data-testid={`batch-lead-${l.id}`}>
-                        <input type="checkbox" checked={checked} onChange={() => toggleOne(l.id)} className="mt-1 accent-[#4F46E5]" />
+                        <input type="checkbox" checked={checked} onChange={() => toggleOne(l.id)} className="mt-1 accent-violet-500" />
                         <div className="flex-1 min-w-0 text-xs">
-                          <div className="font-semibold text-[#0A0A0A]">{l.full_name}</div>
-                          <div className="text-[#595955] truncate font-mono">
+                          <div className="font-semibold text-foreground">{l.full_name}</div>
+                          <div className="text-soft truncate font-mono">
                             {channel === "email" ? l.email : l.phone} {l.company && `· ${l.company}`}
                           </div>
                         </div>
@@ -196,7 +196,7 @@ export default function BatchComposerModal({ open, onClose, defaultChannel = "em
                     );
                   })}
                   {filtered.length === 0 && (
-                    <div className="py-8 text-center text-[#6B6B66] text-sm italic">
+                    <div className="py-8 text-center text-faint text-sm italic">
                       No leads match{channel === "email" ? " (with email)" : " (with phone)"}.
                     </div>
                   )}
@@ -226,7 +226,7 @@ export default function BatchComposerModal({ open, onClose, defaultChannel = "em
                     <button
                       key={t}
                       onClick={() => setBody((b) => b + " " + t)}
-                      className="chip chip-red hover:border-[#4F46E5]"
+                      className="chip chip-red hover:border-brand-violet"
                     >
                       {t}
                     </button>
@@ -234,31 +234,31 @@ export default function BatchComposerModal({ open, onClose, defaultChannel = "em
                 </div>
 
                 {previewLead && (
-                  <div className="surface bg-[#F6F8FC] p-3">
+                  <div className="surface bg-white/[0.04] p-3">
                     <div className="mono-accent mb-1.5">preview · {previewLead.full_name}</div>
                     {channel === "email" && subject && (
-                      <div className="text-sm font-semibold text-[#0A0A0A] mb-1">{renderPreview(subject)}</div>
+                      <div className="text-sm font-semibold text-foreground mb-1">{renderPreview(subject)}</div>
                     )}
-                    <div className="text-xs text-[#595955] whitespace-pre-wrap font-mono max-h-[110px] overflow-y-auto">
+                    <div className="text-xs text-soft whitespace-pre-wrap font-mono max-h-[110px] overflow-y-auto">
                       {renderPreview(body)}
                     </div>
                   </div>
                 )}
 
                 {result && (
-                  <div className="surface bg-[#F4FDF9] border-[#10B981]/40 p-4" data-testid="batch-result">
+                  <div className="surface bg-emerald-500/10 border-emerald-400/40 p-4" data-testid="batch-result">
                     <div className="flex items-center gap-2 font-display font-bold text-sm">
-                      <CheckCircle size={16} weight="fill" className="text-[#10B981]" /> {result.sent > 0 ? "Dispatch complete" : "Nothing was sent"}
+                      <CheckCircle size={16} weight="fill" className="text-emerald-400" /> {result.sent > 0 ? "Dispatch complete" : "Nothing was sent"}
                     </div>
                     <div className="grid grid-cols-4 gap-2 mt-3 text-center">
                       <Stat label="sent" value={result.sent} color="#10B981" />
                       <Stat label="failed" value={result.failed || 0} color="#DC2626" />
-                      <Stat label="skipped" value={result.skipped || 0} color="#595955" />
+                      <Stat label="skipped" value={result.skipped || 0} color="#9CA3AF" />
                       <Stat label="not attempted" value={result.not_attempted || 0} color="#F59E0B" />
                     </div>
                     {result.blocked && (
-                      <div className="mt-3 text-xs text-[#595955] flex gap-1.5 items-start" role="alert" data-testid="batch-blocked">
-                        <Warning size={12} className="text-[#F59E0B] flex-shrink-0 mt-0.5" />
+                      <div className="mt-3 text-xs text-soft flex gap-1.5 items-start" role="alert" data-testid="batch-blocked">
+                        <Warning size={12} className="text-amber-400 flex-shrink-0 mt-0.5" />
                         {blockText(result.blocked.code) || result.blocked.message}
                       </div>
                     )}
@@ -267,7 +267,7 @@ export default function BatchComposerModal({ open, onClose, defaultChannel = "em
               </div>
             </div>
 
-            <div className="flex gap-3 mt-6 items-center border-t border-[#D3DBEA] pt-4">
+            <div className="flex gap-3 mt-6 items-center border-t border-border pt-4">
               <button onClick={dispatch} disabled={loading || selected.size === 0} className="btn-primary" data-testid="batch-dispatch-button">
                 {loading ? <><CircleNotch size={14} className="spin-slow" /> DISPATCHING...</> : <><PaperPlaneTilt size={14} weight="fill" /> DISPATCH TO {selected.size} LEAD{selected.size !== 1 ? "S" : ""}</>}
               </button>

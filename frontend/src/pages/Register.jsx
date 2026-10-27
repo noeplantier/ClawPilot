@@ -3,7 +3,8 @@ import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
-import { Lightning, ArrowRight } from "@phosphor-icons/react";
+import { ArrowRight } from "@phosphor-icons/react";
+import Logo from "@/components/Logo";
 import Footer from "@/components/Footer";
 
 export default function Register() {
@@ -34,20 +35,19 @@ export default function Register() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#E9EEF7] grid-bg px-6 py-12 relative">
+    <div className="min-h-screen flex items-center justify-center grid-bg grain px-6 py-12 relative overflow-hidden">
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-md surface p-10 relative z-10"
       >
-        <Link to="/" className="flex items-center gap-2 mb-8" data-testid="brand-logo">
-          <Lightning size={22} weight="fill" className="text-[#4F46E5]" />
-          <span className="font-display font-black tracking-tight text-xl">OutreachOS</span>
+        <Link to="/" className="inline-flex mb-8" data-testid="brand-logo" aria-label="Plantiers - OutreachOS">
+          <Logo />
         </Link>
 
         <div className="mono-accent mb-3">// new.operator · init</div>
-        <h1 className="text-3xl font-black tracking-tighter">Forge your command center</h1>
-        <p className="text-[#5F5F5A] mt-2">Provision an organization and deploy your first agents.</p>
+        <h1 className="text-3xl font-extrabold tracking-tighter">Forge your <span className="gradient-word">command center</span></h1>
+        <p className="text-soft mt-2">Provision an organization and deploy your first agents.</p>
 
         <form onSubmit={submit} className="mt-8 space-y-4" data-testid="register-form">
           <div>
@@ -72,9 +72,9 @@ export default function Register() {
           </button>
         </form>
 
-        <p className="mt-6 text-sm text-[#5F5F5A]">
+        <p className="mt-6 text-sm text-soft">
           Existing operator?{" "}
-          <Link to="/login" className="text-[#4338CA] underline" data-testid="goto-login-link">
+          <Link to="/login" className="text-brand-lilac underline" data-testid="goto-login-link">
             Sign in →
           </Link>
         </p>

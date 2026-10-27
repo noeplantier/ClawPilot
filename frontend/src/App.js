@@ -6,6 +6,7 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
 import Layout from "@/components/Layout";
+import { LogoMark } from "@/components/Logo";
 import { pages } from "@/lib/routes";
 const Dashboard = lazy(pages.dashboard);
 const Campaigns = lazy(pages.campaigns);
@@ -28,7 +29,7 @@ const Terms = lazy(() => import("@/pages/legal/Terms"));
 
 function Protected({ children }) {
   const { user, loading } = useAuth();
-  if (loading) return <div className="min-h-screen bg-[#E9EEF7] grid-bg flex items-center justify-center text-[#4F46E5] font-mono mono-accent">// booting.command.center</div>;
+  if (loading) return <div className="min-h-screen grid-bg flex flex-col items-center justify-center gap-4"><LogoMark decorative className="h-14" /><span className="mono-accent" role="status">// booting.command.center</span></div>;
   if (!user) return <Navigate to="/login" replace />;
   return children;
 }
@@ -45,7 +46,7 @@ function App() {
     <div className="App">
       <BrowserRouter>
         <AuthProvider>
-          <Toaster theme="light" position="top-right" toastOptions={{ style: { background: "#FFFFFF", border: "1px solid #D3DBEA", color: "#0A0A0A", fontFamily: "IBM Plex Sans" } }} />
+          <Toaster theme="dark" position="top-right" toastOptions={{ style: { background: "#120F1E", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.95)", fontFamily: "Inter, system-ui, sans-serif" } }} />
           <Suspense fallback={<div className="p-10 font-mono mono-accent" role="status">// loading</div>}>
           <Routes>
             <Route path="/" element={<Navigate to="/app/dashboard" replace />} />

@@ -10,7 +10,7 @@ import {
 // while the next answer is on its way; answers are kept per text, so going back is instant. Only the typed text leaves the browser.
 
 const DEBOUNCE_MS = 120;
-const LIST = "bg-white border border-indigo-100 ring-1 ring-indigo-500/10 shadow-[0_14px_44px_-12px_rgba(30,41,90,0.5)]"; // opaque: the panel below must not show through
+const LIST = "bg-card border border-white/10 ring-1 ring-indigo-500/10 shadow-[0_14px_44px_-12px_rgba(30,41,90,0.5)]"; // opaque: the panel below must not show through
 
 // The communes API first (official, ranked by population); the address API when it fails or knows nothing of the text.
 // Throws only when no service could answer at all: an empty list is a real answer ("no such town").
@@ -40,7 +40,7 @@ export async function lookup(query, signal) {
 function Counts({ counts }) {
   const text = countsText(counts);
   if (!text) return null;
-  if (counts.total === 0) return <span className="text-[11px] italic text-[#6B7690] shrink-0" data-testid="city-counts" data-tier="none">{text}</span>;
+  if (counts.total === 0) return <span className="text-[11px] italic text-faint shrink-0" data-testid="city-counts" data-tier="none">{text}</span>;
   const tier = counts.hot > 0 ? "hot" : counts.warm > 0 ? "warm" : "cold";
   return (
     <span className={`chip chip-${tier} shrink-0`} data-testid="city-counts" data-tier={tier} title={`${counts.hot} hot, ${counts.warm} warm, ${counts.cold} cold`}>
@@ -133,7 +133,7 @@ export default function CityBox({ stats, positions, onPick, className = "" }) {
 
   return (
     <div ref={box} className={`relative ${className}`} data-testid="city-box">
-      <MapPin size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7690] pointer-events-none" aria-hidden="true" />
+      <MapPin size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" aria-hidden="true" />
       <input
         ref={input} className="neo-input w-full !pl-9 !pr-9" placeholder="Go to a town or a postcode… (e.g. Lyon)" value={text} autoComplete="off" spellCheck="false"
         role="combobox" aria-expanded={open} aria-controls={listId} aria-autocomplete="list" aria-label="Go to a town"
@@ -141,9 +141,9 @@ export default function CityBox({ stats, positions, onPick, className = "" }) {
         onChange={(e) => edit(e.target.value)} onFocus={(e) => { setOpen(true); e.target.select(); }} onClick={() => setOpen(true)} onKeyDown={onKeyDown}
         data-testid="map-goto"
       />
-      {phase === "loading" && <CircleNotch size={16} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-[#4F46E5]" aria-hidden="true" data-testid="city-loading" />}
+      {phase === "loading" && <CircleNotch size={16} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-brand-lilac" aria-hidden="true" data-testid="city-loading" />}
       {phase !== "loading" && text && (
-        <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-indigo-50" onClick={clear} aria-label="Clear the town" data-testid="city-clear">
+        <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-white/10" onClick={clear} aria-label="Clear the town" data-testid="city-clear">
           <X size={14} />
         </button>
       )}
@@ -154,32 +154,32 @@ export default function CityBox({ stats, positions, onPick, className = "" }) {
             <li key={e.id} role="presentation">
               <button
                 type="button" role="option" id={`${listId}-${i}`} aria-selected={i === active} tabIndex={-1}
-                className={`w-full text-left px-3 py-2 text-sm flex gap-2 items-center ${i === active ? "bg-indigo-50" : "hover:bg-indigo-50"}`}
+                className={`w-full text-left px-3 py-2 text-sm flex gap-2 items-center ${i === active ? "bg-white/10" : "hover:bg-white/10"}`}
                 onMouseDown={(ev) => ev.preventDefault()} onMouseEnter={() => setActive(i)} onClick={() => choose(e)} data-testid={`map-city-${i}`}
               >
-                <MapPin size={14} className="shrink-0 text-[#4F46E5]" aria-hidden="true" />
+                <MapPin size={14} className="shrink-0 text-brand-lilac" aria-hidden="true" />
                 <span className="min-w-0 flex-1">
                   <span className="font-semibold block truncate">{e.label}</span>
-                  {e.detail && <span className="block text-[11px] text-[#6B7690] truncate" data-testid="city-detail">{e.detail}</span>}
+                  {e.detail && <span className="block text-[11px] text-faint truncate" data-testid="city-detail">{e.detail}</span>}
                 </span>
                 <Counts counts={e.counts} />
               </button>
             </li>
           ))}
           {empty && phase !== "error" && (
-            <li role="presentation" className="px-3 py-2 text-sm text-[#5F5F5A]" data-testid="city-none">
+            <li role="presentation" className="px-3 py-2 text-sm text-soft" data-testid="city-none">
               {/^\d+$/.test(folded) && folded.length < 5 ? "Type the 5 digits of the postcode." : `No town matches “${query.trim()}”.`}
             </li>
           )}
           {phase === "error" && (
-            <li role="presentation" className="px-3 py-2 text-xs text-[#92400E]" data-testid="city-error">
+            <li role="presentation" className="px-3 py-2 text-xs text-amber-300" data-testid="city-error">
               The official town lists did not answer{items.length ? ": showing only the towns of your leads." : ". Check your connection and type again."}
             </li>
           )}
         </ul>
       )}
       <p className="sr-only" role="status" aria-live="polite">{open && searching && phase !== "loading" ? `${items.length} town${items.length === 1 ? "" : "s"} found` : ""}</p>
-      {note && <p className="text-xs text-[#92400E] mt-1" role="status" data-testid="city-note">{note}</p>}
+      {note && <p className="text-xs text-amber-300 mt-1" role="status" data-testid="city-note">{note}</p>}
     </div>
   );
 }

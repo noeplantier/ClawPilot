@@ -24,7 +24,7 @@ export default function FocusPanel() {
           {live.updatedAt ? `Live · updated ${live.updatedAt.toLocaleTimeString()} · every ${LIVE_MS / 1000} s` : "Loading…"}
         </p>
       </div>
-      {live.error && <div role="alert" className="text-sm text-[#991B1B]" data-testid="focus-error">{live.error}</div>}
+      {live.error && <div role="alert" className="text-sm text-red-300" data-testid="focus-error">{live.error}</div>}
       {empty && <p className="text-sm text-muted-foreground" data-testid="focus-empty">{EMPTY_FOCUS}</p>}
       {d && !empty && (
         <div className="grid lg:grid-cols-2 gap-4">

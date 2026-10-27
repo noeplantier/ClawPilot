@@ -3,13 +3,14 @@
     <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <meta name="theme-color" content="#0A0A0A" />
+        <meta name="theme-color" content="#07060B" />
         <title>Plantiers - OutreachOS | AI-powered lead generation for software agencies</title>
         <meta name="description" content="Detect companies that need digital solutions, qualify them, and run compliant outreach campaigns. Built by Plantiers - Software Engineering." />
         <meta name="keywords" content="lead generation, B2B outreach, AI sales intelligence, digital agency, software engineering" />
         <meta name="author" content="Plantiers - Software Engineering" />
         <meta name="application-name" content="Plantiers - OutreachOS" />
-        <link rel="icon" href="%PUBLIC_URL%/favicon.svg" type="image/svg+xml" />
+        <link rel="icon" type="image/png" sizes="32x32" href="%PUBLIC_URL%/favicon-32.png" />
+        <link rel="icon" type="image/png" sizes="192x192" href="%PUBLIC_URL%/icon-192.png" />
         <link rel="apple-touch-icon" href="%PUBLIC_URL%/apple-touch-icon.png" />
         <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
 
@@ -17,8 +18,10 @@
         <meta property="og:site_name" content="Plantiers - OutreachOS" />
         <meta property="og:title" content="Plantiers - OutreachOS | AI-powered lead generation for software agencies" />
         <meta property="og:description" content="Detect companies that need digital solutions, qualify them, and run compliant outreach campaigns. Built by Plantiers - Software Engineering." />
-        <meta property="og:image" content="%PUBLIC_URL%/icon-512.png" />
-        <meta name="twitter:card" content="summary" />
+        <meta property="og:image" content="%PUBLIC_URL%/og-image.jpg" />
+        <meta property="og:image:width" content="1200" />
+        <meta property="og:image:height" content="630" />
+        <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:title" content="Plantiers - OutreachOS | AI-powered lead generation for software agencies" />
         <meta name="twitter:description" content="Detect companies that need digital solutions, qualify them, and run compliant outreach campaigns. Built by Plantiers - Software Engineering." />
 
@@ -51,11 +54,6 @@
 
         <!-- The API sleeps on a free host: wake it (and open its connection) while the scripts download, so the first request finds it up. -->
         <script>(function(){var u="%REACT_APP_BACKEND_URL%";if(!u||u.indexOf("%")!==-1)return;var l=document.createElement("link");l.rel="preconnect";l.href=u;document.head.appendChild(l);try{fetch(u+"/api/health",{mode:"no-cors",cache:"no-store",keepalive:true})}catch(e){}})();</script>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-        <!-- Fonts load without blocking the first paint (system fonts show first, display=swap swaps them in). -->
-        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo:wght@400;500;700;900&amp;family=IBM+Plex+Sans:wght@300;400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" media="print" onload="this.media='all'" />
-        <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo:wght@400;500;700;900&amp;family=IBM+Plex+Sans:wght@300;400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" /></noscript>
         <script>window.addEventListener("error",function(e){if(e.error instanceof DOMException&&e.error.name==="DataCloneError"&&e.message&&e.message.includes("PerformanceServerTiming")){e.stopImmediatePropagation();e.preventDefault()}},true);</script>
     </head>
     <body>
