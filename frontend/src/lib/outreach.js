@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { describeApiError } from "@/lib/outreachFormat";
+import * as swr from "@/lib/swr";
 
 // The API enforces roles; the UI only hides what would be refused anyway.
 export const canDecide = (user) => ["owner", "admin"].includes(user && user.role);
@@ -85,28 +86,55 @@ export const outboundApi = {
   simulate: (id, event, text) => api.post(`/outbound/${id}/simulate`, { event, text: text || null }).then((r) => r.data),
 };
 
-// useAsync(fn, deps) -> { data, error, loading, reload }. `error` is already a readable sentence.
+// useAsync(fn, deps, { key, intervalMs }) -> { data, error, loading, stale, updatedAt, reload }. `error` is already a readable sentence.
 // A stale response (older request finishing late, or an unmounted screen) is ignored.
-export function useAsync(fn, deps) {
-  const [state, setState] = useState({ data: null, error: null, loading: true });
+// `key` turns on the data cache (lib/swr.js): the last answer for that key is shown at once while the server is asked again, so a
+// page that was visited, or a reload, never starts from a blank screen. `intervalMs` refreshes the data by itself while the tab is
+// shown (and as soon as it is shown again); a refresh that fails keeps what is on screen and sets `stale`.
+export function useAsync(fn, deps, { key = null, intervalMs = 0 } = {}) {
+  const [state, setState] = useState(() => {
+    const hit = swr.read(key);
+    return { data: hit ? hit.data : null, error: null, loading: !hit, stale: false, updatedAt: hit ? new Date(hit.at) : null };
+  });
   const ticket = useRef(0);
+  const keyRef = useRef(key);
+  keyRef.current = key;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const run = useCallback(fn, deps);
-  const reload = useCallback(async () => {
+  // mode: "deps" (first load or another query), "manual" (a person asked) or "poll" (the timer).
+  const load = useCallback(async (mode) => {
     const mine = ++ticket.current;
-    setState((s) => ({ ...s, loading: true, error: null }));
+    if (mode !== "poll") {
+      const cached = mode === "deps" ? swr.read(keyRef.current) : null;
+      setState((s) => (cached
+        ? { data: cached.data, error: null, loading: false, stale: false, updatedAt: new Date(cached.at) }
+        : { ...s, loading: true, error: null }));
+    }
     try {
       const data = await run();
-      if (mine === ticket.current) setState({ data, error: null, loading: false });
+      if (mine !== ticket.current) return;
+      swr.write(keyRef.current, data);
+      setState({ data, error: null, loading: false, stale: false, updatedAt: new Date() });
     } catch (e) {
-      if (mine === ticket.current) setState({ data: null, error: describeApiError(e), loading: false });
+      if (mine !== ticket.current) return;
+      setState((s) => (mode !== "manual" && s.data !== null
+        ? { ...s, loading: false, stale: true }
+        : { data: null, error: describeApiError(e), loading: false, stale: false, updatedAt: null }));
     }
   }, [run]);
+  const reload = useCallback(() => load("manual"), [load]);
   useEffect(() => {
-    reload();
+    load("deps");
     return () => {
       ticket.current += 1;
     };
-  }, [reload]);
+  }, [load]);
+  useEffect(() => {
+    if (!intervalMs) return undefined;
+    const tick = () => { if (!document.hidden) load("poll"); };
+    const id = setInterval(tick, intervalMs);
+    document.addEventListener("visibilitychange", tick);
+    return () => { clearInterval(id); document.removeEventListener("visibilitychange", tick); };
+  }, [load, intervalMs]);
   return { ...state, reload };
 }

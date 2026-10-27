@@ -1,27 +1,21 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { ArrowsClockwise } from "@phosphor-icons/react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { canDecide, dashboardApi, outboundApi, useAsync } from "@/lib/outreach";
+import { LIVE_MS } from "@/lib/live";
 import { describeApiError } from "@/lib/outreachFormat";
 import { ErrorBlock, LoadingBlock } from "@/components/outreach/States";
 import FocusPanel from "@/components/outreach/FocusPanel";
 import { ActivityChart, CampaignHealth, GeoDistribution, Inbox, KpiStrip, LimitsCompliance, LiveSignals, TopSignals, Widget } from "@/components/dashboard/Widgets";
 
-const REFRESH_MS = 30000;
-
 export default function Dashboard() {
   const { user } = useAuth();
-  const page = useAsync(() => dashboardApi.overview(), []);
+  // Live: on screen at once from the last answer, refreshed every few seconds while the tab is visible (and when it is shown again).
+  const page = useAsync(() => dashboardApi.overview(), [], { key: "dashboard", intervalMs: LIVE_MS });
   const [busy, setBusy] = useState(false);
   const { reload } = page;
-
-  // "Live": refresh every 30 s while the tab is visible, keeping what is on screen until the new data arrives.
-  useEffect(() => {
-    const id = setInterval(() => { if (!document.hidden) reload(); }, REFRESH_MS);
-    return () => clearInterval(id);
-  }, [reload]);
 
   const togglePause = async () => {
     setBusy(true);

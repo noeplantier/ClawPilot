@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { useAsync } from "@/lib/outreach";
+import { LIVE_MS } from "@/lib/live";
 import { hasAnyValue } from "@/lib/chartMath";
 import { AreaLineChart, HBarChart, VBarChart } from "@/components/charts/SvgCharts";
 import { EmptyBlock, ErrorBlock, LoadingBlock } from "@/components/outreach/States";
@@ -15,13 +16,10 @@ function Panel({ kicker, title, children }) {
 }
 
 export default function Analytics() {
-  const [data, setData] = useState(null);
-  const [error, setError] = useState(null);
-  const load = () => {
-    setError(null);
-    api.get("/analytics/overview").then((r) => setData(r.data)).catch(() => setError("Could not load the analytics. Try again."));
-  };
-  useEffect(load, []);
+  const page = useAsync(() => api.get("/analytics/overview").then((r) => r.data), [], { key: "analytics", intervalMs: LIVE_MS });
+  const data = page.data;
+  const load = page.reload;
+  const error = page.error ? "Could not load the analytics. Try again." : null;
 
   if (error) return <div className="p-6 md:p-10"><ErrorBlock message={error} onRetry={load} /></div>;
   if (!data) return <div className="p-6 md:p-10"><LoadingBlock label="Loading analytics…" /></div>;

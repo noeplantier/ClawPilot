@@ -9,7 +9,7 @@ import { useLive } from "@/lib/live";
 
 export default function SystemHealth() {
   const { user } = useAuth();
-  const page = useLive(() => systemApi.health(), [], { intervalMs: 15000 });
+  const page = useLive(() => systemApi.health(), [], { intervalMs: 15000, key: "system:health" });
   const [probe, setProbe] = useState(null);
   const [probing, setProbing] = useState(false);
   const [probeError, setProbeError] = useState(null);
