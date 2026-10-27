@@ -115,6 +115,9 @@ npm run e2e                    # Playwright, API réelle démarrée + build avec
 - Recherche de ville de la carte : `components/outreach/CityBox.jsx` + `lib/cityComplete.js` (pur, testé). Les compteurs de leads par ville
   viennent de `GET /api/map/cities` (jumeau SQL de la chaleur, `repositories/prospect_repo.city_heat_rows`), jamais recalculés dans le
   navigateur ; sans compteurs chargés, rien n'est affiché (pas de 0 inventé). Voir `docs/map-search.md`.
+- Données : `useAsync(fn, deps, { key, intervalMs })` et `useLive(fn, deps, { key })` affichent tout de suite la dernière réponse (`lib/swr.js`, vidé à la
+  déconnexion) puis la remplacent par celle du serveur, et se rafraîchissent seuls tant que l'onglet est visible. Toute nouvelle page de données reçoit une
+  `key` et un `intervalMs`. Les écrans sont déclarés dans `lib/routes.js` (préchargés). Voir `docs/performance.md`.
 - Tests Jest sans dépendance ajoutée (`react-dom/client` + `act`, API mockée) ; l'alias `@/` et react-router v7 sont
   mappés dans `craco.config.js` (le Jest 27 de CRA ignore le champ `exports`).
 

@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { api } from "@/lib/api";
+import { useAsync } from "@/lib/outreach";
+import { LIVE_MS } from "@/lib/live";
 import { toast } from "sonner";
 import {
   Plus, Play, Pause, Trash, Target, PaperPlaneTilt, Eye, ChatCircleDots, Rocket, X, ArrowRight, ArrowSquareOut, Users,
@@ -17,21 +19,14 @@ const STATUS_CHIP = {
 };
 
 export default function Campaigns() {
-  const [list, setList] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  // Live: the last answer at once, refreshed every few seconds while the tab is visible.
+  const campaigns = useAsync(() => api.get("/campaigns").then((r) => r.data), [], { key: "campaigns", intervalMs: LIVE_MS });
+  const list = campaigns.data || [];
+  const { loading, error } = campaigns;
+  const load = campaigns.reload;
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [drawerId, setDrawerId] = useState(null);
-
-  const load = () => {
-    setLoading(true);
-    return api.get("/campaigns").then((r) => { setList(r.data); setError(null); })
-      .catch((e) => setError(e?.response?.data?.detail || "Campaigns are temporarily unavailable."))
-      .finally(() => setLoading(false));
-  };
-
-  useEffect(() => { load(); }, []);
 
   const create = async (payload) => {
     await api.post("/campaigns", payload);

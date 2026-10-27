@@ -4,3 +4,8 @@ import { TextDecoder, TextEncoder } from "util";
 
 global.TextEncoder = global.TextEncoder || TextEncoder;
 global.TextDecoder = global.TextDecoder || TextDecoder;
+
+// The data cache is global to a page: every test starts without what a previous one cached.
+import { clear as clearCache } from "@/lib/swr";
+
+beforeEach(() => { clearCache(); });

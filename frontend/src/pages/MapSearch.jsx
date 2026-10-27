@@ -8,6 +8,7 @@ import "leaflet/dist/leaflet.css";
 import { ArrowsOut, ArrowsIn, CaretDoubleRight, CaretDoubleLeft, CaretDown, CaretUp, Eye, EyeSlash, MagnifyingGlass, X } from "@phosphor-icons/react";
 import { useAuth } from "@/contexts/AuthContext";
 import { campaignsApi, canDecide, importsApi, mapApi, prospectsApi, useAsync } from "@/lib/outreach";
+import * as swr from "@/lib/swr";
 import { describeApiError } from "@/lib/outreachFormat";
 import { isTypingTarget, readPref, writePref } from "@/lib/uiPrefs";
 import {
@@ -140,8 +141,9 @@ function MapView({ canImport }) {
   const [overlaysHidden, setOverlaysHidden] = useState(false); // every panel hidden: just the map
   const [importOpen, setImportOpen] = useState(true); // the import form of the selection, expanded or minimised
   const [full, setFull] = useState(false);
-  const [cityStats, setCityStats] = useState(null); // my leads per town, counted by the server (null until loaded)
-  const [mine, setMine] = useState([]);
+  // my leads per town, counted by the server (null until loaded); the last answer is shown at once, then replaced
+  const [cityStats, setCityStats] = useState(() => { const hit = swr.read("map:cities"); return hit ? hit.data : null; });
+  const [mine, setMine] = useState(() => { const hit = swr.read("map:prospects"); return hit ? hit.data : []; });
   const [showMine, setShowMine] = useState(true);
   // A search result is a place, not a lead yet (no score): it is drawn only with a published phone AND e-mail, unless asked.
   const [showAllFound, setShowAllFound] = useState(() => readPref("map.allfound", false));
@@ -219,11 +221,12 @@ function MapView({ canImport }) {
     let alive = true;
     const pull = () => {
       // the counts of the town search ride on the same poll; a failure keeps the last counts rather than showing zeros
-      mapApi.cities().then((rows) => { if (alive) setCityStats(rows); }).catch(() => {});
+      mapApi.cities().then((rows) => { swr.write("map:cities", rows); if (alive) setCityStats(rows); }).catch(() => {});
       return mapApi.prospects().then((rows) => {
         if (!alive) return;
         setFresh(newIds(previous.current, rows));
         previous.current = rows;
+        swr.write("map:prospects", rows);
         setMine(rows);
         setUpdatedAt(new Date());
         setStale(false);

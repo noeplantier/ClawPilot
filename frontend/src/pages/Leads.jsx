@@ -46,7 +46,7 @@ export default function Leads() {
   const [scoringError, setScoringError] = useState(null);
 
   // Real leads, hottest first (real information + score), refreshed in the background.
-  const live = useLive(() => api.get("/leads", { params: { search, sort: "heat" } }).then((r) => r.data), [search]);
+  const live = useLive(() => api.get("/leads", { params: { search, sort: "heat" } }).then((r) => r.data), [search], { key: `leads:${search || ""}` });
   const liveReload = live.reload;
   const everyLead = useMemo(() => live.data || [], [live.data]);
   const { shown: reachable, empty } = useMemo(() => splitEmpty(everyLead, showEmpty), [everyLead, showEmpty]);
