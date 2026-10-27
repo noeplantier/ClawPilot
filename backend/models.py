@@ -913,6 +913,13 @@ class MapProspectOut(BaseModel):
     signals: List[str] = Field(default_factory=list)  # keys detected now; a dismissed signal does not count
     created_at: Optional[datetime] = None
     heat: Optional[dict] = None  # {value, tier, info_pct}: the hottest prospects are listed first on the map
+    # The map shows only `map_ready` leads: hot, with a phone and an e-mail really known (the server decides).
+    map_ready: bool = False
+    has_phone: bool = False
+    has_website: bool = False
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    website: Optional[str] = None
 
 
 class CityHeatOut(BaseModel):

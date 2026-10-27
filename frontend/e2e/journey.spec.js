@@ -162,8 +162,8 @@ test("the map shows real places from the search, marks what is published and nev
   await page.route("**/api/map/prospects", (route) =>
     route.fulfill({
       json: [
-        { id: "p1", name: "Chez Marcel", city: "Lyon", lat: 45.7641, lon: 4.8358, review_status: "pending", has_email: true, external_id: "node/1" },
-        { id: "p2", name: "Déjà prospect", city: "Lyon", lat: 45.762, lon: 4.83, review_status: "approved", has_email: false, external_id: null },
+        { id: "p1", name: "Chez Marcel", city: "Lyon", lat: 45.7641, lon: 4.8358, review_status: "pending", has_email: true, external_id: "node/1", map_ready: true, has_phone: true, has_website: true, phone: "+33 4 78 12 34 56", email: "contact@chez-marcel.example", website: "https://chez-marcel.example", heat: { value: 82, tier: "hot", info_pct: 88 } },
+        { id: "p2", name: "Déjà prospect", city: "Lyon", lat: 45.762, lon: 4.83, review_status: "approved", has_email: false, external_id: null, map_ready: false, has_phone: false, has_website: false },
       ],
     }));
   // The search is a persisted job: create, poll (queued -> running -> succeeded), read the places. The API is faked at the network edge.
@@ -188,11 +188,16 @@ test("the map shows real places from the search, marks what is published and nev
   await expect(page.getByTestId("map-empty")).toBeVisible();
   await page.getByTestId("map-search").click();
   await expect(page.getByTestId("map-job")).toContainText("2 places saved from OpenStreetMap");
-  // "Chez Marcel" is already one of my prospects: it is drawn as a prospect (square), not offered again as a search result.
-  await expect(page.getByTestId("map-mine-toggle")).toContainText("2 prospects on the map: 1 to review, 1 approved, 0 rejected");
+  // "Chez Marcel" is already one of my prospects: it is drawn as a hot lead (square), not offered again as a search result.
+  // "Déjà prospect" is not hot and has no phone or e-mail: it stays out of the map.
+  await expect(page.getByTestId("map-mine-toggle")).toContainText("1 hot lead with a phone and an e-mail, 1 with a website.");
   await expect(page.getByTestId("map-summary")).toHaveText("1 place: 0 with a published e-mail, 0 with a phone, 0 with a website.");
-  await expect(page.locator(".map-pin")).toHaveCount(3); // 2 of my prospects + 1 new place
-  await page.locator(".map-pin").nth(2).dispatchEvent("click"); // the search result (drawn last)
+  await expect(page.getByTestId("map-found-toggle")).toContainText("0 of 1 shown"); // the new place published neither a phone nor an e-mail
+  await expect(page.locator(".map-pin")).toHaveCount(1); // only the hot lead
+  await showAllFound(page);
+  await expect(page.getByTestId("map-found-toggle")).toContainText("1 of 1 shown");
+  await expect(page.locator(".map-pin")).toHaveCount(2); // the hot lead + the place, now asked for
+  await page.locator(".map-pin").nth(1).dispatchEvent("click"); // the search result (drawn last)
   await expect(page.locator(".leaflet-popup-content")).toContainText("source on OpenStreetMap");
   await page.getByTestId("map-select-all").click();
   await expect(page.getByTestId("map-import-off")).toContainText("FEATURE_PROSPECT_IMPORT"); // import stays closed without its flag
@@ -242,12 +247,14 @@ test("the prospects map clusters nearby prospects, filters them, refreshes by po
   });
   await page.route(/(tile\.openstreetmap\.org|basemaps\.cartocdn\.com)/, (route) =>
     route.fulfill({ contentType: "image/png", body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64") }));
-  const base = { has_email: false, external_id: null, country: "FR", created_at: "2026-10-03T10:00:00Z" };
+  const base = { has_email: false, external_id: null, country: "FR", created_at: "2026-10-03T10:00:00Z", map_ready: true, has_phone: true, has_website: false };
   const rows = [
     { ...base, id: "a1", name: "Boulangerie Un", city: "Lyon", lat: 45.7641, lon: 4.8358, review_status: "approved", vertical: "bakery", score: 70, signals: ["no_website"] },
     { ...base, id: "a2", name: "Boulangerie Deux", city: "Lyon", lat: 45.7643, lon: 4.8361, review_status: "pending", vertical: "bakery", score: null, signals: [] },
     { ...base, id: "a3", name: "Hôtel Trois", city: "Lyon", lat: 45.7642, lon: 4.8359, review_status: "approved", vertical: "hotel", score: 40, signals: ["outdated_technology"] },
     { ...base, id: "a4", name: "Café Lointain", city: "Paris", lat: 48.8566, lon: 2.3522, review_status: "approved", vertical: "restaurant", score: 55, signals: [] },
+    // not hot, or no phone or e-mail: the server says so, and the map leaves it out
+    { ...base, id: "a5", name: "Tiède Cinq", city: "Lyon", lat: 45.7644, lon: 4.8362, review_status: "approved", vertical: "bakery", score: 20, signals: [], map_ready: false, has_phone: false },
   ];
   let polled = 0;
   await page.route("**/api/map/prospects", (route) => { polled += 1; return route.fulfill({ json: rows }); });
@@ -257,6 +264,7 @@ test("the prospects map clusters nearby prospects, filters them, refreshes by po
   await page.route("**/api/campaigns/c-map/assign-leads", (route) => { assigned = route.request().postDataJSON(); return route.fulfill({ json: { id: "c-map" } }); });
 
   await page.goto("/app/map");
+  await expect(page.getByTestId("map-mine-toggle")).toContainText("4 hot leads with a phone and an e-mail, 0 with a website.");
   await expect(page.getByTestId("filter-summary")).toHaveText("4 prospects on the map.");
   await expect(page.locator(".map-cluster")).toHaveText("3"); // the three Lyon prospects merge; Paris is out of view
   await page.getByTestId("filter-vertical").selectOption("hotel");
@@ -268,7 +276,8 @@ test("the prospects map clusters nearby prospects, filters them, refreshes by po
   await page.getByTestId("filter-clear").click();
 
   await page.locator(".map-cluster").dispatchEvent("click");
-  await expect(page.getByTestId("map-mine-list")).toContainText("Cluster · 3 prospects");
+  await expect(page.getByTestId("map-mine-list")).toContainText("Cluster · 3 hot leads");
+  await expect(page.getByTestId("map-mine-list")).not.toContainText("Tiède Cinq");
   await expect(page.getByTestId("map-mine-list")).toContainText("not scored");
   await page.getByTestId("mine-row").nth(0).getByRole("checkbox").check();
   await page.getByTestId("mine-row").nth(1).getByRole("checkbox").check();
@@ -296,6 +305,9 @@ test("a reviewer dismisses a wrong signal: it reads as unknown, the score is rec
   await page.getByTestId("restore-no_website").click();
   await expect(page.getByTestId("signal-no_website").getByTestId("state-detected")).toBeVisible();
 });
+
+// Search results are drawn only with a published phone AND e-mail; this reveals the ones that published less.
+const showAllFound = (page) => page.getByTestId("map-found-toggle").getByRole("checkbox").check();
 
 const MAP_STUBS = async (page) => {
   await page.route("**/api/prospects/settings", async (route) => {
@@ -425,6 +437,7 @@ test("the import form of a map selection can be minimised and closed, so the who
   await page.route("**/api/map/search/j9/places", (route) => route.fulfill({ json: ONE_PLACE }));
   await page.goto("/app/map");
   await page.getByTestId("map-search").click();
+  await showAllFound(page);
   await page.getByTestId("map-select-all").click();
   await expect(page.getByTestId("map-import")).toContainText("Import 1 selected place");
   await expect(page.getByTestId("map-attest")).toBeVisible();
@@ -599,13 +612,15 @@ test("one click on a map point adds the business to the CRM, with the attestatio
   let sent = null;
   await page.route("**/api/map/places/add", async (route) => {
     sent = route.request().postDataJSON();
-    mine = [{ id: "p77", name: "Boulangerie Sept", city: "Lyon", lat: 45.76, lon: 4.835, review_status: "approved", has_email: false, external_id: "node/7" }];
+    mine = [{ id: "p77", name: "Boulangerie Sept", city: "Lyon", lat: 45.76, lon: 4.835, review_status: "approved", has_email: false, external_id: "node/7", map_ready: false, has_phone: false, has_website: false }];
     await route.fulfill({
       json: { lead_id: "p77", name: "Boulangerie Sept", created: true, review_status: "approved", in_crm: true, email: null, phone: null, website: null, email_found_on_site: false, website_checked: false, heat: null },
     });
   });
   await page.goto("/app/map");
   await page.getByTestId("map-search").click();
+  await expect(page.getByTestId("place-row")).toHaveCount(0); // it published no phone and no e-mail: not drawn by default
+  await showAllFound(page);
   await expect(page.getByTestId("place-row")).toContainText("Boulangerie Sept");
 
   await page.locator(".map-pin").first().dispatchEvent("click"); // the pin opens its popup
@@ -623,8 +638,8 @@ test("one click on a map point adds the business to the CRM, with the attestatio
   expect(sent).toMatchObject({ attestation: true, approve: true, check_website: false });
   expect(sent.place).toMatchObject({ external_id: "node/7", name: "Boulangerie Sept", lat: 45.76, lon: 4.835, source_url: "https://www.openstreetmap.org/node/7" });
   expect(sent.place.phone).toBeUndefined();
-  // The pin is now one of my prospects (a square) and is no longer offered as a search result.
-  await expect(page.getByTestId("map-mine-toggle")).toContainText("1 prospect on the map: 0 to review, 1 approved");
+  // It is now one of my prospects and is no longer offered as a search result; it is not a hot lead with a phone and an e-mail, so no square.
+  await expect(page.getByTestId("map-mine-toggle")).toContainText("No hot lead with a phone and an e-mail yet (1 prospect with a position");
 });
 
 async function apiGet(page, path) {

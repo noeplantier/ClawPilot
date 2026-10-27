@@ -512,8 +512,15 @@ async def list_positions(session: AsyncSession, account_id: uuid.UUID, limit: in
     for lead, fields, score in rows.all():
         lat, lon = fields.get("lat"), fields.get("lon")
         if isinstance(lat, (int, float)) and isinstance(lon, (int, float)) and -90 <= lat <= 90 and -180 <= lon <= 180:
+            values = {f: getattr(lead, f) for f in heat_rules.INFO_FIELDS}
             out.append(
                 {
+                    "phone": lead.phone if heat_rules.is_known(lead.phone) else None,
+                    "email": lead.email if heat_rules.is_known(lead.email) else None,
+                    "website": lead.website if heat_rules.is_known(lead.website) else None,
+                    "has_phone": heat_rules.is_known(lead.phone),
+                    "has_website": heat_rules.is_known(lead.website),
+                    "map_ready": heat_rules.is_map_ready(values, score),
                     "id": str(lead.id),
                     "name": lead.full_name,
                     "city": lead.city,
@@ -530,6 +537,8 @@ async def list_positions(session: AsyncSession, account_id: uuid.UUID, limit: in
                     "created_at": lead.created_at,
                 }
             )
+    # the leads the map shows come first (website, then heat), so the limit never cuts a hot lead for a cold one
+    out.sort(key=lambda p: (not p["map_ready"], not p["has_website"], -p["heat"]["value"]))
     return out[:limit]
 
 

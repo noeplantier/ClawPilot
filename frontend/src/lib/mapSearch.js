@@ -45,10 +45,23 @@ export const STATUS_LABEL = { pending: "to review", approved: "approved", reject
 // Source ids already imported: the search must not offer them a second time.
 export const knownIds = (mine) => new Set(mine.map((p) => p.external_id).filter(Boolean));
 
-export function mineSummary(mine) {
+// The map shows only the leads the server marked `map_ready`: hot, with a phone and an e-mail really known. The page never
+// recomputes that; the other prospects stay in the data so a place already imported is not offered a second time.
+export const readyOnly = (mine) => mine.filter((p) => p.map_ready === true);
+
+// A place found by the search is drawn only when it published BOTH a phone and an e-mail: nothing else can be reached
+// by a person. A missing value is unknown, never a default; the places left out are counted, not hidden silently.
+export const reachablePlace = (p) => Boolean(p && p.phone && p.email);
+
+export function readySummary(mine) {
   if (mine.length === 0) return "No prospect with a position yet.";
-  const by = (s) => mine.filter((p) => p.review_status === s).length;
-  return `${mine.length} prospect${mine.length === 1 ? "" : "s"} on the map: ${by("pending")} to review, ${by("approved")} approved, ${by("rejected")} rejected.`;
+  const ready = readyOnly(mine);
+  const plural = (n) => (n === 1 ? "" : "s");
+  if (ready.length === 0) {
+    return `No hot lead with a phone and an e-mail yet (${mine.length} prospect${plural(mine.length)} with a position, not hot or missing a phone or an e-mail).`;
+  }
+  const sites = ready.filter((p) => p.has_website).length;
+  return `${ready.length} hot lead${plural(ready.length)} with a phone and an e-mail, ${sites} with a website.`;
 }
 
 // Room to keep free around the map for the floating panels, as Leaflet's [x, y] auto-pan paddings: a popup never opens under
