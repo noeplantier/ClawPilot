@@ -25,9 +25,18 @@ from db.models import (
 )
 from db.session import get_db_session
 from deps import get_current_user
+from services import feature_flags
 from tasks.prospecting_tasks import _key, discover_task, enrich_task
 
 router = APIRouter(prefix="/prospecting", tags=["prospecting"])
+
+
+def _need_external_sources() -> None:
+    """Overpass and the businesses' own sites are network sources: off unless FEATURE_EXTERNAL_SOURCES is set."""
+    if not feature_flags.is_enabled("external_sources"):
+        raise HTTPException(status_code=409, detail="Map discovery needs FEATURE_EXTERNAL_SOURCES (off by default)")
+
+
 Category = Literal["restaurant", "cafe", "hotel", "shop", "office", "beauty", "dentist", "company"]
 
 
@@ -56,6 +65,7 @@ async def search(
     user: dict = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
+    _need_external_sources()
     account_id = uuid.UUID(user["org_id"])
     key = _key(payload.bbox, payload.category)
     now = datetime.now(timezone.utc)
@@ -255,6 +265,7 @@ async def enqueue_enrichment(
     user: dict = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
+    _need_external_sources()
     account_id = uuid.UUID(user["org_id"])
     lead = await session.scalar(
         select(Lead).where(
