@@ -36,12 +36,12 @@ export default function DraftPanel({ prospect, drafts, messages, canDecide, dryR
   return (
     <div className="space-y-4" data-testid="draft-panel">
       {dryRun && (
-        <p className="text-xs text-[#475569] border border-[#D3DBEA] bg-[#F6F8FC] rounded-md p-2" data-testid="dry-run-note">
+        <p className="text-xs text-soft border border-border bg-white/[0.04] rounded-md p-2" data-testid="dry-run-note">
           Dry-run is on: dispatching records the message and applies every limit, but nothing leaves the system.
         </p>
       )}
       {error && (
-        <div role="alert" className="text-sm text-[#991B1B] bg-[#FEF2F2] border border-[#FCA5A5] rounded-md p-3" data-testid="draft-error">
+        <div role="alert" className="text-sm text-red-300 bg-red-500/10 border border-red-400/40 rounded-md p-3" data-testid="draft-error">
           {error}
         </div>
       )}
@@ -55,38 +55,38 @@ export default function DraftPanel({ prospect, drafts, messages, canDecide, dryR
         >
           <NotePencil size={14} /> PREPARE DRAFT
         </button>
-        {!canDecide && <span className="mono-accent text-[#6B6B66]">requires owner or admin</span>}
-        {canDecide && createHint && <span className="text-xs text-[#5F5F5A]" data-testid="create-hint">{createHint}</span>}
+        {!canDecide && <span className="mono-accent text-faint">requires owner or admin</span>}
+        {canDecide && createHint && <span className="text-xs text-soft" data-testid="create-hint">{createHint}</span>}
       </div>
 
       {(!drafts || drafts.length === 0) && (
-        <p className="text-sm text-[#5F5F5A]" data-testid="drafts-empty">No draft has been prepared for this prospect.</p>
+        <p className="text-sm text-soft" data-testid="drafts-empty">No draft has been prepared for this prospect.</p>
       )}
 
       {(drafts || []).map((d) => {
         const msg = messageOf(d.id);
         return (
-          <article key={d.id} className="border border-[#D3DBEA] rounded-md bg-white" data-testid="draft-item">
-            <header className="flex flex-wrap items-center gap-2 p-3 border-b border-[#E9EEF7]">
+          <article key={d.id} className="border border-border rounded-md bg-card" data-testid="draft-item">
+            <header className="flex flex-wrap items-center gap-2 p-3 border-b border-border">
               <span className="font-display font-semibold text-sm flex-1 min-w-0 truncate">{d.subject}</span>
               <span className={`chip ${DRAFT_CHIP[d.status] || "chip"}`} data-testid="draft-status">{d.status}</span>
               {d.dry_run && <span className="chip chip-ink">dry-run</span>}
-              <span className="mono-accent text-[#6B6B66]">{d.template_version}</span>
+              <span className="mono-accent text-faint">{d.template_version}</span>
             </header>
             <div className="p-3 space-y-3">
               {d.facts.length > 0 ? (
                 <div>
                   <div className="mono-accent mb-1">facts stated · each backed by a detected signal</div>
-                  <ul className="list-disc ml-5 text-sm text-[#475569]">
+                  <ul className="list-disc ml-5 text-sm text-soft">
                     {d.facts.map((f) => (
                       <li key={f}>{f}</li>
                     ))}
                   </ul>
                 </div>
               ) : (
-                <p className="text-xs text-[#5F5F5A]">No signal supports a specific statement, so the draft stays neutral.</p>
+                <p className="text-xs text-soft">No signal supports a specific statement, so the draft stays neutral.</p>
               )}
-              <pre className="whitespace-pre-wrap text-sm font-sans bg-[#F6F8FC] border border-[#E9EEF7] rounded-md p-3" data-testid="draft-body">
+              <pre className="whitespace-pre-wrap text-sm font-sans bg-white/[0.04] border border-border rounded-md p-3" data-testid="draft-body">
                 {d.body}
               </pre>
               {msg && (

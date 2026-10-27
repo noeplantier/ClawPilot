@@ -18,7 +18,7 @@ function Field({ label, error, children, testId }) {
     <label className="block">
       <span className="mono-accent block mb-1">{label}</span>
       {children}
-      {error && <span role="alert" className="text-xs text-[#991B1B] mt-1 block" data-testid={`${testId}-error`}>{error}</span>}
+      {error && <span role="alert" className="text-xs text-red-300 mt-1 block" data-testid={`${testId}-error`}>{error}</span>}
     </label>
   );
 }
@@ -68,7 +68,7 @@ function ImportForm({ onImported, externalSources }) {
 
   return (
     <section className="surface p-6 space-y-5" data-testid="import-form">
-      <div className="flex items-start gap-2 text-sm text-[#475569]">
+      <div className="flex items-start gap-2 text-sm text-soft">
         <ShieldCheck size={18} className="shrink-0 mt-0.5" />
         <p>
           Only import a list you have the right to use. Nothing is sent and nothing is fetched from the web: every imported prospect is
@@ -79,7 +79,7 @@ function ImportForm({ onImported, externalSources }) {
 
       <Field label="file (.csv or .json)" error={errors.content || errors.format} testId="file">
         <input type="file" accept=".csv,.json,text/csv,application/json" onChange={pick} className="neo-input" data-testid="import-file" />
-        {values.filename && <span className="text-xs text-[#5F5F5A] mt-1 block" data-testid="import-filename">{values.filename} · {values.format}</span>}
+        {values.filename && <span className="text-xs text-soft mt-1 block" data-testid="import-filename">{values.filename} · {values.format}</span>}
       </Field>
 
       <div className="grid md:grid-cols-2 gap-4">
@@ -106,25 +106,25 @@ function ImportForm({ onImported, externalSources }) {
         </Field>
       </div>
 
-      {apiError && <div role="alert" className="text-sm text-[#991B1B]" data-testid="import-api-error">{apiError}</div>}
+      {apiError && <div role="alert" className="text-sm text-red-300" data-testid="import-api-error">{apiError}</div>}
 
       <div className="flex gap-2 flex-wrap items-center">
         <button className="btn-ghost" disabled={busy} onClick={() => run(true)} data-testid="import-preview"><UploadSimple size={14} /> PREVIEW (WRITES NOTHING)</button>
       </div>
 
       {result && (
-        <div className="border border-[#D3DBEA] rounded-md p-4 bg-white space-y-3" data-testid="import-result" role="status">
+        <div className="border border-border rounded-md p-4 bg-card space-y-3" data-testid="import-result" role="status">
           <p className="text-sm" data-testid="import-summary">{describeImport(result)}</p>
-          {result.already_imported && <p className="text-sm text-[#92400E]" data-testid="import-already">A file with exactly this content was imported before.</p>}
-          {result.ignored_columns.length > 0 && <p className="text-xs text-[#5F5F5A]">Ignored columns: {result.ignored_columns.join(", ")}</p>}
+          {result.already_imported && <p className="text-sm text-amber-300" data-testid="import-already">A file with exactly this content was imported before.</p>}
+          {result.ignored_columns.length > 0 && <p className="text-xs text-soft">Ignored columns: {result.ignored_columns.join(", ")}</p>}
           {result.errors.length > 0 && (
-            <ul className="text-xs text-[#991B1B] list-disc pl-5" data-testid="import-errors">
+            <ul className="text-xs text-red-300 list-disc pl-5" data-testid="import-errors">
               {result.errors.map((e) => <li key={e.row}>row {e.row}: {e.message}</li>)}
               {result.errors_count > result.errors.length && <li>…and {result.errors_count - result.errors.length} more</li>}
             </ul>
           )}
           {result.preview && (
-            <div className="space-y-2 border-t border-[#D3DBEA] pt-3">
+            <div className="space-y-2 border-t border-border pt-3">
               <label className="flex items-start gap-2 text-sm">
                 <input type="checkbox" checked={attest} onChange={(e) => setAttest(e.target.checked)} className="mt-1" data-testid="import-attest" />
                 <span>I confirm that I have the right to use this list for B2B prospecting on the legal basis stated above, and that the origin I gave is accurate.</span>
@@ -158,7 +158,7 @@ export default function ProspectImport() {
   return (
     <div className="p-6 md:p-10 space-y-6 max-w-4xl" data-testid="import-page">
       <div>
-        <Link to="/app/prospects" className="text-sm text-[#5F5F5A] inline-flex items-center gap-1"><ArrowLeft size={14} /> Prospects</Link>
+        <Link to="/app/prospects" className="text-sm text-soft inline-flex items-center gap-1"><ArrowLeft size={14} /> Prospects</Link>
         <div className="mono-accent mt-2">// prospects.import</div>
         <h1 className="text-4xl font-black tracking-tighter">Import a list</h1>
       </div>
@@ -184,10 +184,10 @@ export default function ProspectImport() {
           ) : (
             <div className="surface overflow-hidden">
               <table className="w-full text-sm">
-                <thead className="bg-[#F6F8FC] border-b border-[#D3DBEA]"><tr className="text-left mono-accent"><th className="p-3">when</th><th className="p-3">file</th><th className="p-3">origin</th><th className="p-3">basis</th><th className="p-3">rows</th><th className="p-3">created</th></tr></thead>
+                <thead className="bg-white/[0.04] border-b border-border"><tr className="text-left mono-accent"><th className="p-3">when</th><th className="p-3">file</th><th className="p-3">origin</th><th className="p-3">basis</th><th className="p-3">rows</th><th className="p-3">created</th></tr></thead>
                 <tbody>
                   {page.data.batches.map((b) => (
-                    <tr key={b.id} className="border-b border-[#EEE]" data-testid="import-batch">
+                    <tr key={b.id} className="border-b border-border" data-testid="import-batch">
                       <td className="p-3">{formatDateTime(b.created_at)}</td>
                       <td className="p-3">{b.filename || "—"}</td>
                       <td className="p-3">{b.origin}</td>

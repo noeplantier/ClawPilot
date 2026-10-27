@@ -1,6 +1,6 @@
 import { linePoints, niceScale } from "@/lib/chartMath";
 
-const AXIS = "#6B6B66";
+const AXIS = "#8B8A94";
 
 // Horizontal bars with the exact value printed at the end of each bar (no hover needed to read a number).
 export function HBarChart({ items, label }) {
@@ -10,9 +10,9 @@ export function HBarChart({ items, label }) {
       {items.map((i) => (
         <li key={i.name} className="flex items-center gap-3">
           <span className="mono-accent w-24 shrink-0">{i.name}</span>
-          <span className="flex-1 h-6 bg-[#E6ECF6] rounded-sm overflow-hidden relative">
+          <span className="flex-1 h-6 bg-white/[0.04] rounded-sm overflow-hidden relative">
             <span className="block h-full rounded-r" style={{ width: `${(i.value / end) * 100}%`, background: i.fill }} />
-            <span className="absolute inset-0 flex items-center justify-end pr-2 font-mono text-xs text-[#0A0A0A]">{i.value}</span>
+            <span className="absolute inset-0 flex items-center justify-end pr-2 font-mono text-xs text-foreground">{i.value}</span>
           </span>
         </li>
       ))}
@@ -21,7 +21,7 @@ export function HBarChart({ items, label }) {
 }
 
 // Vertical bars with integer axis.
-export function VBarChart({ rows, labelKey, valueKey, label, color = "#0F172A" }) {
+export function VBarChart({ rows, labelKey, valueKey, label, color = "#8B5CF6" }) {
   const W = 600, H = 240, left = 32, bottom = 22, top = 10;
   const { end, ticks } = niceScale(Math.max(...rows.map((r) => Number(r[valueKey]) || 0), 0));
   const y = (v) => top + (1 - v / end) * (H - top - bottom);
@@ -30,7 +30,7 @@ export function VBarChart({ rows, labelKey, valueKey, label, color = "#0F172A" }
     <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={label} className="w-full h-[260px]">
       {ticks.map((t) => (
         <g key={t}>
-          <line x1={left} x2={W - 8} y1={y(t)} y2={y(t)} stroke="#E6ECF6" />
+          <line x1={left} x2={W - 8} y1={y(t)} y2={y(t)} stroke="rgba(255,255,255,0.08)" />
           <text x={left - 6} y={y(t) + 4} textAnchor="end" fontSize="11" fill={AXIS}>{t}</text>
         </g>
       ))}
@@ -49,7 +49,7 @@ export function VBarChart({ rows, labelKey, valueKey, label, color = "#0F172A" }
 }
 
 // An area (first key) and a line (second key) over the days of the series.
-export function AreaLineChart({ rows, areaKey, lineKey, label, areaColor = "#0F172A", lineColor = "#4F46E5" }) {
+export function AreaLineChart({ rows, areaKey, lineKey, label, areaColor = "#C4B5FD", lineColor = "#9B74FA" }) {
   const W = 600, H = 240, left = 32, bottom = 22;
   const { end, ticks } = niceScale(Math.max(...rows.flatMap((r) => [Number(r[areaKey]) || 0, Number(r[lineKey]) || 0]), 0));
   const area = linePoints(rows, areaKey, end);
@@ -60,7 +60,7 @@ export function AreaLineChart({ rows, areaKey, lineKey, label, areaColor = "#0F1
     <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={label} className="w-full h-[260px]">
       {ticks.map((t) => (
         <g key={t}>
-          <line x1={left} x2={W - 8} y1={area.y(t)} y2={area.y(t)} stroke="#E6ECF6" />
+          <line x1={left} x2={W - 8} y1={area.y(t)} y2={area.y(t)} stroke="rgba(255,255,255,0.08)" />
           <text x={left - 6} y={area.y(t) + 4} textAnchor="end" fontSize="11" fill={AXIS}>{t}</text>
         </g>
       ))}

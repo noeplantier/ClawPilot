@@ -5,7 +5,7 @@ import { coverageLabel, explainTotal, formatDateTime } from "@/lib/outreachForma
 export default function ScoreBreakdown({ detail }) {
   if (!detail) {
     return (
-      <p className="text-sm text-[#5F5F5A]" data-testid="score-empty">
+      <p className="text-sm text-soft" data-testid="score-empty">
         This prospect has not been scored yet. Run discovery or recompute the score.
       </p>
     );
@@ -13,13 +13,13 @@ export default function ScoreBreakdown({ detail }) {
   const total = explainTotal(detail.breakdown);
   return (
     <div className="space-y-3" data-testid="score-breakdown">
-      <p className="text-sm text-[#475569]">
+      <p className="text-sm text-soft">
         The score is the sum of the points of <strong>detected</strong> signals, kept between 0 and 100. Signals that are
         <em> not detected</em> or <em>unknown</em> add nothing and never subtract: a missing observation is not a defect.
       </p>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
-          <thead className="bg-[#F6F8FC] border-b border-[#D3DBEA]">
+          <thead className="bg-white/[0.04] border-b border-border">
             <tr className="text-left mono-accent">
               <th className="p-2">signal</th>
               <th className="p-2">state</th>
@@ -30,26 +30,26 @@ export default function ScoreBreakdown({ detail }) {
           </thead>
           <tbody>
             {detail.breakdown.map((line) => (
-              <tr key={line.signal} className="border-b border-[#E9EEF7] align-top" data-testid={`breakdown-${line.signal}`}>
+              <tr key={line.signal} className="border-b border-border align-top" data-testid={`breakdown-${line.signal}`}>
                 <td className="p-2 font-medium">{line.label}</td>
                 <td className="p-2 whitespace-nowrap">
                   <StateChip state={line.state} />
                 </td>
-                <td className="p-2 text-right font-mono text-[#5F5F5A]">{line.weight}</td>
+                <td className="p-2 text-right font-mono text-soft">{line.weight}</td>
                 <td className="p-2 text-right font-mono font-bold">{line.points}</td>
-                <td className="p-2 text-[#475569]">{line.explanation}</td>
+                <td className="p-2 text-soft">{line.explanation}</td>
               </tr>
             ))}
           </tbody>
           <tfoot>
-            <tr className="bg-[#F6F8FC]">
+            <tr className="bg-white/[0.04]">
               <td className="p-2 font-bold" colSpan={3}>
                 Total
               </td>
               <td className="p-2 text-right font-mono font-bold" data-testid="score-total">
                 {detail.score}
               </td>
-              <td className="p-2 text-[#5F5F5A]">
+              <td className="p-2 text-soft">
                 {total.clamped ? `${total.raw} raw points, capped to ${total.capped}. ` : ""}
                 {total.observed} of {total.weighted} weighted signals could be observed (coverage {coverageLabel(detail.coverage)}).
               </td>
@@ -57,7 +57,7 @@ export default function ScoreBreakdown({ detail }) {
           </tfoot>
         </table>
       </div>
-      <p className="mono-accent text-[#6B6B66]">
+      <p className="mono-accent text-faint">
         // config v{detail.version} “{detail.config_label}” · hash {detail.config_hash} · computed {formatDateTime(detail.computed_at)}
       </p>
     </div>

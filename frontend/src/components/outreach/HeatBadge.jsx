@@ -17,8 +17,8 @@ export default function HeatBadge({ heat, compact = false }) {
       <span className={cls}><Icon size={12} weight="fill" aria-hidden="true" /> {TIER_LABEL[heat.tier]} {heat.value}</span>
       {!compact && (
         <span className="inline-flex items-center gap-1" data-testid="heat-info">
-          <span className="w-12 h-1.5 rounded bg-[#DDE4F1] overflow-hidden" aria-hidden="true"><span className="block h-full bg-gradient-to-r from-indigo-500 to-cyan-400" style={{ width: `${heat.info_pct}%` }} /></span>
-          <span className="font-mono text-[10px] text-[#595955]">{heat.known.length}/{heat.known.length + heat.missing.length}</span>
+          <span className="w-12 h-1.5 rounded bg-white/10 overflow-hidden" aria-hidden="true"><span className="block h-full bg-gradient-to-r from-indigo-500 to-cyan-400" style={{ width: `${heat.info_pct}%` }} /></span>
+          <span className="font-mono text-[10px] text-soft">{heat.known.length}/{heat.known.length + heat.missing.length}</span>
         </span>
       )}
     </span>

@@ -21,7 +21,7 @@ const BLOCKED_TEXT = {
 
 function Fact({ label, children, testId }) {
   return (
-    <div className="border border-[#D3DBEA] rounded-md p-3 bg-white">
+    <div className="border border-border rounded-md p-3 bg-card">
       <div className="mono-accent">{label}</div>
       <div className="font-display font-semibold mt-1" data-testid={testId}>{children}</div>
     </div>
@@ -47,13 +47,13 @@ function StatusPanel({ status, settings }) {
         <Fact label="sender identity" testId="fact-sender">{settings && settings.sender_configured ? "configured" : "not configured"}</Fact>
       </div>
       {settings && !settings.sender_configured && (
-        <p className="text-sm text-[#92400E] bg-[#FFFBEB] border border-[#F59E0B]/40 rounded-md p-3 flex gap-2" role="alert">
+        <p className="text-sm text-amber-300 bg-amber-500/10 border border-amber-400/40 rounded-md p-3 flex gap-2" role="alert">
           <Warning size={16} className="shrink-0 mt-0.5" />
           The server has no sender identity (OUTREACH_SENDER_NAME, _COMPANY, _ADDRESS, _EMAIL), so no draft can be prepared or dispatched.
         </p>
       )}
       {settings && Object.keys(settings.usage).length > 0 && (
-        <p className="text-sm text-[#475569]" data-testid="usage">
+        <p className="text-sm text-soft" data-testid="usage">
           Recorded usage: {Object.entries(settings.usage).map(([k, v]) => `${k.replace(/_/g, " ")} ${v}`).join(" · ")}
         </p>
       )}
@@ -105,7 +105,7 @@ function LimitsForm({ limits, canEdit, onSaved }) {
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h2 className="font-display text-xl font-bold">Limits</h2>
-          <p className="text-sm text-[#5F5F5A]">Applied before every dispatch. The day is the calendar day in the organisation’s timezone.</p>
+          <p className="text-sm text-soft">Applied before every dispatch. The day is the calendar day in the organisation’s timezone.</p>
         </div>
         <button className={limits.sending_paused ? "btn-primary" : "btn-ghost"} onClick={togglePause} disabled={!canEdit || busy} data-testid="toggle-pause"
           title="Stops all dispatches for this organisation until resumed">
@@ -119,14 +119,14 @@ function LimitsForm({ limits, canEdit, onSaved }) {
               <span className="mono-accent block mb-1">{r.label}</span>
               <input type="number" inputMode="numeric" min={r.min} max={r.max} step={1} className="neo-input" value={values[key]} disabled={!canEdit}
                 onChange={(e) => setValues({ ...values, [key]: e.target.value })} data-testid={`limit-${key}`} aria-invalid={!!errors[key]} />
-              {errors[key] && <span className="text-xs text-[#991B1B]" data-testid={`limit-error-${key}`}>{errors[key]}</span>}
+              {errors[key] && <span className="text-xs text-red-300" data-testid={`limit-error-${key}`}>{errors[key]}</span>}
             </label>
           ))}
         </div>
-        {error && <div role="alert" className="text-sm text-[#991B1B] bg-[#FEF2F2] border border-[#FCA5A5] rounded-md p-3" data-testid="limits-error">{error}</div>}
+        {error && <div role="alert" className="text-sm text-red-300 bg-red-500/10 border border-red-400/40 rounded-md p-3" data-testid="limits-error">{error}</div>}
         <div className="flex items-center gap-3">
           <button className="btn-ink" type="submit" disabled={!canEdit || busy || !dirty || Object.keys(errors).length > 0} data-testid="save-limits">SAVE LIMITS</button>
-          {!canEdit && <span className="mono-accent text-[#6B6B66]">requires owner or admin</span>}
+          {!canEdit && <span className="mono-accent text-faint">requires owner or admin</span>}
         </div>
       </form>
     </section>
@@ -162,27 +162,27 @@ function MessageRow({ message, canEdit, onChanged }) {
 
   return (
     <Fragment>
-      <tr className="border-b border-[#E9EEF7] hover:bg-[#F7F9FD] cursor-pointer" onClick={() => setOpen(!open)} data-testid="message-row">
+      <tr className="border-b border-border hover:bg-white/[0.04] cursor-pointer" onClick={() => setOpen(!open)} data-testid="message-row">
         <td className="p-3 font-mono text-xs">{formatDateTime(message.dispatched_at)}</td>
-        <td className="p-3">{message.to_email || <span className="text-[#6B6B66]">erased</span>}</td>
+        <td className="p-3">{message.to_email || <span className="text-faint">erased</span>}</td>
         <td className="p-3 hidden md:table-cell truncate max-w-xs">{message.subject}</td>
         <td className="p-3"><span className={`chip ${MESSAGE_STATUS_CHIP[message.status] || "chip"}`}>{message.status}</span></td>
         <td className="p-3">{message.dry_run ? <span className="chip chip-ink">dry-run</span> : <span className="chip chip-warn">live</span>}</td>
       </tr>
       {open && (
-        <tr className="bg-[#F6F8FC] border-b border-[#D3DBEA]" data-testid="message-detail">
+        <tr className="bg-white/[0.04] border-b border-border" data-testid="message-detail">
           <td colSpan={5} className="p-4 space-y-3">
             <div className="flex flex-wrap gap-3 text-sm">
               <Link to={`/app/prospects/${message.lead_id}`} className="underline">open the prospect</Link>
-              <span className="mono-accent text-[#5F5F5A]">adapter {message.adapter} · id {message.provider_message_id || "—"}</span>
+              <span className="mono-accent text-soft">adapter {message.adapter} · id {message.provider_message_id || "—"}</span>
             </div>
             {detail.loading && <LoadingBlock label="Loading events…" />}
             {detail.error && <ErrorBlock message={detail.error} onRetry={detail.reload} />}
             {detail.data && <HistoryTimeline items={events} />}
             {message.dry_run && canEdit && message.status !== "bounced" && message.status !== "failed" && (
-              <div className="border-t border-[#D3DBEA] pt-3 space-y-2" data-testid="simulate-box">
+              <div className="border-t border-border pt-3 space-y-2" data-testid="simulate-box">
                 <p className="mono-accent">simulation · stands in for the provider webhook, same effects</p>
-                {error && <div role="alert" className="text-sm text-[#991B1B]" data-testid="simulate-error">{error}</div>}
+                {error && <div role="alert" className="text-sm text-red-300" data-testid="simulate-error">{error}</div>}
                 <div className="flex flex-wrap gap-2 items-center">
                   <input className="neo-input !w-72" placeholder="Reply text (try: STOP)" value={text} onChange={(e) => setText(e.target.value)} data-testid="simulate-text" />
                   <button className="btn-ghost" disabled={busy || !text.trim()} onClick={() => simulate("replied")} data-testid="simulate-reply">SIMULATE REPLY</button>
@@ -197,7 +197,7 @@ function MessageRow({ message, canEdit, onChanged }) {
   );
 }
 
-const TONE_TEXT = { ok: "text-[#166534]", warn: "text-[#92400E]", danger: "text-[#991B1B]" };
+const TONE_TEXT = { ok: "text-emerald-300", warn: "text-amber-300", danger: "text-red-300" };
 
 function InboxSyncPanel({ onDone }) {
   const [busy, setBusy] = useState(false);
@@ -221,14 +221,14 @@ function InboxSyncPanel({ onDone }) {
   return (
     <section className="surface p-5 space-y-3" data-testid="inbox-sync">
       <h2 className="font-display text-xl font-bold">Replies and bounces</h2>
-      <p className="text-sm text-[#5F5F5A]">
+      <p className="text-sm text-soft">
         Reads the sending mailbox over IMAP (needs IMAP_HOST, IMAP_USERNAME and IMAP_PASSWORD). A reply is recorded with a short
         excerpt, a STOP from the recipient opts them out, and only a permanent delivery failure suppresses an address.
         Where a worker runs, this also happens every 5 minutes.
       </p>
       <button className="btn-ghost" disabled={busy} onClick={sync} data-testid="inbox-sync-run">{busy ? "READING…" : "READ MAILBOX NOW"}</button>
-      {result && <div role="status" className="text-sm text-[#166534]" data-testid="inbox-sync-result">{result}</div>}
-      {error && <div role="alert" className="text-sm text-[#991B1B]" data-testid="inbox-sync-error">{error}</div>}
+      {result && <div role="status" className="text-sm text-emerald-300" data-testid="inbox-sync-result">{result}</div>}
+      {error && <div role="alert" className="text-sm text-red-300" data-testid="inbox-sync-error">{error}</div>}
     </section>
   );
 }
@@ -256,7 +256,7 @@ function SmtpTestPanel({ onDone }) {
   return (
     <section className="surface p-5 space-y-3" data-testid="smtp-test">
       <h2 className="font-display text-xl font-bold">Test the real e-mail connection</h2>
-      <p className="text-sm text-[#5F5F5A]">
+      <p className="text-sm text-soft">
         Sends one technical message (not prospecting) to the sender&apos;s own address or to the sandbox allowlist, through the
         same limits and kill switch. Needs live sending and the SMTP settings; otherwise it is refused and nothing is sent.
       </p>
@@ -268,7 +268,7 @@ function SmtpTestPanel({ onDone }) {
         </button>
       </div>
       {result && <div role="status" className={`text-sm ${TONE_TEXT[result.tone]}`} data-testid="smtp-test-result">{result.text}</div>}
-      {error && <div role="alert" className="text-sm text-[#991B1B]" data-testid="smtp-test-error">{error}</div>}
+      {error && <div role="alert" className="text-sm text-red-300" data-testid="smtp-test-error">{error}</div>}
     </section>
   );
 }
@@ -296,7 +296,7 @@ function WhatsappTestPanel({ onDone }) {
   return (
     <section className="surface p-5 space-y-3" data-testid="whatsapp-test">
       <h2 className="font-display text-xl font-bold">Test the real WhatsApp connection</h2>
-      <p className="text-sm text-[#5F5F5A]">
+      <p className="text-sm text-soft">
         Sends one technical message (not prospecting) to a number listed in <code>OUTREACH_LIVE_PHONES</code> (your own phone), through the same
         limits and kill switch. Needs the Twilio settings; otherwise it is refused and nothing is sent.
       </p>
@@ -308,7 +308,7 @@ function WhatsappTestPanel({ onDone }) {
         </button>
       </div>
       {result && <div role="status" className={`text-sm ${TONE_TEXT[result.tone]}`} data-testid="whatsapp-test-result">{result.text}</div>}
-      {error && <div role="alert" className="text-sm text-[#991B1B]" data-testid="whatsapp-test-error">{error}</div>}
+      {error && <div role="alert" className="text-sm text-red-300" data-testid="whatsapp-test-error">{error}</div>}
     </section>
   );
 }
@@ -329,7 +329,7 @@ export default function Sending() {
         <div>
           <div className="mono-accent">// controlled.sending</div>
           <h1 className="text-4xl font-black tracking-tighter">Sending</h1>
-          <p className="text-[#5F5F5A] mt-1 max-w-2xl">Limits, emergency stop and the history of dispatched messages. Dry-run by default; real e-mail leaves over SMTP only when live sending is enabled. A message stuck in “sending” has an unknown outcome: check the mailbox before sending again.</p>
+          <p className="text-soft mt-1 max-w-2xl">Limits, emergency stop and the history of dispatched messages. Dry-run by default; real e-mail leaves over SMTP only when live sending is enabled. A message stuck in “sending” has an unknown outcome: check the mailbox before sending again.</p>
         </div>
         <button className="btn-ghost" onClick={page.reload} data-testid="refresh"><ArrowsClockwise size={14} /> REFRESH</button>
       </div>
@@ -354,7 +354,7 @@ export default function Sending() {
             ) : (
               <div className="surface overflow-hidden">
                 <table className="w-full text-sm" data-testid="messages-table">
-                  <thead className="bg-[#F6F8FC] border-b border-[#D3DBEA]">
+                  <thead className="bg-white/[0.04] border-b border-border">
                     <tr className="text-left mono-accent">
                       <th className="p-3">when</th><th className="p-3">to</th><th className="p-3 hidden md:table-cell">subject</th><th className="p-3">status</th><th className="p-3">mode</th>
                     </tr>

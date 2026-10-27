@@ -90,7 +90,7 @@ export default function AIComposerModal({ open, onClose, defaults }) {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-50 bg-[#0F172A]/60 backdrop-blur-sm flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
           onClick={onClose}
         >
           <motion.div
@@ -101,16 +101,16 @@ export default function AIComposerModal({ open, onClose, defaults }) {
             className={`relative w-full max-w-4xl surface p-6 md:p-8 ${loading ? "glow-purple" : ""}`}
             data-testid="ai-composer-modal"
           >
-            <button onClick={onClose} className="absolute top-4 right-4 text-[#5F5F5A] hover:text-[#4F46E5]" data-testid="close-ai-composer">
+            <button onClick={onClose} className="absolute top-4 right-4 text-soft hover:text-brand-lilac" data-testid="close-ai-composer">
               <X size={20} />
             </button>
 
             <div className="flex items-center gap-2 mb-2">
-              <Sparkle size={18} weight="fill" className="text-[#0F172A]" />
-              <span className="mono-accent text-[#0F172A]">/// gemini-3-flash</span>
+              <Sparkle size={18} weight="fill" className="text-foreground" />
+              <span className="mono-accent text-foreground">/// gemini-3-flash</span>
             </div>
             <h2 className="text-2xl font-black tracking-tighter">AI Message Composer</h2>
-            <p className="text-[#5F5F5A] text-sm mt-1">Multi-language, tone-aware outreach copy generated in seconds.</p>
+            <p className="text-soft text-sm mt-1">Multi-language, tone-aware outreach copy generated in seconds.</p>
 
             <div className="grid md:grid-cols-2 gap-6 mt-6">
               <div className="space-y-3">
@@ -161,24 +161,24 @@ export default function AIComposerModal({ open, onClose, defaults }) {
               </div>
 
               {/* Result */}
-              <div className="surface bg-[#F6F8FC] p-5 min-h-[380px] relative">
+              <div className="surface bg-white/[0.04] p-5 min-h-[380px] relative">
                 <div className="flex items-center justify-between mb-3">
                   <span className="mono-accent">output</span>
                   {result && (
-                    <button onClick={copy} className="chip chip-cyan hover:border-[#4F46E5]" data-testid="ai-copy-button">
+                    <button onClick={copy} className="chip chip-cyan hover:border-brand-violet" data-testid="ai-copy-button">
                       <Copy size={12} /> COPY
                     </button>
                   )}
                 </div>
                 {!result && !loading && !variants && !variantsLoading && (
-                  <div className="h-full flex flex-col items-center justify-center text-center text-[#6B6B66] py-16">
-                    <Translate size={48} weight="duotone" className="text-[#D4D4C8] mb-3" />
+                  <div className="h-full flex flex-col items-center justify-center text-center text-faint py-16">
+                    <Translate size={48} weight="duotone" className="text-white/30 mb-3" />
                     <div className="mono-accent">awaiting.prompt</div>
                     <p className="text-xs mt-2 max-w-[220px]">Fill the form and hit generate — or request 3 tone variants.</p>
                   </div>
                 )}
                 {(loading || variantsLoading) && (
-                  <div className="h-full flex items-center justify-center text-[#4F46E5]">
+                  <div className="h-full flex items-center justify-center text-brand-lilac">
                     <ArrowClockwise size={32} className="spin-slow" />
                   </div>
                 )}
@@ -189,13 +189,13 @@ export default function AIComposerModal({ open, onClose, defaults }) {
                       const v = variants[i];
                       if (!v) return null;
                       return (
-                        <div key={tone} className="surface p-3 hover:border-[#4F46E5]/40 transition cursor-pointer" onClick={() => pickVariant(v)} data-testid={`variant-${tone}`}>
+                        <div key={tone} className="surface p-3 hover:border-brand-violet/40 transition cursor-pointer" onClick={() => pickVariant(v)} data-testid={`variant-${tone}`}>
                           <div className="flex items-center justify-between mb-2">
                             <span className="chip chip-red">{tone}</span>
                             <button className="btn-primary !py-1 !px-2 text-xs"><Check size={10} /> USE</button>
                           </div>
-                          {v.subject && <div className="text-sm font-semibold text-[#0A0A0A] mb-1">{v.subject}</div>}
-                          <div className="text-xs text-[#595955] font-mono whitespace-pre-wrap line-clamp-4">{v.body}</div>
+                          {v.subject && <div className="text-sm font-semibold text-foreground mb-1">{v.subject}</div>}
+                          <div className="text-xs text-soft font-mono whitespace-pre-wrap line-clamp-4">{v.body}</div>
                         </div>
                       );
                     })}
@@ -206,17 +206,17 @@ export default function AIComposerModal({ open, onClose, defaults }) {
                   <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-3 font-mono text-sm">
                     {result.subject && (
                       <div>
-                        <div className="mono-accent text-[#595955] mb-1">subject</div>
-                        <div className="text-[#0A0A0A] font-display font-bold">{result.subject}</div>
+                        <div className="mono-accent text-soft mb-1">subject</div>
+                        <div className="text-foreground font-display font-bold">{result.subject}</div>
                       </div>
                     )}
                     <div>
-                      <div className="mono-accent text-[#595955] mb-1">body</div>
-                      <div className="text-[#1a1a1a] whitespace-pre-wrap leading-relaxed" data-testid="ai-result-body">{result.body}</div>
+                      <div className="mono-accent text-soft mb-1">body</div>
+                      <div className="text-foreground whitespace-pre-wrap leading-relaxed" data-testid="ai-result-body">{result.body}</div>
                     </div>
-                    <div className="pt-3 border-t border-[#D3DBEA] flex items-center justify-between">
+                    <div className="pt-3 border-t border-border flex items-center justify-between">
                       <span className="chip chip-purple">{result.language}</span>
-                      <span className="mono-accent text-[#6B6B66]">gemini-3-flash · {(result.body || "").length} chars</span>
+                      <span className="mono-accent text-faint">gemini-3-flash · {(result.body || "").length} chars</span>
                     </div>
                   </motion.div>
                 )}

@@ -1,91 +1,105 @@
-
+/* Plantiers - OutreachOS follows the design system of plantiers.com: near-black "void" canvas, a violet-only accent drawn from the logo,
+   a leaf green kept for "live", Inter for text and JetBrains Mono for kickers and figures. Tokens below are the single source;
+   components read them, pages do not carry colours of their own. (Fonts are self-hosted: see src/index.js.) */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  /* Plantiers identity and shared interface tokens. */
-  --brand-ink: #100D1B;
-  --brand-violet: #6D42C1;
-  --brand-violet-hover: #7C4DDB;
-  --brand-lilac: #C4A8FF;
-  --surface-dark: #171322;
-  --surface-dark-raised: #211B31;
-  --surface-page: #E9EEF7;
-  --surface-card: #FFFFFF;
-  --surface-hover: #F7F9FD;
-  --sidebar-muted: #B6AEC7;
+  /* Plantiers identity */
+  --void: #07060B;
+  --void-elevated: #0C0A14;
+  --void-surface: #120F1E;
+  --brand-ink: #0C0A14;
+  --brand-violet: #7C3AED;
+  --brand-violet-hover: #8B5CF6;
+  --brand-lilac: #B79BFF;
+  --leaf: #4ADE80;
+  --surface-dark: #120F1E;
+  --surface-dark-raised: #1A1530;
+  --sidebar-muted: rgba(255, 255, 255, 0.62);
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 0.75rem;
   --space-4: 1rem;
   --space-6: 1.5rem;
-  --radius-sm: 0.375rem;
-  --radius-control: 0.625rem;
-  --radius-card: 0.875rem;
-  --font-interface: 'IBM Plex Sans', system-ui, sans-serif;
-  --bg-page: var(--surface-page);
-  --bg-surface: var(--surface-card);
-  --bg-surface-hover: var(--surface-hover);
-  --text-primary: #0A0A0A;
-  --text-secondary: #595955;
-  --text-muted: #6B6B66;
-  --accent-red: var(--brand-violet); /* legacy token name; errors use #DC2626 inline */
-  --accent-red-dark: #563097;
+  --radius-sm: 0.5rem;
+  --radius-control: 0.75rem;
+  --radius-card: 1rem;
+  --font-interface: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+
+  /* Surfaces and text (text opacities follow plantiers.com: primary .95, secondary .72, tertiary .58) */
+  --bg-page: var(--void);
+  --bg-surface: rgba(255, 255, 255, 0.035);
+  --bg-surface-hover: rgba(255, 255, 255, 0.07);
+  --surface-card: rgba(255, 255, 255, 0.035);
+  --surface-hover: rgba(255, 255, 255, 0.07);
+  --surface-opaque: #120F1E; /* dropdowns, modals and anything the panel below must not show through */
+  --text-primary: rgba(255, 255, 255, 0.95);
+  --text-secondary: rgba(255, 255, 255, 0.72);
+  --text-muted: rgba(255, 255, 255, 0.58);
+  --accent-red: var(--brand-violet); /* legacy token name; errors use red-300 */
+  --accent-red-dark: #6D28D9;
   --accent-ink: var(--brand-ink);
-  --accent-slate: #475569;
-  --accent-success: #10B981;
-  --accent-danger: #EF4444;
-  --accent-warning: #F59E0B;
-  --border-default: #D3DBEA;
-  --border-strong: #B4C0D6;
-  --border-glow: rgba(109, 66, 193, 0.3);
+  --accent-slate: #94A3B8;
+  --accent-success: #4ADE80;
+  --accent-danger: #F87171;
+  --accent-warning: #FBBF24;
+  --border-default: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --border-glow: rgba(124, 58, 237, 0.35);
+  --glow: 0 0 32px rgba(124, 58, 237, 0.35);
+  --glow-soft: 0 0 60px rgba(124, 58, 237, 0.18);
   /* Legacy aliases kept for backward compatibility */
   --accent-cyan: var(--accent-red);
   --accent-blue: var(--accent-slate);
-  --accent-purple: var(--accent-ink);
+  --accent-purple: var(--brand-lilac);
 }
 
 @layer base {
   html, body, #root {
     background: var(--bg-page);
     color: var(--text-primary);
-    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-family: var(--font-interface);
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
     min-height: 100vh;
+    color-scheme: dark;
   }
 
-  h1, h2, h3, h4, h5 { font-family: 'Chivo', sans-serif; letter-spacing: -0.01em; }
+  h1, h2, h3, h4, h5 { font-family: var(--font-interface); letter-spacing: -0.02em; }
 
-  ::selection { background: rgba(99, 102, 241, 0.3); color: #0A0A0A; }
+  ::selection { background: rgba(124, 58, 237, 0.45); color: #FFFFFF; }
 
   /* Scrollbar */
   ::-webkit-scrollbar { width: 10px; height: 10px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: #C3CCDF; border-radius: 4px; }
-  ::-webkit-scrollbar-thumb:hover { background: #A5B1CC; }
+  ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.14); border-radius: 6px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.26); }
 
   :root {
-    --background: 219 38% 94%;
-    --foreground: 0 0% 4%;
-    --card: 0 0% 100%;
-    --card-foreground: 0 0% 4%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 4%;
-    --primary: 262 50% 51%;
+    /* shadcn/Radix tokens (HSL triplets), dark */
+    --background: 252 29% 4%;
+    --foreground: 0 0% 96%;
+    --card: 253 33% 9%;
+    --card-foreground: 0 0% 96%;
+    --popover: 253 33% 9%;
+    --popover-foreground: 0 0% 96%;
+    --primary: 262 83% 58%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 219 30% 93%;
-    --secondary-foreground: 0 0% 10%;
-    --muted: 219 30% 93%;
-    --muted-foreground: 45 5% 40%;
-    --accent: 219 30% 93%;
-    --accent-foreground: 0 0% 10%;
-    --destructive: 0 72% 51%;
+    --secondary: 253 25% 14%;
+    --secondary-foreground: 0 0% 96%;
+    --muted: 253 22% 13%;
+    --muted-foreground: 250 8% 66%;
+    --accent: 253 25% 16%;
+    --accent-foreground: 0 0% 96%;
+    --destructive: 0 72% 55%;
     --destructive-foreground: 0 0% 100%;
-    --border: 219 30% 86%;
-    --input: 0 0% 100%;
-    --ring: 262 50% 51%;
-    --radius: 0.375rem;
+    --border: 250 12% 14%;
+    --input: 250 12% 16%;
+    --ring: 262 83% 68%;
+    --radius: 0.5rem;
   }
 
   * { border-color: hsl(var(--border)); }
@@ -93,55 +107,85 @@
 }
 
 /* Utility classes */
-.font-mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
-.font-display { font-family: 'Chivo', sans-serif; }
+.font-mono { font-family: var(--font-mono); }
+.font-display { font-family: var(--font-interface); font-weight: 800; letter-spacing: -0.03em; }
 
-.bg-sidebar { background-color: var(--brand-ink); }
+.bg-sidebar { background-color: var(--void-elevated); }
 .text-brand-lilac { color: var(--brand-lilac); }
 .text-sidebar-muted { color: var(--sidebar-muted); }
 .bg-brand-violet { background-color: var(--brand-violet); }
 .bg-brand-violet-hover:hover { background-color: var(--brand-violet-hover); }
+.text-soft { color: var(--text-secondary); }
+.text-faint { color: var(--text-muted); }
 
+/* Kicker: monospace, uppercase, wide tracking, lilac (the "// section" label of plantiers.com) */
 .mono-accent {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.7rem;
   letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: var(--brand-violet);
+  color: var(--brand-lilac);
 }
 
+/* Card: glass on the void, hairline border, soft lift on hover */
 .surface {
-  background: var(--surface-card);
+  background: rgba(18, 15, 30, 0.72);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-card);
-  box-shadow: 0 1px 3px rgba(16, 13, 27, 0.06);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  transition: border-color 0.3s ease, background-color 0.3s ease;
+}
+.surface:hover { border-color: var(--border-strong); }
+
+/* Opaque glass for floating panels (map panels, menus): blur needs something behind it */
+.glass {
+  background: rgba(18, 15, 30, 0.86);
+  border: 1px solid var(--border-default);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 18px 50px -18px rgba(0, 0, 0, 0.7);
 }
 
 .surface-hover {
-  transition: border-color 0.15s ease, background-color 0.15s ease;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
 }
 .surface-hover:hover {
-  border-color: var(--brand-violet);
+  border-color: var(--border-glow);
   background-color: var(--surface-hover);
 }
 
-.glow-cyan, .glow-purple, .glow-red { box-shadow: 0 0 0 1px color-mix(in srgb, var(--brand-violet) 24%, transparent); }
+.glow-cyan, .glow-purple, .glow-red { box-shadow: 0 0 0 1px color-mix(in srgb, var(--brand-violet) 40%, transparent), var(--glow-soft); }
 
-/* Quiet page canvas with a restrained Plantiers violet accent. */
+/* Page canvas: the void, two soft violet fields and a faint leaf-green one (static radial gradients, no filter, no animation:
+   the site animates them, the application keeps them still so that nothing repaints while you work). */
 .grid-bg {
-  background-color: var(--surface-page);
+  background-color: var(--void);
   background-image:
-    radial-gradient(60rem 30rem at 85% -10%, rgba(109, 66, 193, 0.08), transparent 60%),
-    linear-gradient(rgba(16, 13, 27, 0.025) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(16, 13, 27, 0.025) 1px, transparent 1px);
-  background-size: auto, 32px 32px, 32px 32px;
+    radial-gradient(60rem 34rem at 12% -12%, rgba(124, 58, 237, 0.20), transparent 62%),
+    radial-gradient(52rem 30rem at 92% 8%, rgba(91, 33, 182, 0.16), transparent 62%),
+    radial-gradient(44rem 26rem at 55% 112%, rgba(34, 197, 94, 0.06), transparent 62%),
+    linear-gradient(rgba(255, 255, 255, 0.022) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.022) 1px, transparent 1px);
+  background-size: auto, auto, auto, 56px 56px, 56px 56px;
   background-attachment: scroll;
 }
 
-/* Fine dotted paper variant */
+/* Film grain (one static SVG, as on plantiers.com) */
+.grain::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.55 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  background-size: 160px 160px;
+}
+
+/* Fine dotted variant */
 .dot-paper {
-  background-color: var(--surface-page);
-  background-image: radial-gradient(circle, rgba(16, 13, 27, 0.1) 1px, transparent 1.2px);
+  background-color: var(--void);
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.09) 1px, transparent 1.2px);
   background-size: 18px 18px;
 }
 
@@ -150,13 +194,19 @@
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: repeating-linear-gradient(
-    0deg,
-    transparent 0px,
-    transparent 3px,
-    rgba(15, 23, 42, 0.03) 3px,
-    rgba(15, 23, 42, 0.03) 4px
-  );
+  background: repeating-linear-gradient(0deg, transparent 0px, transparent 3px, rgba(255, 255, 255, 0.02) 3px, rgba(255, 255, 255, 0.02) 4px);
+}
+
+/* Headline accent word: violet gradient, static (animating a background-clip:text gradient repaints the glyphs every frame) */
+.gradient-word {
+  display: inline-block;
+  padding: 0.04em 0.06em 0.18em;
+  margin: -0.04em -0.06em -0.18em;
+  background-image: linear-gradient(100deg, #c9b8ff 0%, #9b74fa 55%, #7c3aed 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
 }
 
 /* Pulse for live indicators */
@@ -186,89 +236,105 @@
 
 /* Input styles */
 .neo-input {
-  background: var(--surface-card);
+  background: rgba(255, 255, 255, 0.04);
   border: 1px solid var(--border-default);
   color: var(--text-primary);
   padding: 0.65rem 0.85rem;
   border-radius: var(--radius-control);
   font-family: var(--font-interface);
   width: 100%;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
 }
+.neo-input:hover { border-color: var(--border-strong); }
 .neo-input:focus {
   outline: none;
-  border-color: var(--accent-red);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-violet) 24%, transparent);
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--brand-violet);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-violet) 30%, transparent);
 }
 .neo-input::placeholder { color: var(--text-muted); }
+.neo-input option { background: var(--void-surface); color: var(--text-primary); }
 
-/* Button */
+/* Native selects follow the theme (the browser would draw a grey box) */
+select:not(.neo-input) {
+  background-color: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-default);
+  border-radius: 0.5rem;
+  color: var(--text-primary);
+  padding: 0.3rem 0.5rem;
+}
+select option { background: var(--void-surface); color: var(--text-primary); }
+
+/* Buttons. Primary = the violet gradient with a soft glow, as the site's call to action. */
 .btn-primary {
-  background: var(--brand-violet);
+  background-image: linear-gradient(90deg, #6D28D9 0%, #7C3AED 50%, #6D28D9 100%);
+  background-size: 200% auto;
   color: #FFFFFF;
   font-weight: 600;
   font-family: var(--font-interface);
-  padding: 0.6rem 1rem;
+  padding: 0.6rem 1.1rem;
   border-radius: var(--radius-control);
-  transition: background-color 0.15s ease, color 0.15s ease;
+  transition: background-position 0.3s ease, box-shadow 0.3s ease, transform 0.15s ease, opacity 0.2s ease;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.5rem;
-  border: 1px solid transparent;
+  border: 1px solid rgba(183, 155, 255, 0.25);
   min-height: 2.5rem;
 }
-.btn-primary:hover { background: var(--brand-violet-hover); }
-.btn-primary:disabled, .btn-ghost:disabled, .btn-purple:disabled, .btn-ink:disabled, .btn-danger:disabled { opacity: 0.55; cursor: not-allowed; }
+.btn-primary:hover { background-position: 100% center; box-shadow: var(--glow); }
+.btn-primary:active, .btn-ink:active, .btn-purple:active, .btn-ghost:active { transform: scale(0.97); }
+.btn-primary:disabled, .btn-ghost:disabled, .btn-purple:disabled, .btn-ink:disabled, .btn-danger:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; transform: none; }
 
 .btn-ghost {
-  background: var(--surface-card);
+  background: rgba(255, 255, 255, 0.04);
   color: var(--text-primary);
-  border: 1px solid var(--border-default);
-  padding: 0.55rem 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 0.55rem 0.95rem;
   border-radius: var(--radius-control);
   font-family: var(--font-interface);
   font-weight: 500;
-  transition: all 0.15s ease;
+  transition: all 0.2s ease;
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
 }
-.btn-ghost:hover { border-color: var(--brand-violet); color: var(--brand-violet); background: var(--surface-hover); }
+.btn-ghost:hover { border-color: rgba(255, 255, 255, 0.22); color: #FFFFFF; background: rgba(255, 255, 255, 0.08); }
 
 .btn-purple {
-  background: color-mix(in srgb, var(--brand-violet) 8%, var(--surface-card));
-  color: var(--brand-violet);
-  border: 1px solid color-mix(in srgb, var(--brand-violet) 32%, var(--surface-card));
-  padding: 0.55rem 0.9rem;
+  background: color-mix(in srgb, var(--brand-violet) 14%, transparent);
+  color: var(--brand-lilac);
+  border: 1px solid color-mix(in srgb, var(--brand-violet) 45%, transparent);
+  padding: 0.55rem 0.95rem;
   border-radius: var(--radius-control);
   font-family: var(--font-interface);
   font-weight: 600;
-  transition: all 0.15s ease;
+  transition: all 0.2s ease;
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
 }
-.btn-purple:hover { background: var(--brand-violet); color: #FFFFFF; border-color: var(--brand-violet); }
+.btn-purple:hover { background: var(--brand-violet); color: #FFFFFF; border-color: var(--brand-violet); box-shadow: var(--glow); }
 
 .btn-ink {
-  background: var(--brand-ink);
+  background: rgba(255, 255, 255, 0.09);
   color: #FFFFFF;
-  border: 1px solid var(--brand-ink);
-  padding: 0.55rem 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  padding: 0.55rem 0.95rem;
   border-radius: var(--radius-control);
   font-family: var(--font-interface);
   font-weight: 600;
-  transition: all 0.15s ease;
+  transition: all 0.2s ease;
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
 }
-.btn-ink:hover { background: var(--surface-dark-raised); border-color: var(--surface-dark-raised); }
+.btn-ink:hover { background: rgba(255, 255, 255, 0.16); border-color: rgba(255, 255, 255, 0.28); }
 
 .btn-danger {
-  background: var(--surface-card);
-  color: hsl(var(--destructive));
-  border: 1px solid color-mix(in srgb, hsl(var(--destructive)) 38%, var(--surface-card));
+  background: rgba(239, 68, 68, 0.08);
+  color: #FCA5A5;
+  border: 1px solid rgba(239, 68, 68, 0.4);
   border-radius: var(--radius-control);
   font-family: var(--font-interface);
   font-weight: 600;
@@ -276,42 +342,42 @@
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  padding: 0.55rem 0.9rem;
-  transition: background-color 0.15s ease, color 0.15s ease;
+  padding: 0.55rem 0.95rem;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 .btn-danger:hover { background: hsl(var(--destructive)); color: hsl(var(--destructive-foreground)); }
 
-/* Chip */
+/* Chip: the mono "badge" of the site (pill, hairline border, uppercase) */
 .chip {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  font-size: 0.7rem;
-  font-family: 'JetBrains Mono', monospace;
-  padding: 0.2rem 0.55rem;
-  border-radius: 6px;
-  background: #FFFFFF;
+  font-size: 0.68rem;
+  font-family: var(--font-mono);
+  padding: 0.22rem 0.6rem;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.04);
   border: 1px solid var(--border-default);
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
 
-.chip-cyan, .chip-red, .chip-purple { color: var(--brand-violet); border-color: color-mix(in srgb, var(--brand-violet) 32%, var(--surface-card)); background: color-mix(in srgb, var(--brand-violet) 8%, var(--surface-card)); }
-.chip-ink     { color: var(--brand-ink); border-color: var(--border-default); background: var(--surface-hover); }
-.chip-hot     { color: #9A3412; border-color: rgba(249, 115, 22, 0.55); background: #FFF7ED; }
-.chip-top     { color: #FFFFFF; border-color: var(--brand-ink); background: var(--brand-ink); font-weight: 700; letter-spacing: 0.08em; }
-.chip-warm    { color: #92400E; border-color: rgba(245, 158, 11, 0.45); background: #FFFBEB; }
-.chip-cold    { color: #334155; border-color: rgba(100, 116, 139, 0.4); background: #F1F5F9; }
-.chip-success { color: #065F46; border-color: rgba(16, 185, 129, 0.4); background: #ECFDF5; }
-.chip-warn    { color: #92400E; border-color: rgba(245, 158, 11, 0.4); background: #FFFBEB; }
-.chip-danger  { color: #991B1B; border-color: rgba(239, 68, 68, 0.4); background: #FEF2F2; }
+.chip-cyan, .chip-red, .chip-purple { color: var(--brand-lilac); border-color: color-mix(in srgb, var(--brand-violet) 50%, transparent); background: color-mix(in srgb, var(--brand-violet) 14%, transparent); }
+.chip-ink     { color: var(--text-primary); border-color: var(--border-strong); background: rgba(255, 255, 255, 0.07); }
+.chip-hot     { color: #FDBA74; border-color: rgba(249, 115, 22, 0.5); background: rgba(249, 115, 22, 0.12); }
+.chip-top     { color: #FFFFFF; border-color: rgba(183, 155, 255, 0.5); background-image: linear-gradient(90deg, #6D28D9, #7C3AED); font-weight: 700; letter-spacing: 0.08em; box-shadow: 0 0 18px rgba(124, 58, 237, 0.35); }
+.chip-warm    { color: #FCD34D; border-color: rgba(245, 158, 11, 0.45); background: rgba(245, 158, 11, 0.1); }
+.chip-cold    { color: #CBD5E1; border-color: rgba(148, 163, 184, 0.35); background: rgba(148, 163, 184, 0.1); }
+.chip-success { color: #86EFAC; border-color: rgba(74, 222, 128, 0.4); background: rgba(74, 222, 128, 0.1); }
+.chip-warn    { color: #FCD34D; border-color: rgba(245, 158, 11, 0.4); background: rgba(245, 158, 11, 0.1); }
+.chip-danger  { color: #FCA5A5; border-color: rgba(239, 68, 68, 0.45); background: rgba(239, 68, 68, 0.1); }
 
-/* Kanban card */
+/* Kanban column */
 .kanban-column {
-  background: rgba(241, 245, 251, 0.85);
+  background: rgba(255, 255, 255, 0.025);
   border: 1px solid var(--border-default);
-  border-radius: 14px;
+  border-radius: 16px;
 }
 
 /* Small dashed separator used in command-line aesthetic */
@@ -322,9 +388,9 @@
 
 /* Flash pulse ring for notifications */
 @keyframes flash-pulse {
-  0% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.5); }
-  70% { box-shadow: 0 0 0 14px rgba(99, 102, 241, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
+  0% { box-shadow: 0 0 0 0 rgba(124, 58, 237, 0.55); }
+  70% { box-shadow: 0 0 0 14px rgba(124, 58, 237, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(124, 58, 237, 0); }
 }
 .flash-pulse { animation: flash-pulse 1.8s ease-out infinite; }
 
@@ -341,35 +407,39 @@
 }
 .pos-kpi {
   position: relative;
-  border-radius: 10px;
+  border-radius: 14px;
   padding: 1px; /* the gradient border */
-  background: color-mix(in srgb, var(--pos-edge-a, var(--pos-blue)) 22%, var(--border-default));
-  transition: background-color 0.15s ease;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--pos-edge-a, var(--pos-blue)) 55%, transparent), rgba(255, 255, 255, 0.06) 60%);
+  transition: box-shadow 0.3s ease;
 }
-.pos-kpi:hover { background: color-mix(in srgb, var(--pos-edge-a, var(--pos-blue)) 38%, var(--border-default)); }
-.pos-kpi > .pos-kpi-body { background: var(--surface-dark); color: #fff; border-radius: 9px; padding: 14px 16px; height: 100%; }
+.pos-kpi:hover { box-shadow: var(--glow-soft); }
+.pos-kpi > .pos-kpi-body { background: var(--void-surface); color: #fff; border-radius: 13px; padding: 14px 16px; height: 100%; }
 .pos-kpi-blue   { --pos-edge-a: var(--pos-blue);   --pos-edge-b: var(--pos-violet); }
 .pos-kpi-violet { --pos-edge-a: var(--pos-violet); --pos-edge-b: var(--pos-cyan); }
 .pos-kpi-cyan   { --pos-edge-a: var(--pos-cyan);   --pos-edge-b: var(--pos-blue); }
 .pos-signal-chip { animation: pos-chip-in 0.4s ease both; }
 @keyframes pos-chip-in { from { opacity: 0; transform: translateY(4px) scale(0.98); } to { opacity: 1; transform: none; } }
-.pos-live-dot { width: 8px; height: 8px; border-radius: 9999px; background: var(--brand-violet); }
+.pos-live-dot { width: 8px; height: 8px; border-radius: 9999px; background: var(--leaf); box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.5); animation: pos-live 2s ease-out infinite; }
+@keyframes pos-live { 70% { box-shadow: 0 0 0 8px rgba(74, 222, 128, 0); } 100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); } }
 @keyframes pos-pulse { 70% { box-shadow: 0 0 0 8px rgba(109, 66, 193, 0); } 100% { box-shadow: 0 0 0 0 rgba(109, 66, 193, 0); } }
 @media (prefers-reduced-motion: reduce) {
   .pos-kpi, .pos-kpi:hover { transition: none; transform: none; }
-  .pos-signal-chip, .pos-live-dot { animation: none; }
+  .pos-signal-chip, .pos-live-dot, .flash-pulse, .pulse-dot, .border-beam::before { animation: none; }
+  .btn-primary, .btn-ghost, .btn-purple, .btn-ink { transition: none; }
 }
 
-/* Map search: pins and popups */
+/* Map search: pins and popups. The basemap stays the standard OpenStreetMap style; the panels around it follow the theme. */
 .map-pin { background: transparent; border: 0; }
 .map-pin-dot { display:block; width:18px; height:18px; margin:2px; border-radius:50%; background:var(--c); border:3px solid #fff; box-shadow:0 0 0 1px rgba(11,16,32,.25), 0 4px 14px color-mix(in srgb, var(--c) 70%, transparent); transition:transform .15s; }
 .map-pin:hover .map-pin-dot { transform: scale(1.25); }
 .map-pin-dot.is-active { box-shadow:0 0 0 4px rgba(15,23,42,.9), 0 2px 10px rgba(15,23,42,.5); transform: scale(1.2); }
-.map-popup .leaflet-popup-content-wrapper { border-radius:16px; -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px); background:rgba(255,255,255,.92); box-shadow:0 14px 40px rgba(30,41,90,.35); }
+.map-popup .leaflet-popup-content-wrapper { border-radius:16px; -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px); background:rgba(18,15,30,.94); color:var(--text-primary); border:1px solid var(--border-default); box-shadow:0 14px 40px rgba(0,0,0,.55); }
+.map-popup .leaflet-popup-tip { background: rgba(18,15,30,.94); }
 .map-popup .leaflet-popup-content { margin:14px 16px; font-size:13px; line-height:1.5; }
+.map-popup a { color: var(--brand-lilac); }
 .leaflet-container { font-family: inherit; }
 .map-pin-square { display:block; width:16px; height:16px; margin:3px; border-radius:4px; background:var(--c); border:3px solid #fff; box-shadow:0 2px 8px rgba(15,23,42,.45); transform:rotate(45deg); }
 
-.map-cluster { display:flex; align-items:center; justify-content:center; border-radius:9999px; background:radial-gradient(circle at 30% 25%, #6366F1, #0B1020 70%); color:#fff; font-weight:700; font-size:13px; border:3px solid #fff; box-shadow:0 0 0 1px rgba(11,16,32,.3), 0 6px 20px rgba(79,70,229,.55); }
+.map-cluster { display:flex; align-items:center; justify-content:center; border-radius:9999px; background:radial-gradient(circle at 30% 25%, #9B74FA, #3B1578 70%); color:#fff; font-weight:700; font-size:13px; border:3px solid #fff; box-shadow:0 0 0 1px rgba(11,16,32,.3), 0 6px 20px rgba(124,58,237,.55); }
 .map-pin-square.is-new { animation: pos-pulse 1.6s 3; outline: 3px solid #22D3EE; outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { .map-pin-square.is-new { animation: none; } }

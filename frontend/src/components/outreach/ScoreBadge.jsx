@@ -1,10 +1,10 @@
 import { coverageLabel, scoreBand } from "@/lib/outreachFormat";
 
 const BAND_STYLE = {
-  high: "bg-[#0F172A] text-white border-[#0F172A]",
-  medium: "bg-[#F1F5F9] text-[#0F172A] border-[#0F172A]/30",
-  low: "bg-white text-[#475569] border-[#D3DBEA]",
-  none: "bg-white text-[#6B6B66] border-dashed border-[#D3DBEA]",
+  high: "bg-brand-violet text-white border-white/20",
+  medium: "bg-white/[0.04] text-foreground border-white/30",
+  low: "bg-card text-soft border-border",
+  none: "bg-card text-faint border-dashed border-border",
 };
 
 // The number is always printed: colour only reinforces it. `null` means "never scored", not zero.
@@ -23,7 +23,7 @@ export default function ScoreBadge({ score, coverage, showCoverage = false }) {
         )}
       </span>
       {showCoverage && score !== null && score !== undefined && (
-        <span className="mono-accent text-[#5F5F5A] mt-1" title="Share of the weighted signals that could be observed">
+        <span className="mono-accent text-soft mt-1" title="Share of the weighted signals that could be observed">
           coverage {coverageLabel(coverage)}
         </span>
       )}

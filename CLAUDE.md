@@ -101,6 +101,9 @@ npm run e2e                    # Playwright, API réelle démarrée + build avec
 
 - Écrans dans `frontend/src/pages/{Prospects,ProspectDetail,ReviewQueue,Sending}.jsx`, composants dans
   `components/outreach/`, appels API dans `lib/outreach.js`, formatage pur dans `lib/outreachFormat.js` (testé).
+- Design : prolongement de plantiers.com (fond `#07060B`, violet `#7C3AED`, Inter + JetBrains Mono auto-hébergées, logo `components/Logo.jsx`). Les écrans
+  n'écrivent aucune couleur dans une classe : tokens de `index.css` (`text-soft`, `text-faint`, `bg-card`, `border-border`, `brand-*`) ; `src/theme.test.js` le vérifie.
+  Voir `docs/design-system.md`.
 - Aucune donnée inventée : un chiffre vient de l'API, sinon un état vide explicite (« not scored » ≠ 0). Un état
   `unknown` s'affiche comme tel et ne vaut jamais un défaut. Ne pas coder en dur un statut d'intégration.
 - Chaleur : TOP (≥ 80) et lead vide (ni e-mail, ni téléphone, ni site) sont décidés par le serveur (`heat.top`, `heat.has_contact`, jumeau SQL dans

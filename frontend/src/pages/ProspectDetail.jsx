@@ -23,7 +23,7 @@ function Section({ title, hint, actions, children, testId }) {
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h2 className="font-display text-xl font-bold">{title}</h2>
-          {hint && <p className="text-sm text-[#5F5F5A]">{hint}</p>}
+          {hint && <p className="text-sm text-soft">{hint}</p>}
         </div>
         {actions}
       </div>
@@ -101,7 +101,7 @@ export default function ProspectDetail() {
         <div className="space-y-2">
           <div className="mono-accent">// prospect · {p.vertical || "unclassified"}</div>
           <h1 className="text-4xl font-black tracking-tighter" data-testid="detail-name">{p.name}</h1>
-          <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-[#475569]">
+          <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-soft">
             <span className="inline-flex items-center gap-1"><MapPin size={14} />{p.city || "city unknown"}</span>
             <span className="inline-flex items-center gap-1"><Globe size={14} />{domainOf(p.website) || "no own website listed"}</span>
             <span className="inline-flex items-center gap-1"><Envelope size={14} />{p.contact_email || "no public e-mail"}</span>
@@ -115,7 +115,7 @@ export default function ProspectDetail() {
       </header>
 
       {error && (
-        <div role="alert" className="text-sm text-[#991B1B] bg-[#FEF2F2] border border-[#FCA5A5] rounded-md p-3" data-testid="detail-error">{error}</div>
+        <div role="alert" className="text-sm text-red-300 bg-red-500/10 border border-red-400/40 rounded-md p-3" data-testid="detail-error">{error}</div>
       )}
 
       <Section title="Review" hint="A person decides. Approving makes the prospect eligible for a draft; it never sends anything." testId="section-review">
@@ -129,8 +129,8 @@ export default function ProspectDetail() {
             onClick={() => run("reject", () => prospectsApi.review(id, "reject", note), "Prospect rejected")} data-testid="detail-reject">
             <X size={14} /> REJECT
           </button>
-          {!decide && <span className="mono-accent text-[#6B6B66]">deciding requires owner or admin</span>}
-          {p.reviewed_at && <span className="mono-accent text-[#5F5F5A]">last decision {new Date(p.reviewed_at).toLocaleString()}</span>}
+          {!decide && <span className="mono-accent text-faint">deciding requires owner or admin</span>}
+          {p.reviewed_at && <span className="mono-accent text-soft">last decision {new Date(p.reviewed_at).toLocaleString()}</span>}
         </div>
       </Section>
 
@@ -167,7 +167,7 @@ export default function ProspectDetail() {
       <Section title="Erase" hint="Right to erasure: blanks the personal data everywhere it was copied and adds the identity to your suppression list." testId="section-erase">
         <AlertDialog>
           <AlertDialogTrigger asChild>
-            <button className="btn-ghost !text-[#991B1B] !border-[#FCA5A5]" disabled={!decide || busy === "erase"} data-testid="erase-open">
+            <button className="btn-ghost !text-red-300 !border-red-400/40" disabled={!decide || busy === "erase"} data-testid="erase-open">
               <Trash size={14} /> ERASE THIS PROSPECT
             </button>
           </AlertDialogTrigger>

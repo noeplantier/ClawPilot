@@ -12,7 +12,17 @@ module.exports = {
   			md: 'calc(var(--radius) - 2px)',
   			sm: 'calc(var(--radius) - 4px)'
   		},
+  		fontFamily: {
+  			sans: ["Inter", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "system-ui", "sans-serif"],
+  			mono: ["JetBrains Mono", "ui-monospace", "SFMono-Regular", "monospace"]
+  		},
+  		boxShadow: {
+  			glow: "0 0 32px rgba(124, 58, 237, 0.35)",
+  			"glow-soft": "0 0 60px rgba(124, 58, 237, 0.18)"
+  		},
   		colors: {
+			void: { DEFAULT: "#07060B", elevated: "#0C0A14", surface: "#120F1E" },
+			leaf: { 400: "#4ADE80", 500: "#22C55E" },
 			"brand-violet": "var(--brand-violet)",
 			"brand-violet-hover": "var(--brand-violet-hover)",
 			"brand-lilac": "var(--brand-lilac)",

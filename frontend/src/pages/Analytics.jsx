@@ -33,7 +33,7 @@ export default function Analytics() {
   const funnel = [
     { name: "Sent", value: totals.sent || 0, fill: "var(--brand-violet)" },
     { name: "Opened", value: totals.opened || 0, fill: "var(--brand-ink)" },
-    { name: "Replied", value: totals.replied || 0, fill: "#475569" },
+    { name: "Replied", value: totals.replied || 0, fill: "#94A3B8" },
     { name: "Converted", value: totals.converted || 0, fill: "#10B981" },
   ];
   const pipelineMax = Math.max(...Object.values(pipeline), 1);
@@ -43,7 +43,7 @@ export default function Analytics() {
       <div>
         <div className="mono-accent">// deep.analytics</div>
         <h1 className="text-4xl font-black tracking-tighter">Analytics</h1>
-        <p className="text-[#5F5F5A] mt-1">Cross-channel performance breakdown. Every figure comes from recorded events.</p>
+        <p className="text-soft mt-1">Cross-channel performance breakdown. Every figure comes from recorded events.</p>
       </div>
 
       <div className="grid lg:grid-cols-2 gap-4">
@@ -70,9 +70,9 @@ export default function Analytics() {
                 {Object.entries(pipeline).map(([stage, count]) => (
                   <div key={stage} className="flex items-center gap-3">
                     <div className="mono-accent w-24">{stage}</div>
-                    <div className="flex-1 h-6 bg-[#E6ECF6] rounded-sm overflow-hidden relative">
+                    <div className="flex-1 h-6 bg-white/[0.04] rounded-sm overflow-hidden relative">
                       <div className="h-full bg-gradient-to-r from-brand-violet to-[var(--brand-ink)]" style={{ width: `${(count / pipelineMax) * 100}%` }} />
-                      <div className="absolute inset-0 flex items-center justify-end pr-2 font-mono text-xs text-[#0A0A0A]">{count}</div>
+                      <div className="absolute inset-0 flex items-center justify-end pr-2 font-mono text-xs text-foreground">{count}</div>
                     </div>
                   </div>
                 ))}

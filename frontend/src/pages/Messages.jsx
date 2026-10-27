@@ -37,7 +37,7 @@ export default function Messages() {
         <div>
           <div className="mono-accent">// transmission.log</div>
           <h1 className="text-4xl font-black tracking-tighter">Messages</h1>
-          <p className="text-[#5F5F5A] mt-1">{list.length} transmissions recorded</p>
+          <p className="text-soft mt-1">{list.length} transmissions recorded</p>
         </div>
         <div className="flex gap-2 flex-wrap">
           <button onClick={() => setBatchChannel("email")} className="btn-ink" data-testid="batch-email-button"><Users size={14} /> BATCH EMAIL</button>
@@ -58,7 +58,7 @@ export default function Messages() {
         {loading && list.length === 0 && <p role="status" className="p-4 text-sm">Loading messages…</p>}
         <div className="overflow-x-auto">
         <table className="w-full min-w-[42rem] text-sm">
-          <thead className="bg-[#F6F8FC] border-b border-[#D3DBEA]">
+          <thead className="bg-white/[0.04] border-b border-border">
             <tr className="text-left mono-accent">
               <th className="p-3">Channel</th>
               <th className="p-3">To</th>
@@ -70,23 +70,23 @@ export default function Messages() {
           <tbody>
             {list.map((m) => (
               <tr key={m.id}
-                className="border-b border-[#E6ECF6] hover:bg-[#F6F8FC]">
+                className="border-b border-border hover:bg-white/[0.04]">
                 <td className="p-3">
                   {m.channel === "email"
-                    ? <span className="inline-flex items-center gap-1.5 text-[#4F46E5]"><Envelope size={14} /> email</span>
+                    ? <span className="inline-flex items-center gap-1.5 text-brand-lilac"><Envelope size={14} /> email</span>
                     : <span className="inline-flex items-center gap-1.5 text-[#25D366]"><WhatsappLogo size={14} weight="fill" /> whatsapp</span>
                   }
                 </td>
-                <td className="p-3 font-mono text-xs text-[#1a1a1a]">{m.to}</td>
-                <td className="p-3 text-[#5F5F5A] truncate max-w-sm">
-                  {m.subject && <div className="text-[#0A0A0A]">{m.subject}</div>}
+                <td className="p-3 font-mono text-xs text-foreground">{m.to}</td>
+                <td className="p-3 text-soft truncate max-w-sm">
+                  {m.subject && <div className="text-foreground">{m.subject}</div>}
                   <div className="truncate">{m.body}</div>
                 </td>
                 <td className="p-3"><span className={`chip ${STATUS_CHIP[m.status]}`}>{m.status === "mock" ? "not sent" : m.status}</span></td>
-                <td className="p-3 font-mono text-xs text-[#6B6B66]">{new Date(m.created_at).toLocaleString()}</td>
+                <td className="p-3 font-mono text-xs text-faint">{new Date(m.created_at).toLocaleString()}</td>
               </tr>
             ))}
-            {!loading && !error && list.length === 0 && <tr><td colSpan="5" className="p-10 text-center text-[#5F5F5A]">No messages in this channel yet.</td></tr>}
+            {!loading && !error && list.length === 0 && <tr><td colSpan="5" className="p-10 text-center text-soft">No messages in this channel yet.</td></tr>}
           </tbody>
         </table>
         </div>
@@ -164,7 +164,7 @@ function Composer({ channel, onClose, onSent }) {
   };
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-50 bg-[#0F172A]/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
       <motion.div initial={{ y: 10 }} animate={{ y: 0 }} className="surface w-full max-w-2xl p-8" onClick={(e) => e.stopPropagation()}>
         <div className="mono-accent">/// {channel}.compose</div>
         <h2 className="text-2xl font-black tracking-tighter mt-1">New {channel === "email" ? "Email" : "WhatsApp"}</h2>
@@ -177,32 +177,32 @@ function Composer({ channel, onClose, onSent }) {
               onBlur={() => { blurTimer.current = setTimeout(() => setFocused(false), 120); }} autoComplete="off"
               placeholder={channel === "email" ? "type a name or an address" : "+14155550123"} data-testid="compose-to" />
             {suggestions.length > 0 && (
-              <ul className="absolute left-0 right-0 mt-1 z-10 max-h-56 overflow-auto rounded-lg py-1 bg-white border border-indigo-100 shadow-lg" role="listbox" data-testid="compose-suggestions">
+              <ul className="absolute left-0 right-0 mt-1 z-10 max-h-56 overflow-auto rounded-lg py-1 bg-card border border-white/10 shadow-lg" role="listbox" data-testid="compose-suggestions">
                 {suggestions.map((l, i) => (
                   <li key={l.id}>
-                    <button type="button" role="option" aria-selected="false" className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50"
+                    <button type="button" role="option" aria-selected="false" className="w-full text-left px-3 py-2 text-sm hover:bg-white/10"
                       onMouseDown={(e) => e.preventDefault()} onClick={() => { setTo(addressOf(channel, l)); setFocused(false); }} data-testid={`compose-suggest-${i}`}>
                       <span className="font-semibold">{l.full_name}</span>
-                      {l.company ? <span className="text-[#5F5F5A]"> · {l.company}</span> : null}
-                      <span className="block font-mono text-xs text-[#6B7690]">{addressOf(channel, l)}</span>
+                      {l.company ? <span className="text-soft"> · {l.company}</span> : null}
+                      <span className="block font-mono text-xs text-faint">{addressOf(channel, l)}</span>
                     </button>
                   </li>
                 ))}
               </ul>
             )}
             {lead && (
-              <p className="text-xs mt-1.5 text-[#065F46]" data-testid="compose-lead">
+              <p className="text-xs mt-1.5 text-emerald-300" data-testid="compose-lead">
                 Linked to <b>{lead.full_name}</b>{lead.review_status ? ` (prospect: ${lead.review_status === "pending" ? "to review" : lead.review_status})` : ""}: the e-mail carries its unsubscribe link.
               </p>
             )}
             {block === "not-a-lead" && (
-              <p className="text-xs mt-1.5 text-[#92400E]" role="alert" data-testid="compose-no-lead">
+              <p className="text-xs mt-1.5 text-amber-300" role="alert" data-testid="compose-no-lead">
                 This address is not one of your leads. A real e-mail must be linked to a lead so that it carries a working unsubscribe link:{" "}
                 <Link to="/app/leads" className="underline" onClick={onClose}>add it in Leads first</Link>.
               </p>
             )}
             {block === "load-error" && (
-              <p className="text-xs mt-1.5 text-[#991B1B]" role="alert" data-testid="compose-leads-error">Your leads could not be loaded, so the recipient cannot be checked. Reload the page.</p>
+              <p className="text-xs mt-1.5 text-red-300" role="alert" data-testid="compose-leads-error">Your leads could not be loaded, so the recipient cannot be checked. Reload the page.</p>
             )}
           </div>
           {channel === "email" && (
