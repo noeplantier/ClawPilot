@@ -16,6 +16,44 @@ async function register(page) {
   await expect(page).toHaveURL(/\/app\/dashboard/);
 }
 
+test("a returning visitor sees the app and the last data at once, even while the API is still waking up", async ({ page }) => {
+  await register(page);
+  await expect(page.getByTestId("kpi-prospects-value")).toBeVisible(); // first visit: real data, cached by the page
+
+  // The API now answers after 5 s (a sleeping free instance): nothing may wait for it.
+  await page.route("**/api/**", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+    await route.continue();
+  });
+  const started = Date.now();
+  await page.reload();
+  await expect(page.getByTestId("dashboard-page")).toBeVisible();
+  await expect(page.getByTestId("kpi-prospects-value")).toBeVisible(); // the last answer, not a spinner
+  await expect(page.getByTestId("sidebar")).toBeVisible(); // the signed-in shell, not a boot screen
+  expect(Date.now() - started).toBeLessThan(4000); // well before the API could answer
+  await page.unroute("**/api/**");
+
+  // another screen: warmed up and cached, it opens without a blank state
+  await page.getByTestId("nav-group-outreach").click();
+  await page.getByTestId("nav-campaigns").click();
+  await expect(page).toHaveURL(/\/app\/campaigns/);
+  await expect(page.getByRole("heading", { name: "Campaigns", exact: true })).toBeVisible();
+});
+
+test("signing out leaves nothing of the organisation in the browser", async ({ page }) => {
+  await register(page);
+  await expect(page.getByTestId("kpi-prospects-value")).toBeVisible();
+  expect(await page.evaluate(() => Object.keys(sessionStorage).some((k) => k.startsWith("outreachos.swr.v1:")))).toBe(true);
+  await page.getByTestId("logout-button").click();
+  await expect(page).toHaveURL(/\/login/);
+  const left = await page.evaluate(() => ({
+    swr: Object.keys(sessionStorage).filter((k) => k.startsWith("outreachos.swr.v1:")),
+    token: localStorage.getItem("outreachos_token"),
+    session: localStorage.getItem("outreachos_session"),
+  }));
+  expect(left).toEqual({ swr: [], token: null, session: null });
+});
+
 test("the legal pages and the footer are public and linked", async ({ page }) => {
   await page.goto("/login");
   await expect(page.getByTestId("app-footer")).toContainText("© Plantiers - Software Engineering");

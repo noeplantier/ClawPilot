@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { ArrowsClockwise, Pause, Play, Warning } from "@phosphor-icons/react";
 import { useAuth } from "@/contexts/AuthContext";
 import { canDecide, outboundApi, prospectsApi, useAsync } from "@/lib/outreach";
+import { LIVE_MS } from "@/lib/live";
 import {
   LIMIT_RANGES, MESSAGE_STATUS_CHIP, describeApiError, describeInboxSync, describeTestSend, describeWhatsappTest, formatDateTime, formatRetry, limitsPatch,
   validateLimits,
@@ -321,7 +322,7 @@ export default function Sending() {
       outboundApi.status(), outboundApi.limits(), outboundApi.list({ limit: 100 }), prospectsApi.settings().catch(() => null),
     ]);
     return { status, limits, messages, settings };
-  }, []);
+  }, [], { key: "sending", intervalMs: LIVE_MS });
 
   return (
     <div className="p-6 md:p-10 space-y-6 max-w-5xl" data-testid="sending-page">

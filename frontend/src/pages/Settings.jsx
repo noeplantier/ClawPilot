@@ -24,7 +24,7 @@ const ICONS = {
 
 export default function Settings() {
   const { user, org } = useAuth();
-  const live = useLive(() => api.get("/settings/integrations").then((r) => r.data), [], { intervalMs: SETTINGS_LIVE_MS, itemsOf: (d) => d.items });
+  const live = useLive(() => api.get("/settings/integrations").then((r) => r.data), [], { intervalMs: SETTINGS_LIVE_MS, itemsOf: (d) => d.items, key: "settings:integrations" });
   const s = live.data;
   const canTest = user?.role === "owner" || user?.role === "admin";
 

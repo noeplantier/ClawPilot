@@ -52,6 +52,8 @@
         }
         </script>
 
+        <!-- The API sleeps on a free host: wake it (and open its connection) while the scripts download, so the first request finds it up. -->
+        <script>(function(){var u="%REACT_APP_BACKEND_URL%";if(!u||u.indexOf("%")!==-1)return;var l=document.createElement("link");l.rel="preconnect";l.href=u;document.head.appendChild(l);try{fetch(u+"/api/health",{mode:"no-cors",cache:"no-store",keepalive:true})}catch(e){}})();</script>
         <script>window.addEventListener("error",function(e){if(e.error instanceof DOMException&&e.error.name==="DataCloneError"&&e.message&&e.message.includes("PerformanceServerTiming")){e.stopImmediatePropagation();e.preventDefault()}},true);</script>
     </head>
     <body>

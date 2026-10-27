@@ -7,7 +7,7 @@ import { EMPTY_FOCUS, leadLine, leadLink, mapLink, zoneLine } from "@/lib/focus"
 // Next best moves, recomputed from your own leads every few seconds: the towns holding the most hot leads that can be called and
 // e-mailed, and the hottest of those leads, website first. Nothing is estimated: with nothing qualifying, the lists stay empty.
 export default function FocusPanel() {
-  const live = useLive(() => focusApi.get(), [], { itemsOf: (d) => d.leads });
+  const live = useLive(() => focusApi.get(), [], { itemsOf: (d) => d.leads, key: "suggestions:focus" });
   const d = live.data;
   const empty = d && d.zones.length === 0 && d.leads.length === 0;
   return (

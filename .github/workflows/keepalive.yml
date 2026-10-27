@@ -1,0 +1,31 @@
+name: keepalive
+
+# The API runs on a free Render instance, which falls asleep after 15 minutes without traffic; waking it takes about a minute,
+# which is the "slow page" a visitor feels. A ping every 10 minutes keeps it awake (a free instance has 750 hours a month,
+# enough for one service running all month). Costs nothing: scheduled runs of a public repository are free.
+# Set the repository variable API_HEALTH_URL (Settings > Secrets and variables > Actions > Variables) to override the URL.
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Ping the API health endpoint
+        env:
+          URL: ${{ vars.API_HEALTH_URL || 'https://clawpilot-api.onrender.com/api/health' }}
+        run: |
+          # A sleeping instance answers the first request after about a minute: allow it, retry once.
+          for attempt in 1 2; do
+            code=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 90 "$URL" || echo 000)
+            echo "attempt $attempt: HTTP $code"
+            [ "$code" = "200" ] && exit 0
+            sleep 10
+          done
+          echo "::warning::The API did not answer 200 ($URL)"
