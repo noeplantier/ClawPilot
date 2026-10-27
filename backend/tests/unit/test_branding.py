@@ -15,6 +15,8 @@ INFRA_IDENTIFIERS = {
     "backend/alembic.ini",  # local default connection string
     "backend/.env.example",  # local default connection string
     "docs/deployment.md",  # documents the Render service names above
+    "docs/performance.md",  # documents the Render service (free plan, sleep, health check path)
+    ".github/workflows/keepalive.yml",  # pings the Render service URL, which carries the service name
 }
 HISTORY = {
     "README.md",
