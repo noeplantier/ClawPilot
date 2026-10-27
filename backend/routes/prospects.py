@@ -24,6 +24,7 @@ from models import (
     DiscoveryRunOut,
     DismissIn,
     DismissOut,
+    DraftEditIn,
     DraftOut,
     HeatOut,
     OutreachSettingsOut,
@@ -52,6 +53,7 @@ from repositories import (
 )
 from services import feature_flags
 from services.outreach_os import drafts as drafts_svc
+from services.outreach_os import email_footer
 from services.outreach_os import heat as heat_rules
 from services.outreach_os import pipeline
 from services.outreach_os import signals as sig
@@ -137,6 +139,7 @@ async def _require_prospect(session: AsyncSession, user: dict, lead_id: str) -> 
 
 
 def _draft_out(d: MessageDraft) -> DraftOut:
+    message, footer = email_footer.split_footer(d.body)
     return DraftOut(
         id=str(d.id),
         channel=d.channel,
@@ -149,6 +152,9 @@ def _draft_out(d: MessageDraft) -> DraftOut:
         review_note=d.review_note,
         reviewed_at=d.reviewed_at,
         created_at=d.created_at,
+        message=message,
+        footer=footer,
+        edited_at=d.edited_at,
     )
 
 
@@ -564,6 +570,74 @@ async def create_draft(
             actor_user_id=_uid(user),
             diff={"prospect_id": str(lead.id), "dry_run": draft.dry_run, "facts": len(content.facts)},
         )
+    return _draft_out(draft)
+
+
+async def _footer_for(
+    session: AsyncSession, account_id: uuid.UUID, lead: Lead, sender: drafts_svc.SenderIdentity
+) -> str:
+    """The footer of this prospect's e-mails today: sender coordinates, recorded data origin, own unsubscribe link."""
+    sources = await prospect_repo.sources_of(session, lead.id)
+    latest = max(sources, key=lambda s: s.fields.get("last_updated") or "") if sources else None
+    token = make_token(JWT_SECRET, account_id, lead.id)
+    return email_footer.render_footer(
+        name=sender.name,
+        company=sender.company,
+        postal_address=sender.postal_address,
+        source=f"annuaire « {latest.source_name} »" if latest else None,
+        unsubscribe_url=f"{_public_base_url()}/api/unsubscribe/{token}",
+        reply_to=sender.reply_to,
+        whatsapp=sender.whatsapp,
+    )
+
+
+@router.patch("/drafts/{draft_id}", response_model=DraftOut)
+async def edit_draft(
+    draft_id: str, payload: DraftEditIn, user: dict = Depends(decider), session: AsyncSession = Depends(get_db_session)
+):
+    """Change the subject and the message of a draft. The footer (sender coordinates, data origin, unsubscribe link)
+    is rebuilt from the current configuration, so it can neither be edited nor dropped. An approved draft that is
+    edited goes back to review (what was approved is no longer what would leave); a dispatched or rejected one cannot
+    be edited."""
+    account_id = _account(user)
+    draft = await draft_repo.get(session, account_id, draft_id)
+    if draft is None:
+        raise HTTPException(status_code=404, detail="Draft not found")
+    if draft.status == "rejected":
+        raise HTTPException(status_code=409, detail="A rejected draft cannot be edited: prepare a new one")
+    if await outbound_repo.get_for_draft(session, account_id, draft.id) is not None:
+        raise HTTPException(status_code=409, detail="This draft was already dispatched: it cannot be edited")
+    sender = drafts_svc.SenderIdentity.from_env()
+    if sender is None:
+        raise HTTPException(
+            status_code=409,
+            detail="Sender identity is not configured (OUTREACH_SENDER_NAME, _COMPANY, _ADDRESS, _EMAIL)",
+        )
+    lead = await prospect_repo.get(session, account_id, str(draft.lead_id))
+    if lead is None:
+        raise HTTPException(status_code=404, detail="Prospect not found")
+    message = payload.message.strip()
+    if not message:
+        raise HTTPException(status_code=422, detail="The message is empty")
+    if drafts_svc.UNSUBSCRIBE_PLACEHOLDER in message:
+        raise HTTPException(
+            status_code=422, detail="Remove {{unsubscribe_url}} from the message: the footer already carries the link"
+        )
+    body = f"{message}\n\n{await _footer_for(session, account_id, lead, sender)}"
+    problems = drafts_svc.compliance_problems(body, sender)
+    if problems:  # defence in depth: the footer was just rebuilt, so this fires only if the rules drift apart
+        raise HTTPException(status_code=422, detail=f"Draft is not compliant: {', '.join(problems)}")
+    back_to_review = draft.status == "approved"
+    await draft_repo.edit(session, draft, subject=payload.subject.strip(), body=body, back_to_review=back_to_review)
+    await audit_repo.log(
+        session,
+        account_id,
+        action="draft.edited",
+        resource_type="draft",
+        resource_id=draft.id,
+        actor_user_id=_uid(user),
+        diff={"prospect_id": str(draft.lead_id), "message_chars": len(message), "back_to_review": back_to_review},
+    )
     return _draft_out(draft)
 
 

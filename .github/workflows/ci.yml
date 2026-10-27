@@ -141,6 +141,7 @@ jobs:
       OUTREACH_SENDER_COMPANY: CI Company SAS
       OUTREACH_SENDER_ADDRESS: 1 rue Fictive, 69000 Lyon
       OUTREACH_SENDER_EMAIL: ci-sender@example.com
+      OUTREACH_SENDER_WHATSAPP: "+33 6 00 00 00 02" # fictional: printed in the footer of every e-mail
       # Tests only: record sends in-process instead of calling a provider, and offer the demo directory. Never in production.
       OUTREACH_TEST_SINK: "true"
       FEATURE_DEMO_DATA: "true"
@@ -232,6 +233,7 @@ jobs:
       OUTREACH_SENDER_COMPANY: CI Company SAS
       OUTREACH_SENDER_ADDRESS: 1 rue Fictive, 69000 Lyon
       OUTREACH_SENDER_EMAIL: ci-sender@example.com
+      OUTREACH_SENDER_WHATSAPP: "+33 6 00 00 00 02" # fictional: printed in the footer of every e-mail
       # Tests only: record sends in-process instead of calling a provider, and offer the demo directory. Never in production.
       OUTREACH_TEST_SINK: "true"
       FEATURE_DEMO_DATA: "true"

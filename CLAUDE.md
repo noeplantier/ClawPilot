@@ -35,7 +35,9 @@ pour l'installation et `docs/cloud-sessions.md` pour la feuille de route en cour
 
 - Consentement : WhatsApp = opt-in explicite requis. Email = bloqué uniquement si `opted_out`. Passer par
   `consent_repo.can_send(...)` avant tout envoi.
-- Tout email sortant contient : identité de l'expéditeur, origine des données, lien de désinscription fonctionnel.
+- Tout email sortant contient : identité de l'expéditeur, origine des données, lien de désinscription fonctionnel. Le pied (`email_footer.render_footer`)
+  imprime d'abord les coordonnées de l'expéditeur (`OUTREACH_SENDER_*`, dont `_WHATSAPP` facultatif), puis ces deux lignes obligatoires : on ne les retire pas.
+  Le brouillon est modifiable (`PATCH /prospects/drafts/{id}`) mais seulement son message : le pied est reconstruit par le serveur.
 - Tout webhook public (Twilio, SendGrid…) vérifie la signature du fournisseur avant de toucher à la base,
   et échoue fermé en production quand la clé de vérification est absente.
 - Un prospect de la découverte (`leads.review_status` non NULL) n'est contactable que s'il est `approved` **et** si

@@ -551,6 +551,16 @@ class DraftOut(BaseModel):
     review_note: Optional[str] = None
     reviewed_at: Optional[datetime] = None
     created_at: datetime
+    # `body` is `message` + `footer`: the person edits the message; the footer (sender coordinates, data origin,
+    # unsubscribe link) is rebuilt by the server on every save and can neither be edited nor dropped.
+    message: str = ""
+    footer: str = ""
+    edited_at: Optional[datetime] = None
+
+
+class DraftEditIn(BaseModel):
+    subject: str = Field(min_length=1, max_length=300)
+    message: str = Field(min_length=1, max_length=8000)
 
 
 class ProspectDetail(ProspectSummary):
