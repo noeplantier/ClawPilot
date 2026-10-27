@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { ArrowsClockwise, CaretLeft, CaretRight, ListChecks, MapTrifold } from "@phosphor-icons/react";
 import { useAuth } from "@/contexts/AuthContext";
 import { canDecide, prospectsApi, useAsync } from "@/lib/outreach";
+import { LIVE_MS } from "@/lib/live";
 import { REVIEW_META, describeApiError, domainOf } from "@/lib/outreachFormat";
 import ScoreBadge from "@/components/outreach/ScoreBadge";
 import HeatBadge from "@/components/outreach/HeatBadge";
@@ -46,10 +47,11 @@ export default function Prospects() {
         ...(minScore ? { min_score: minScore } : {}),
         ...(showEmpty ? {} : { hide_empty: true }),
       }),
-    [status, minScore, page, showEmpty]
+    [status, minScore, page, showEmpty],
+    { key: `prospects:list:${status || ""}:${minScore || ""}:${page}:${showEmpty}`, intervalMs: LIVE_MS }
   );
   // The built-in demo directory (fictional businesses) is offered only when the server explicitly enables it.
-  const settings = useAsync(() => prospectsApi.settings().catch(() => null), []);
+  const settings = useAsync(() => prospectsApi.settings().catch(() => null), [], { key: "prospects:settings" });
   const demoOn = !!(settings.data && settings.data.flags && settings.data.flags.demo_data);
   // Real totals per review status (one tiny request each, counted by the server), shown on the tabs, and how many empty leads
   // (no e-mail, phone or website) each holds.
@@ -61,7 +63,7 @@ export default function Prospects() {
       pending: pending.total, approved: approved.total, rejected: rejected.total,
       empty: { pending: pending.empty, approved: approved.empty, rejected: rejected.empty },
     };
-  }, [showEmpty]);
+  }, [showEmpty], { key: `prospects:counts:${showEmpty}`, intervalMs: LIVE_MS });
 
   const setParam = (key, value) => {
     const next = new URLSearchParams(params);

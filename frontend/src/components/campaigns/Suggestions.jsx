@@ -11,7 +11,7 @@ import { KIND_LABEL, basisLine, createLabel, emptyText, readyLine } from "@/lib/
 // Suggested campaigns, recomputed from your real leads and prospects every few seconds. Nothing is sent: "create"
 // makes a draft and assigns the people who can join today.
 export default function Suggestions({ onCreated }) {
-  const live = useLive(() => api.get("/campaigns/suggestions").then((r) => r.data), [], { itemsOf: (d) => d.items });
+  const live = useLive(() => api.get("/campaigns/suggestions").then((r) => r.data), [], { itemsOf: (d) => d.items, key: "campaigns:suggestions" });
   const [busy, setBusy] = useState(null);
   const d = live.data;
 

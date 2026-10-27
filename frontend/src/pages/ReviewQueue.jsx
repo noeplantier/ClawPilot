@@ -30,9 +30,9 @@ export default function ReviewQueue() {
 
   const queue = useLive(
     () => prospectsApi.list({ review_status: "pending", order: "heat", limit: 100, ...(showEmpty ? {} : { hide_empty: true }) }),
-    [showEmpty], { itemsOf: (d) => d.items },
+    [showEmpty], { itemsOf: (d) => d.items, key: `review:queue:${showEmpty}` },
   );
-  const counts = useLive(() => prospectsApi.queues("pending", { hideEmpty: !showEmpty }), [showEmpty], { idOf: () => "counts", itemsOf: (d) => [d] });
+  const counts = useLive(() => prospectsApi.queues("pending", { hideEmpty: !showEmpty }), [showEmpty], { idOf: () => "counts", itemsOf: (d) => [d], key: `review:counts:${showEmpty}` });
   const toggleEmpty = () => setShowEmpty((v) => { writePref("review.showEmpty", !v); return !v; });
   const everyPending = useMemo(() => (queue.data ? queue.data.items.filter((p) => !skipped.includes(p.id)) : []), [queue.data, skipped]);
   const pending = useMemo(() => inLane(everyPending, lane), [everyPending, lane]);

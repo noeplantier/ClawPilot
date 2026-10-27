@@ -1,14 +1,14 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
-import { motion } from "framer-motion";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   SquaresFour, Target, Users, Robot, ChatsCircle, ChartLine, Gear, SignOut, MagnifyingGlass, Sparkle,
   ListChecks, PaperPlaneTilt, MapTrifold, Database, Heartbeat, CaretLeft, CaretRight, CaretDown, List, X,
 } from "@phosphor-icons/react";
-import AIComposerModal from "@/components/AIComposerModal";
+const AIComposerModal = lazy(() => import("@/components/AIComposerModal")); // only fetched when the composer is opened
 import Footer from "@/components/Footer";
 import { isTypingTarget, readPref, writePref } from "@/lib/uiPrefs";
+import { prefetchAll, prefetchPath, whenIdle } from "@/lib/routes";
 
 const GROUPS = [
   { id: "overview", label: "Vue d’ensemble", icon: SquaresFour, items: [
@@ -60,6 +60,8 @@ function NavGroups({ folded, openGroup, setOpenGroup, setFolded, onNavigate, tes
                   to={group.items[0].to}
                   end
                   onClick={onNavigate}
+                  onMouseEnter={() => prefetchPath(group.items[0].to)}
+                  onFocus={() => prefetchPath(group.items[0].to)}
                   title={folded ? group.label : undefined}
                   aria-label={folded ? group.label : undefined}
                   data-testid={`${testPrefix}${group.items[0].testId}`}
@@ -88,7 +90,7 @@ function NavGroups({ folded, openGroup, setOpenGroup, setFolded, onNavigate, tes
                         const ItemIcon = item.icon;
                         const [itemPath, itemQuery] = item.to.split("?");
                         const active = location.pathname === itemPath && (itemQuery ? location.search === `?${itemQuery}` : location.search !== "?view=kanban");
-                        return <Link key={item.testId} to={item.to} onClick={onNavigate} data-testid={`${testPrefix}${item.testId}`} aria-current={active ? "page" : undefined}
+                        return <Link key={item.testId} to={item.to} onClick={onNavigate} onMouseEnter={() => prefetchPath(item.to)} onFocus={() => prefetchPath(item.to)} data-testid={`${testPrefix}${item.testId}`} aria-current={active ? "page" : undefined}
                           className={`flex min-h-9 items-center gap-2 rounded-md px-2 text-[13px] leading-4 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-lilac ${active ? "bg-brand-violet/20 text-white" : "text-sidebar-muted hover:bg-white/[0.06] hover:text-white"}`}>
                           <ItemIcon size={16} weight="duotone" /><span>{item.label}</span>
                         </Link>;
@@ -118,6 +120,7 @@ export default function Layout() {
   const restoreMobileFocusRef = useRef(false);
 
   useEffect(() => writePref("sidebar.folded", folded), [folded]);
+  useEffect(() => { whenIdle(prefetchAll); }, []); // every screen is warm before it is asked for
   useEffect(() => setOpenGroup(groupForPath(location.pathname)), [location.pathname]);
   useEffect(() => {
     if (!mobileOpen) {
@@ -189,12 +192,12 @@ export default function Layout() {
           <button ref={mobileToggleRef} type="button" onClick={() => setMobileOpen(true)} className="flex h-9 items-center gap-2 rounded-lg px-3 text-sm text-sidebar-muted hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-lilac" aria-haspopup="dialog" aria-expanded={mobileOpen} aria-label="Ouvrir la navigation" data-testid="mobile-nav-toggle"><List size={18} /> Menu</button>
         </header>
         <main className="grid-bg min-h-0 flex-1 overflow-y-auto">
-          <motion.div key={location.pathname} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}><Outlet /></motion.div>
+          <Outlet />
         </main>
         <Footer />
       </div>
       {mobileOpen && <><button type="button" className="fixed inset-0 z-[1000] bg-black/60 md:hidden" onClick={() => setMobileOpen(false)} aria-label="Fermer le menu" /><div ref={mobileDialogRef} role="dialog" aria-modal="true" aria-label="Navigation mobile" className="fixed inset-0 z-[1001] md:hidden">{sidebar(true)}</div></>}
-      <AIComposerModal open={aiOpen} onClose={() => setAiOpen(false)} />
+      {aiOpen && <Suspense fallback={null}><AIComposerModal open={aiOpen} onClose={() => setAiOpen(false)} /></Suspense>}
     </div>
   );
 }

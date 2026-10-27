@@ -7,6 +7,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import APIRouter, FastAPI
 from starlette.middleware.cors import CORSMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
@@ -77,6 +78,9 @@ api_router.include_router(prospecting_router)
 
 app.include_router(api_router)
 
+# Compress what the API answers (a list of leads is mostly repeated keys: about a tenth of its size on the wire).
+# Added before CORS so that CORS stays the outermost layer and its headers are on compressed answers too.
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,

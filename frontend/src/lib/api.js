@@ -1,4 +1,5 @@
 import axios from "axios";
+import * as swr from "@/lib/swr";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "";
 export const API = `${BACKEND_URL}/api`;
@@ -16,6 +17,8 @@ api.interceptors.response.use(
   (err) => {
     if (err?.response?.status === 401) {
       localStorage.removeItem("outreachos_token");
+      localStorage.removeItem("outreachos_session");
+      swr.clear();
       if (!window.location.pathname.startsWith("/login") && !window.location.pathname.startsWith("/register")) {
         window.location.href = "/login";
       }

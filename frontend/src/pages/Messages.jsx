@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { api } from "@/lib/api";
+import { useAsync } from "@/lib/outreach";
+import { LIVE_MS } from "@/lib/live";
 import { toast } from "sonner";
 import { sendErrorText } from "@/lib/campaignLaunch";
 import { describeApiError } from "@/lib/outreachFormat";
@@ -15,21 +17,17 @@ const STATUS_CHIP = {
 };
 
 export default function Messages() {
-  const [list, setList] = useState([]);
   const [filter, setFilter] = useState("all");
   const [composer, setComposer] = useState({ open: false, channel: "email" });
   const [batchChannel, setBatchChannel] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  const load = useCallback(() => {
-    const params = filter === "all" ? {} : { channel: filter };
-    setLoading(true);
-    api.get("/messages", { params }).then((r) => { setList(r.data); setError(null); })
-      .catch((e) => setError(e?.response?.data?.detail || "Messages are temporarily unavailable."))
-      .finally(() => setLoading(false));
-  }, [filter]);
-  useEffect(() => { load(); }, [load]);
+  // Live: the last answer at once, refreshed every few seconds while the tab is visible.
+  const messages = useAsync(
+    () => api.get("/messages", { params: filter === "all" ? {} : { channel: filter } }).then((r) => r.data),
+    [filter], { key: `messages:${filter}`, intervalMs: LIVE_MS },
+  );
+  const list = messages.data || [];
+  const { loading, error } = messages;
+  const load = messages.reload;
 
   return (
     <div className="p-6 md:p-10 space-y-6">
