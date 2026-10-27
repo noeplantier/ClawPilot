@@ -29,6 +29,7 @@ from routes.prospecting import router as prospecting_router
 from routes.prospects import router as prospects_router
 from routes.settings import router as settings_router
 from routes.sources import router as sources_router
+from routes.suggestions import router as suggestions_router
 from routes.system import router as system_router
 from routes.tags import router as tags_router
 from routes.tasks import router as tasks_router
@@ -75,6 +76,7 @@ api_router.include_router(dashboard_router)
 api_router.include_router(outbound_router)
 api_router.include_router(unsubscribe_router)
 api_router.include_router(prospecting_router)
+api_router.include_router(suggestions_router)
 
 app.include_router(api_router)
 

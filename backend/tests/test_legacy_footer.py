@@ -67,7 +67,13 @@ def test_a_single_send_to_a_lead_carries_the_footer_and_the_link_unsubscribes():
     )
     assert sent.status_code == 200, sent.text
     body = sent.json()["message"]["body"]
-    assert "CI Sender — CI Company SAS — 1 rue Fictive, 69000 Lyon" in body
+    footer = body.split("\n—\n")[-1].splitlines()
+    assert footer[:4] == [  # the sender's coordinates, then the two lines the law keeps
+        "CI Sender — CI Company SAS",
+        "1 rue Fictive, 69000 Lyon",
+        "ci-sender@example.com · WhatsApp : +33 6 00 00 00 02",
+        "Origine de vos données : Salon 2025.",
+    ]
     assert "Origine de vos données : Salon 2025." in body
     match = LINK.search(body)
     assert match, body

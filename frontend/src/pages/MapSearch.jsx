@@ -1,7 +1,7 @@
 /* global ResizeObserver */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -13,7 +13,7 @@ import { describeApiError } from "@/lib/outreachFormat";
 import { isTypingTarget, readPref, writePref } from "@/lib/uiPrefs";
 import {
   CATEGORY_LABELS, IMPORT_ORIGIN, MAX_SITES_CHECKED, STATUS_COLOR, STATUS_LABEL, areaTooLarge, importRows, knownIds, markerColor,
-  mineSummary, panelPadding, summaryText,
+  panelPadding, reachablePlace, readyOnly, readySummary, summaryText,
 } from "@/lib/mapSearch";
 import { fetchOverpass } from "@/lib/overpassBrowser";
 import { canRetryInBrowser, jobLine, runSearch } from "@/lib/mapJobs";
@@ -23,8 +23,8 @@ import {
 import { EmptyBlock, ErrorBlock, LoadingBlock } from "@/components/outreach/States";
 import PlacePopup from "@/components/outreach/PlacePopup";
 import AddedCard from "@/components/outreach/AddedCard";
-import CityBox from "@/components/outreach/CityBox";
-import { centroids, zoomFor } from "@/lib/cityComplete";
+import CityBox, { lookup } from "@/components/outreach/CityBox";
+import { centroids, fold, zoomFor } from "@/lib/cityComplete";
 
 const START = { center: [45.764, 4.8357], zoom: 14 }; // Lyon; move the map anywhere in the world
 // One real map: the standard OpenStreetMap style (no light/dark variants).
@@ -45,7 +45,13 @@ const minePin = (p, fresh) =>
 
 function minePopup(p) {
   const esc = (v) => String(v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-  return `<strong>${esc(p.name)}</strong><div>${p.city ? esc(p.city) : "<i>city not set</i>"}</div><div><b>status</b> ${STATUS_LABEL[p.review_status]} · <b>e-mail</b> ${p.has_email ? "known" : "<i>not known</i>"}</div>` +
+  const site = p.website && /^https?:\/\//i.test(p.website)
+    ? `<div><a href="${esc(p.website)}" target="_blank" rel="noopener noreferrer">${esc(p.website.replace(/^https?:\/\//i, ""))}</a></div>`
+    : "";
+  const heat = p.heat ? `<b>${p.heat.tier} ${p.heat.value}</b> · ` : "";
+  return `<strong>${esc(p.name)}</strong><div>${p.city ? esc(p.city) : "<i>city not set</i>"}</div>` +
+    `<div>${heat}${STATUS_LABEL[p.review_status]}</div>` +
+    `<div><a href="tel:${esc(p.phone || "")}">${esc(p.phone || "")}</a></div><div><a href="mailto:${esc(p.email || "")}">${esc(p.email || "")}</a></div>${site}` +
     `<div><a href="/app/prospects/${esc(p.id)}">Open the prospect</a>${p.review_status === "approved" ? ` · <a href="/app/leads">in your CRM</a>` : ""}</div>`;
 }
 
@@ -139,6 +145,8 @@ function MapView({ canImport }) {
   const [cityStats, setCityStats] = useState(() => { const hit = swr.read("map:cities"); return hit ? hit.data : null; });
   const [mine, setMine] = useState(() => { const hit = swr.read("map:prospects"); return hit ? hit.data : []; });
   const [showMine, setShowMine] = useState(true);
+  // A search result is a place, not a lead yet (no score): it is drawn only with a published phone AND e-mail, unless asked.
+  const [showAllFound, setShowAllFound] = useState(() => readPref("map.allfound", false));
   const mineLayer = useRef(null);
   const [filter, setFilter] = useState(EMPTY_FILTER);
   const [zoom, setZoom] = useState(START.zoom);
@@ -188,6 +196,7 @@ function MapView({ canImport }) {
 
   useEffect(() => writePref("map.results", panelOpen), [panelOpen]);
   useEffect(() => writePref("map.search", searchOpen), [searchOpen]);
+  useEffect(() => writePref("map.allfound", showAllFound), [showAllFound]);
 
   // "H" hides or shows every panel (never while typing in a field); Escape brings them back.
   useEffect(() => {
@@ -229,8 +238,9 @@ function MapView({ canImport }) {
     return () => { alive = false; clearInterval(id); };
   }, []);
 
-  const shown = useMemo(() => applyFilter(mine, filter), [mine, filter]);
-  const options = useMemo(() => facets(mine), [mine]);
+  const ready = useMemo(() => readyOnly(mine), [mine]); // the only leads drawn on the map: hot, with a phone and an e-mail
+  const shown = useMemo(() => applyFilter(ready, filter), [ready, filter]);
+  const options = useMemo(() => facets(ready), [ready]);
 
   useEffect(() => {
     if (!mineLayer.current) return;
@@ -242,7 +252,7 @@ function MapView({ canImport }) {
         L.marker([p.lat, p.lon], { icon: minePin(p, fresh.has(p.id)), title: p.name }).bindPopup(minePopup(p), { className: "map-popup" }).addTo(mineLayer.current);
         return;
       }
-      const marker = L.marker([c.lat, c.lon], { icon: clusterIcon(c.count), title: `${c.count} prospects` });
+      const marker = L.marker([c.lat, c.lon], { icon: clusterIcon(c.count), title: `${c.count} hot leads` });
       marker.on("click", () => {
         setGroup(c.members);
         setPanelOpen(true);
@@ -257,7 +267,7 @@ function MapView({ canImport }) {
   }, [shown, showMine, zoom, fresh]);
 
   const startCampaign = async () => {
-    const { ids, excluded } = campaignPick(mine, picked);
+    const { ids, excluded } = campaignPick(ready, picked);
     setStarting(true);
     try {
       const c = await campaignsApi.create({ name: `Map selection ${new Date().toISOString().slice(0, 10)}`, goal: "Prospects chosen on the map" });
@@ -273,10 +283,23 @@ function MapView({ canImport }) {
   const togglePick = (id) => setPicked((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const byHeat = (a, b) => ((b.heat && b.heat.value) || 0) - ((a.heat && a.heat.value) || 0);
   const list = group ? [...group].sort(byHeat) : [...shown].sort(byHeat).slice(0, 30); // hottest first
-  const pickInfo = campaignPick(mine, picked);
+  const pickInfo = campaignPick(ready, picked);
 
   const known = useMemo(() => knownIds(mine), [mine]);
   const positions = useMemo(() => centroids(mine), [mine]); // where my prospects of each town are: a town of my leads is reachable at once
+
+  // "Open on the map" from a suggested zone (?city=Lyon): fly there once, from my own prospects of that town when I have some,
+  // else from the official communes list. Done after the first poll, so a town of my leads never costs a lookup.
+  const [searchParams] = useSearchParams();
+  const wanted = searchParams.get("city");
+  const flownTo = useRef(null);
+  useEffect(() => {
+    if (!wanted || !updatedAt || flownTo.current === wanted || !map.current) return;
+    flownTo.current = wanted;
+    const at = positions.get(fold(wanted));
+    if (at) { goTo({ lat: at.lat, lon: at.lon, population: null }); return; }
+    lookup(wanted).then((towns) => { const town = towns.find((t) => t.lat !== null && t.lat !== undefined); if (town) goTo(town); }).catch(() => {});
+  }, [wanted, updatedAt, positions, goTo]);
   // A popup must never open under a panel: keep the map's auto-pan away from the search card and the results drawer.
   const pad = useMemo(() => panelPadding({ narrow: window.innerWidth < 768, searchOpen, panelOpen, hidden: overlaysHidden }), [searchOpen, panelOpen, overlaysHidden]);
   // A place already in the prospects is shown by its prospect pin, not offered again.
@@ -287,13 +310,14 @@ function MapView({ canImport }) {
     }
     return [...unique.values()];
   }, [result, known]);
+  const found = useMemo(() => (showAllFound ? places : places.filter(reachablePlace)), [places, showAllFound]);
   const toggle = useCallback((id) => setSelected((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; }), []);
 
   useEffect(() => {
     if (!layer.current) return;
     layer.current.clearLayers();
     markers.current = new Map();
-    places.forEach((p) => {
+    found.forEach((p) => {
       const marker = L.marker([p.lat, p.lon], { icon: pin(p, selected.has(p.external_id)), title: p.name }).bindPopup(hostFor(p.external_id), {
         className: "map-popup", minWidth: 250, maxWidth: 300, autoPanPaddingTopLeft: pad.topLeft, autoPanPaddingBottomRight: pad.bottomRight,
       });
@@ -301,7 +325,7 @@ function MapView({ canImport }) {
       marker.addTo(layer.current);
       markers.current.set(p.external_id, marker);
     });
-  }, [places, selected, toggle, pad]);
+  }, [found, selected, toggle, pad]);
 
   // A place was added: show it at once among "my prospects" (the next poll confirms it) and say what happened.
   const [added, setAdded] = useState(null); // the answer of the last addition, kept until closed
@@ -370,13 +394,13 @@ function MapView({ canImport }) {
     }
   };
 
-  const chosen = places.filter((p) => selected.has(p.external_id));
+  const chosen = found.filter((p) => selected.has(p.external_id));
 
   return (
     <div ref={root} className="relative w-full h-[calc(100svh-11rem)] md:h-[calc(100vh-4.25rem)] min-h-0 md:min-h-[28rem] overflow-hidden bg-[#E9EEF7]" data-testid="map-page">
       <div ref={el} className="absolute inset-0 z-0" data-testid="map" aria-label="Interactive map" />
       {added && <AddedCard out={added.out} siteAsked={added.siteAsked} onClose={() => setAdded(null)} className="absolute z-[502] bottom-12 left-3 md:left-1/2 md:-translate-x-1/2" />}
-      {places.map((p) => createPortal(<PlacePopup key={p.external_id} place={p} canAdd={canImport} offReason={addOff} onAdded={onAdded} />, hostFor(p.external_id)))}
+      {found.map((p) => createPortal(<PlacePopup key={p.external_id} place={p} canAdd={canImport} offReason={addOff} onAdded={onAdded} />, hostFor(p.external_id)))}
 
       {/* always visible: hide every panel to see the whole map, or go full screen */}
       <div className={`absolute z-[503] top-3 right-3 md:left-1/2 md:right-auto md:-translate-x-1/2 flex gap-1 p-1 ${GLASS} !rounded-full`} role="toolbar" aria-label="Map view">
@@ -421,7 +445,7 @@ function MapView({ canImport }) {
           </div>
           <label className="flex items-center gap-2 text-xs" data-testid="map-mine-toggle">
             <input type="checkbox" checked={showMine} onChange={(e) => setShowMine(e.target.checked)} />
-            <span><b>My prospects</b> (squares) — {mineSummary(mine)}</span>
+            <span><b>Hot leads</b> (squares) — {readySummary(mine)}</span>
           </label>
           {mine.length > 0 && showMine && (
             <div className="space-y-2" data-testid="map-filters">
@@ -441,7 +465,7 @@ function MapView({ canImport }) {
                 <input className="neo-input" type="number" min="0" max="100" placeholder="Min score" aria-label="Minimum score" value={filter.minScore} onChange={(e) => setFilter({ ...filter, minScore: e.target.value })} data-testid="filter-score" />
               </div>
               <div className="flex items-center justify-between gap-2 text-xs">
-                <span data-testid="filter-summary">{filterSummary(shown.length, mine.length)}</span>
+                <span data-testid="filter-summary">{filterSummary(shown.length, ready.length)}</span>
                 {hasFilter(filter) && <button className="underline" onClick={() => { setFilter(EMPTY_FILTER); setGroup(null); }} data-testid="filter-clear">Clear</button>}
               </div>
               <p className="text-[11px] text-[#5F5F5A]" data-testid="map-updated" aria-live="polite">
@@ -487,10 +511,10 @@ function MapView({ canImport }) {
               {mine.length > 0 && showMine && (
                 <section className="p-4 border-b border-[#D3DBEA] max-h-[50%] overflow-y-auto" data-testid="map-mine-list">
                   <div className="flex items-center justify-between gap-2">
-                    <h2 className="font-display text-lg font-bold">{group ? `Cluster · ${group.length} prospects` : "My prospects"}</h2>
+                    <h2 className="font-display text-lg font-bold">{group ? `Cluster · ${group.length} hot leads` : "Hot leads"}</h2>
                     {group && <button className="underline text-xs" onClick={() => setGroup(null)} data-testid="cluster-close">All</button>}
                   </div>
-                  {list.length === 0 && <p className="text-sm text-[#5F5F5A] mt-1" data-testid="mine-none">No prospect matches the filters.</p>}
+                  {list.length === 0 && <p className="text-sm text-[#5F5F5A] mt-1" data-testid="mine-none">{ready.length === 0 ? "No hot lead with a phone and an e-mail yet." : "No hot lead matches the filters."}</p>}
                   <ul className="divide-y divide-[#E3E9F4]">
                     {list.map((p) => (
                       <li key={p.id} className="py-1.5 flex gap-2 items-start text-sm" data-testid="mine-row">
@@ -521,16 +545,20 @@ function MapView({ canImport }) {
                 <section className="flex-1 min-h-0 flex flex-col" data-testid="map-results">
                   <div className="p-4 pb-2 space-y-2">
                     <p className="text-sm" data-testid="map-summary">{summaryText(places, result.truncated)}</p>
-                    {places.length > 0 && (
+                    <label className="flex items-center gap-2 text-xs" data-testid="map-found-toggle">
+                      <input type="checkbox" checked={showAllFound} onChange={(e) => setShowAllFound(e.target.checked)} />
+                      <span>{found.length} of {places.length} shown: only places with a published phone and e-mail. Tick to show all of them.</span>
+                    </label>
+                    {found.length > 0 && (
                       <div className="flex gap-2 flex-wrap">
-                        <button className="btn-ghost" onClick={() => setSelected(new Set(places.map((p) => p.external_id)))} data-testid="map-select-all">SELECT ALL</button>
-                        <button className="btn-ghost" onClick={() => setSelected(new Set(places.filter((p) => p.email).map((p) => p.external_id)))} data-testid="map-select-email">ONLY WITH E-MAIL</button>
+                        <button className="btn-ghost" onClick={() => setSelected(new Set(found.map((p) => p.external_id)))} data-testid="map-select-all">SELECT ALL</button>
+                        <button className="btn-ghost" onClick={() => setSelected(new Set(found.filter((p) => p.email).map((p) => p.external_id)))} data-testid="map-select-email">ONLY WITH E-MAIL</button>
                         <button className="btn-ghost" onClick={() => setSelected(new Set())}>NONE</button>
                       </div>
                     )}
                   </div>
                   <ul className="flex-1 min-h-0 overflow-y-auto divide-y divide-[#E3E9F4] px-4">
-                    {places.map((p) => (
+                    {found.map((p) => (
                       <li key={p.external_id} className="py-2 flex gap-2 items-start text-sm">
                         <input type="checkbox" checked={selected.has(p.external_id)} onChange={() => toggle(p.external_id)} aria-label={`Select ${p.name}`} className="mt-1" />
                         <button className="text-left min-w-0 flex-1" onClick={() => openPlace(p)} data-testid="place-row" title="Show on the map and add to the CRM">
@@ -556,10 +584,10 @@ function MapView({ canImport }) {
           </button>
           <button className={`md:hidden absolute z-[501] bottom-1 left-16 ${GLASS} !rounded-full px-4 py-1.5 text-xs font-medium`}
             onClick={() => setPanelOpen((o) => !o)} aria-expanded={panelOpen} data-testid="map-panel-toggle-mobile">
-            {panelOpen ? "Hide results" : result ? `Results (${places.length})` : "Results"}
+            {panelOpen ? "Hide results" : result ? `Results (${found.length})` : "Results"}
           </button>
           <p className="absolute z-[400] bottom-1 left-40 text-[10px] text-[#0B1020]/80 bg-white/80 px-2 rounded-full pointer-events-none hidden lg:block">
-            Round: search results (green e-mail, amber phone/site, grey name) · square: my prospects (blue to review, green approved) · click a pin to add it to the CRM · double-click to select several · H: hide panels
+            Square: hot leads with a phone and an e-mail (blue to review, green approved) · round: places found by the search with a published phone and e-mail (green e-mail, amber phone/site, grey name) · click a pin to add it to the CRM · double-click to select several · H: hide panels
           </p>
         </>
       )}

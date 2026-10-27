@@ -21,6 +21,7 @@ Par défaut rien ne sort : `FEATURE_LIVE_SENDING` est éteint, l'adaptateur est 
 | `SMTP_PORT` | Facultatif ; déduit de `SMTP_SECURITY`. |
 | `OUTREACH_SENDER_EMAIL` | **`founder@plantiers.com`** : adresse `From`/`Reply-To` de chaque message. |
 | `OUTREACH_SENDER_NAME`, `_COMPANY`, `_ADDRESS` | Identité imprimée dans chaque message. L'adresse postale doit être **la vraie** (obligation d'identification de l'expéditeur). |
+| `OUTREACH_SENDER_WHATSAPP` | Facultatif : numéro WhatsApp imprimé dans le pied, à côté de l'adresse e-mail. Rien n'est imprimé s'il est absent. |
 | `FEATURE_LIVE_SENDING` | `true` autorise l'envoi réel. |
 | `OUTREACH_SANDBOX` | Actif tant qu'il n'est pas mis explicitement à `false` : seuls les destinataires de `OUTREACH_LIVE_ALLOWLIST` reçoivent quoi que ce soit. |
 | `OUTREACH_LIVE_ALLOWLIST` | Adresses (`founder@plantiers.com`) ou domaines (`@plantiers.com`) autorisés pendant le sandbox. Vide = personne. |

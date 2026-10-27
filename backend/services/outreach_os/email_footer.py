@@ -21,15 +21,43 @@ def origin_line(source: str | None, company: str) -> str:
     )
 
 
-def render_footer(*, name: str, company: str, postal_address: str, source: str | None, unsubscribe_url: str) -> str:
-    return "\n".join(
-        [
-            SEPARATOR,
-            f"{name} — {company} — {postal_address}",
-            origin_line(source, company),
-            f"Pour ne plus recevoir de messages de notre part : {unsubscribe_url}",
-        ]
-    )
+def contact_line(reply_to: str = "", whatsapp: str = "") -> str:
+    """The sender's contact details on one line; only what is configured is printed (nothing is invented)."""
+    parts = [reply_to.strip()] if reply_to.strip() else []
+    if whatsapp.strip():
+        parts.append(f"WhatsApp : {whatsapp.strip()}")
+    return " · ".join(parts)
+
+
+def render_footer(
+    *,
+    name: str,
+    company: str,
+    postal_address: str,
+    source: str | None,
+    unsubscribe_url: str,
+    reply_to: str = "",
+    whatsapp: str = "",
+) -> str:
+    """Sender coordinates first, then the two lines the law keeps: where the data comes from and how to opt out."""
+    lines = [SEPARATOR, f"{name} — {company}", postal_address]
+    contact = contact_line(reply_to, whatsapp)
+    if contact:
+        lines.append(contact)
+    lines += [
+        origin_line(source, company),
+        f"Pour ne plus recevoir de messages de notre part : {unsubscribe_url}",
+    ]
+    return "\n".join(lines)
+
+
+def split_footer(body: str) -> tuple[str, str]:
+    """(message, footer): the footer starts at the last separator line; a body without one is all message."""
+    marker = f"\n{SEPARATOR}\n"
+    at = body.rfind(marker)
+    if at < 0:
+        return body, ""
+    return body[:at].rstrip(), body[at + 1 :]
 
 
 def append_footer(body: str, footer: str, unsubscribe_url: str) -> str:

@@ -7,6 +7,7 @@ import { canDecide, dashboardApi, outboundApi, useAsync } from "@/lib/outreach";
 import { LIVE_MS } from "@/lib/live";
 import { describeApiError } from "@/lib/outreachFormat";
 import { ErrorBlock, LoadingBlock } from "@/components/outreach/States";
+import FocusPanel from "@/components/outreach/FocusPanel";
 import { ActivityChart, CampaignHealth, GeoDistribution, Inbox, KpiStrip, LimitsCompliance, LiveSignals, TopSignals, Widget } from "@/components/dashboard/Widgets";
 
 export default function Dashboard() {
@@ -48,6 +49,8 @@ export default function Dashboard() {
           <span className="btn-primary">OPEN REVIEW QUEUE</span>
         </Link>
       )}
+
+      <FocusPanel />
 
       {page.loading && !d && <LoadingBlock label="Reading your data…" />}
       {page.error && <ErrorBlock message={page.error} onRetry={reload} />}

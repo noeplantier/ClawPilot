@@ -53,3 +53,15 @@ def test_a_lead_is_empty_when_nothing_can_reach_it_not_when_it_merely_lacks_a_ci
     for blank in ("", "  ", "unknown", "unspecified", "n/a", None):
         assert h.has_contact({"email": blank, "phone": blank, "website": blank}) is False  # an unknown is not a way in
     assert h.heat_of({}, None).has_contact is False
+
+
+def test_the_map_shows_only_hot_leads_that_can_be_called_and_e_mailed():
+    ready = {f: "x" for f in h.INFO_FIELDS}
+    assert h.is_map_ready(ready, 60) is True  # hot, phone and e-mail known
+    assert h.is_map_ready({**ready, "website": None}, 60) is True  # a website is a bonus, never required
+    assert h.is_map_ready({**ready, "phone": "unknown"}, 60) is False  # no phone
+    assert h.is_map_ready({**ready, "email": ""}, 60) is False  # no e-mail
+    assert h.is_map_ready(ready, 0) is False  # (0 + 100 + 1) // 2 = 50: warm, however reachable
+    assert (
+        h.is_map_ready({"phone": "+33 4 00 00 00 00", "email": "a@b.example"}, 100) is False
+    )  # (100 + 25 + 1) // 2 = 63

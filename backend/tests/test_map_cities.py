@@ -86,7 +86,16 @@ def test_leads_are_counted_per_town_by_heat_tier_whatever_the_spelling():
         ],
     )
     out = _asked(h)
-    assert out["lyon"] == {"city": "Lyon", "key": "lyon", "hot": 2, "warm": 0, "cold": 1, "total": 3}
+    assert out["lyon"] == {
+        "city": "Lyon",
+        "key": "lyon",
+        "hot": 2,
+        "warm": 0,
+        "cold": 1,
+        "total": 3,
+        "ready": 2,
+        "site": 2,
+    }
     assert (out["saint etienne"]["hot"], out["saint etienne"]["total"]) == (1, 2)
     # a CRM score of 0 means "not scored"; a real one lifts the lead: (90 + 25 + 1) // 2 = 58 is warm, never hot
     assert (out["nantes"]["hot"], out["nantes"]["warm"]) == (0, 1)
@@ -109,7 +118,9 @@ def test_a_town_without_a_value_a_rejected_prospect_or_a_deleted_lead_is_not_cou
             {"full_name": "Approved", "city": "Rouen", "review_status": "approved", **_full(7)},
         ],
     )
-    assert _asked(h) == {"rouen": {"city": "Rouen", "key": "rouen", "hot": 2, "warm": 0, "cold": 0, "total": 2}}
+    assert _asked(h) == {
+        "rouen": {"city": "Rouen", "key": "rouen", "hot": 2, "warm": 0, "cold": 0, "total": 2, "ready": 2, "site": 2}
+    }
 
 
 def test_the_figures_of_a_discovery_run_equal_the_heat_shown_on_every_prospect():
@@ -117,11 +128,20 @@ def test_the_figures_of_a_discovery_run_equal_the_heat_shown_on_every_prospect()
     assert requests.post(f"{API}/prospects/discovery/run", headers=h, json={}).status_code == 200
     items = requests.get(f"{API}/prospects", headers=h, params={"limit": 200}).json()["items"]
     assert len(items) > 3
-    expected = cities.merge(
-        (i["city"], i["heat"]["tier"], 1) for i in items if i["city"] and heat_rules.is_known(i["city"])
-    )
+    details = {i["id"]: requests.get(f"{API}/prospects/{i['id']}", headers=h).json() for i in items}
+
+    def row(i):
+        d = details[i["id"]]
+        ready = (
+            i["heat"]["tier"] == "hot"
+            and heat_rules.is_known(d["contact_phone"])
+            and heat_rules.is_known(d["contact_email"])
+        )
+        return (i["city"], i["heat"]["tier"], 1, int(ready), int(ready and heat_rules.is_known(d["website"])))
+
+    expected = cities.merge(row(i) for i in items if i["city"] and heat_rules.is_known(i["city"]))
     got = requests.get(f"{API}/map/cities", headers=h).json()
-    assert got == expected and got  # the same towns, the same tiers, the same order: counted from the same rule
+    assert got == expected and got  # the same towns, tiers, ready leads and order: counted from the same rule
     assert sum(c["total"] for c in got) <= len(items)
 
 

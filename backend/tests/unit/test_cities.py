@@ -33,7 +33,16 @@ def test_merge_adds_up_the_spellings_and_keeps_the_most_used_one():
         ("St Etienne", "hot", 1),
     ]
     out = {c["key"]: c for c in cities.merge(rows)}
-    assert out["lyon"] == {"city": "Lyon", "key": "lyon", "hot": 3, "warm": 0, "cold": 4, "total": 7}
+    assert out["lyon"] == {
+        "city": "Lyon",
+        "key": "lyon",
+        "hot": 3,
+        "warm": 0,
+        "cold": 4,
+        "total": 7,
+        "ready": 0,
+        "site": 0,
+    }
     assert out["saint etienne"] == {
         "city": "Saint-Étienne",
         "key": "saint etienne",
@@ -41,6 +50,8 @@ def test_merge_adds_up_the_spellings_and_keeps_the_most_used_one():
         "warm": 3,
         "cold": 0,
         "total": 4,
+        "ready": 0,
+        "site": 0,
     }
 
 
@@ -69,8 +80,31 @@ def test_the_order_of_the_database_answer_does_not_matter():
 
 def test_merge_ignores_blank_towns_unknown_tiers_and_empty_counts():
     rows = [("", "hot", 5), ("  ", "hot", 1), ("Nice", "boiling", 2), ("Nice", "hot", 0), ("Nice", "warm", 1)]
-    assert cities.merge(rows) == [{"city": "Nice", "key": "nice", "hot": 0, "warm": 1, "cold": 0, "total": 1}]
+    assert cities.merge(rows) == [
+        {"city": "Nice", "key": "nice", "hot": 0, "warm": 1, "cold": 0, "total": 1, "ready": 0, "site": 0}
+    ]
 
 
 def test_no_lead_no_town():
     assert cities.merge([]) == []
+
+
+def test_ready_leads_and_their_websites_are_added_up_whatever_the_spelling():
+    rows = [("Lyon", "hot", 4, 3, 2), ("lyon", "hot", 2, 1, 0), ("LYON", "cold", 5, 0, 0)]
+    (lyon,) = cities.merge(rows)
+    assert (lyon["hot"], lyon["ready"], lyon["site"], lyon["total"]) == (6, 4, 2, 11)
+
+
+def test_the_suggested_zones_hold_the_most_ready_hot_leads_then_websites_then_heat_and_never_a_guess():
+    merged = cities.merge(
+        [
+            ("Lyon", "hot", 9, 2, 2),  # many hot leads, but few can be called AND e-mailed
+            ("Rennes", "hot", 5, 5, 1),
+            ("Nantes", "hot", 5, 5, 4),  # same ready count as Rennes, more websites
+            ("Brest", "hot", 7, 0, 0),  # hot leads nobody can reach: not a zone to go to
+            ("Caen", "warm", 3, 0, 0),
+        ]
+    )
+    assert [z["city"] for z in cities.best_zones(merged)] == ["Nantes", "Rennes", "Lyon"]
+    assert [z["city"] for z in cities.best_zones(merged, limit=1)] == ["Nantes"]
+    assert cities.best_zones([]) == [] and cities.best_zones(cities.merge([("Brest", "hot", 7, 0, 0)])) == []

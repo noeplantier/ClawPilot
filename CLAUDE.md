@@ -35,7 +35,9 @@ pour l'installation et `docs/cloud-sessions.md` pour la feuille de route en cour
 
 - Consentement : WhatsApp = opt-in explicite requis. Email = bloqué uniquement si `opted_out`. Passer par
   `consent_repo.can_send(...)` avant tout envoi.
-- Tout email sortant contient : identité de l'expéditeur, origine des données, lien de désinscription fonctionnel.
+- Tout email sortant contient : identité de l'expéditeur, origine des données, lien de désinscription fonctionnel. Le pied (`email_footer.render_footer`)
+  imprime d'abord les coordonnées de l'expéditeur (`OUTREACH_SENDER_*`, dont `_WHATSAPP` facultatif), puis ces deux lignes obligatoires : on ne les retire pas.
+  Le brouillon est modifiable (`PATCH /prospects/drafts/{id}`) mais seulement son message : le pied est reconstruit par le serveur.
 - Tout webhook public (Twilio, SendGrid…) vérifie la signature du fournisseur avant de toucher à la base,
   et échoue fermé en production quand la clé de vérification est absente.
 - Un prospect de la découverte (`leads.review_status` non NULL) n'est contactable que s'il est `approved` **et** si
@@ -105,6 +107,8 @@ npm run e2e                    # Playwright, API réelle démarrée + build avec
   `unknown` s'affiche comme tel et ne vaut jamais un défaut. Ne pas coder en dur un statut d'intégration.
 - Chaleur : TOP (≥ 80) et lead vide (ni e-mail, ni téléphone, ni site) sont décidés par le serveur (`heat.top`, `heat.has_contact`, jumeau SQL dans
   `heat_sql.py`) ; l'interface ne recalcule rien et ne masque un lead que sur `has_contact === false`. Voir `docs/scoring.md`.
+- Carte : seuls les prospects `map_ready` (hot + téléphone + e-mail connus, décidé par `heat.is_map_ready`) sont dessinés ; un lieu trouvé par la
+  recherche n'est dessiné que s'il publie téléphone et e-mail (`reachablePlace`). Voir `docs/map-search.md`.
 - Recherche de ville de la carte : `components/outreach/CityBox.jsx` + `lib/cityComplete.js` (pur, testé). Les compteurs de leads par ville
   viennent de `GET /api/map/cities` (jumeau SQL de la chaleur, `repositories/prospect_repo.city_heat_rows`), jamais recalculés dans le
   navigateur ; sans compteurs chargés, rien n'est affiché (pas de 0 inventé). Voir `docs/map-search.md`.

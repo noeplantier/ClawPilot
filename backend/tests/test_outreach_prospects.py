@@ -155,8 +155,16 @@ def test_draft_requires_approval_and_is_idempotent_and_dry_run(org):
     draft = created.json()
     assert draft["status"] == "draft" and draft["dry_run"] is True
     assert "réserver en ligne" in draft["body"] and draft["facts"]  # backed by a detected signal
-    for needle in ("figurent dans l'annuaire", "fixture_directory", "/api/unsubscribe/"):
+    for needle in ("Origine de vos données : annuaire « fixture_directory »", "/api/unsubscribe/"):
         assert needle in draft["body"]
+    # the footer is the sender's coordinates (set on the server, see ci.yml), then the data origin and the opt-out link
+    for coordinate in (
+        "CI Sender — CI Company SAS",
+        "1 rue Fictive, 69000 Lyon",
+        "ci-sender@example.com · WhatsApp : +33 6 00 00 00 02",
+    ):
+        assert coordinate in draft["footer"], coordinate
+    assert draft["body"] == f"{draft['message']}\n\n{draft['footer']}" and draft["edited_at"] is None
 
     again = requests.post(f"{API}/prospects/{alice}/drafts", headers=org).json()
     assert again["id"] == draft["id"]  # same derived key ⇒ no duplicate
@@ -321,3 +329,60 @@ def test_suppression_does_not_leak_between_organisations():
     assert _run(a)["suppressed"] == 1
     other = _run(b)
     assert other["suppressed"] == 0 and other["prospects_created"] == 7
+
+
+def _prepared_draft(org):
+    _run(org)
+    alice = _by_name(org)[0]["La Table d'Alice"]["id"]
+    _review(org, alice, "approve")
+    return alice, requests.post(f"{API}/prospects/{alice}/drafts", headers=org).json()
+
+
+def test_a_draft_can_be_edited_and_its_footer_cannot(org):
+    alice, draft = _prepared_draft(org)
+    url = f"{API}/prospects/drafts/{draft['id']}"
+    new = {"subject": "Un sujet à moi", "message": "Bonjour Alice,\n\nVotre carte me plaît.\n\nCordialement,\nNoé"}
+    edited = requests.patch(url, headers=org, json=new)
+    assert edited.status_code == 200, edited.text
+    out = edited.json()
+    assert out["subject"] == "Un sujet à moi" and out["message"] == new["message"] and out["edited_at"]
+    assert out["footer"] == draft["footer"] and out["body"] == f"{new['message']}\n\n{draft['footer']}"
+    assert (
+        "/api/unsubscribe/" in out["body"] and "Origine de vos données" in out["body"]
+    )  # still there, whatever was typed
+
+    # typing a separator line does not move the footer: it is rebuilt from the configuration at every save
+    sneaky = requests.patch(url, headers=org, json={"subject": "s", "message": "Salut\n\n—\nPlus de lien ici"}).json()
+    assert sneaky["footer"] == draft["footer"] and sneaky["message"].endswith("Plus de lien ici")
+    refused = requests.patch(url, headers=org, json={"subject": "s", "message": "Cliquez {{unsubscribe_url}}"})
+    assert refused.status_code == 422 and "footer already carries the link" in refused.text
+    assert requests.patch(url, headers=org, json={"subject": "s", "message": "   "}).status_code == 422
+    assert requests.patch(f"{API}/prospects/drafts/{uuid.uuid4()}", headers=org, json=new).status_code == 404
+
+    events = requests.get(f"{API}/prospects/{alice}/events", headers=org).json()
+    assert [e["action"] for e in events].count("draft.edited") == 2  # both successful saves are in the audit history
+    assert requests.patch(url, json=new).status_code in (401, 403)
+
+
+def test_editing_an_approved_draft_sends_it_back_to_review_and_a_rejected_or_dispatched_one_is_final(org):
+    alice, draft = _prepared_draft(org)
+    url = f"{API}/prospects/drafts/{draft['id']}"
+    assert requests.post(f"{url}/review", headers=org, json={"decision": "approve"}).json()["status"] == "approved"
+    back = requests.patch(url, headers=org, json={"subject": "Corrigé", "message": "Bonjour, texte corrigé"}).json()
+    assert back["status"] == "draft" and back["reviewed_at"] is None  # what was approved is no longer what would leave
+    assert requests.post(f"{url}/review", headers=org, json={"decision": "approve"}).json()["status"] == "approved"
+
+    sent = requests.post(f"{API}/outbound/dispatch", headers=org, json={"draft_id": draft["id"]})
+    assert sent.status_code == 200, sent.text
+    late = requests.patch(url, headers=org, json={"subject": "Trop tard", "message": "x"})
+    assert late.status_code == 409 and "already dispatched" in late.text
+
+    second = requests.post(
+        f"{API}/prospects/{alice}/drafts", headers={**org, "Idempotency-Key": uuid.uuid4().hex}
+    ).json()
+    second_url = f"{API}/prospects/drafts/{second['id']}"
+    assert (
+        requests.post(f"{second_url}/review", headers=org, json={"decision": "reject"}).json()["status"] == "rejected"
+    )
+    final = requests.patch(second_url, headers=org, json={"subject": "s", "message": "x"})
+    assert final.status_code == 409 and "rejected" in final.text
