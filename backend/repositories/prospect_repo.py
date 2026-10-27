@@ -13,7 +13,7 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import Subquery, func, or_, select, update
+from sqlalchemy import Subquery, and_, case, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -391,8 +391,9 @@ async def tier_counts(
     return {**counts, "total": sum(counts.values()), "top": top, "empty": empty}
 
 
-async def city_heat_rows(session: AsyncSession, account_id: uuid.UUID) -> list[tuple[str, str, int]]:
-    """(city as written, heat tier, leads) over the CRM leads and the prospects not rejected (rejected = not a lead).
+async def city_heat_rows(session: AsyncSession, account_id: uuid.UUID) -> list[tuple[str, str, int, int, int]]:
+    """(city as written, heat tier, leads, ready, ready with a website) over the CRM leads and the prospects not
+    rejected (rejected = not a lead). `ready` is `heat.is_map_ready` in SQL: hot, phone and e-mail really known.
 
     A prospect's score is its latest `prospect_scores` row, a CRM lead's is `Lead.score` (0 = not scored); a lead whose
     city is blank or unknown is left out rather than counted under a made-up town."""
@@ -400,8 +401,15 @@ async def city_heat_rows(session: AsyncSession, account_id: uuid.UUID) -> list[t
     score = func.coalesce(latest.c.score, func.nullif(Lead.score, 0))
     tier = heat_sql.tier_sql(heat_sql.heat_sql(score)).label("tier")
     city = func.btrim(Lead.city).label("city")
+    is_ready = heat_sql.map_ready_sql(score)
     rows = await session.execute(
-        select(city, tier, func.count())
+        select(
+            city,
+            tier,
+            func.count(),
+            func.coalesce(func.sum(case((is_ready, 1), else_=0)), 0),
+            func.coalesce(func.sum(case((and_(is_ready, heat_sql.known(Lead.website) == 1), 1), else_=0)), 0),
+        )
         .select_from(Lead)
         .outerjoin(latest, latest.c.lead_id == Lead.id)
         .where(
@@ -412,7 +420,7 @@ async def city_heat_rows(session: AsyncSession, account_id: uuid.UUID) -> list[t
         )
         .group_by(city, tier)
     )
-    return [(str(c), str(t), int(n)) for c, t, n in rows.all()]
+    return [(str(c), str(t), int(n), int(r), int(s)) for c, t, n, r, s in rows.all()]
 
 
 async def get(session: AsyncSession, account_id: uuid.UUID, lead_id: str) -> Optional[Lead]:

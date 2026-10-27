@@ -679,6 +679,37 @@ test("the town search opens on every focus, answers as you type, and shows my co
   await expect(page.getByTestId("map-cities")).toBeVisible();
 });
 
+test("the dashboard suggests the best zones and leads to contact, and a zone opens the map on its town", async ({ page }) => {
+  await register(page);
+  await page.route("**/api/suggestions/focus", (route) =>
+    route.fulfill({
+      json: {
+        generated_at: "2026-10-27T10:00:00Z",
+        zones: [{ city: "Lyon", key: "lyon", hot: 4, warm: 0, cold: 0, total: 4, ready: 4, site: 3 }],
+        leads: [{ id: "p9", name: "Chez Marcel", company: "Chez Marcel", city: "Lyon", kind: "prospect", review_status: "approved", heat: { value: 92, tier: "hot", info_pct: 100 }, phone: "+33 4 78 00 00 01", email: "resa@marcel.example", website: "https://marcel.example" }],
+      },
+    }));
+  await page.route("**/api/prospects/settings", async (route) => {
+    const real = await (await route.fetch()).json();
+    await route.fulfill({ json: { ...real, flags: { ...real.flags, external_sources: true, prospect_import: false } } });
+  });
+  await page.route(/(tile\.openstreetmap\.org)/, (route) =>
+    route.fulfill({ contentType: "image/png", body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64") }));
+  let asked = null;
+  await page.route(/geo\.api\.gouv\.fr\/communes/, (route) => {
+    asked = route.request().url();
+    return route.fulfill({ json: [{ nom: "Lyon", code: "69123", centre: { type: "Point", coordinates: [4.8357, 45.764] }, population: 522000, codesPostaux: ["69001"], departement: { code: "69", nom: "Rhône" } }] });
+  });
+  await page.goto("/app/dashboard");
+  await expect(page.getByTestId("focus-zone")).toContainText("4 hot leads with a phone and an e-mail, 3 with a website");
+  await expect(page.getByTestId("focus-lead")).toContainText("resa@marcel.example");
+  await expect(page.getByTestId("focus-lead")).toHaveAttribute("href", "/app/prospects/p9");
+  await page.getByTestId("focus-zone").click();
+  await expect(page).toHaveURL(/\/app\/map\?city=Lyon/);
+  await expect(page.getByTestId("map")).toBeVisible();
+  await expect.poll(() => asked).toContain("Lyon"); // no prospect of mine has a position there: the map asked for the town
+});
+
 test("the TOP leads are marked and have their own lane; empty leads are hidden, counted, and one click brings them back", async ({ page }) => {
   await register(page);
   const heat = (value, over = {}) => ({ value, tier: value >= 65 ? "hot" : value >= 40 ? "warm" : "cold", info_pct: 75, known: ["email", "phone", "website", "city"], missing: ["company"], scored: true, score: value, top: value >= 80, has_contact: true, ...over });

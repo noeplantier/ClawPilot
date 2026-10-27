@@ -30,6 +30,15 @@ Le champ « Go to a town or a postcode » de la carte propose les villes pendant
 - Limite connue : un lead porte le nom de sa ville, pas son code postal ; deux communes du même nom (Saint-Denis 93 / 974) se partagent donc
   le même compteur, attribué à la plus peuplée.
 
+## Où prospecter ensuite (suggestions)
+`GET /api/suggestions/focus?zones=5&leads=8` répond, calculé à chaque requête sur les leads de l'organisation :
+- `zones` : les villes qui contiennent le plus de hot leads **joignables** (`ready` : chaleur ≥ 65, téléphone ET e-mail connus ; `site` : dont un site
+  web), classées par `ready`, puis `site`, puis chaleur. Une ville sans lead joignable n'est jamais proposée (ce serait une supposition).
+  Les mêmes compteurs `ready` / `site` sont ajoutés à `GET /api/map/cities` (même règle, jumeau SQL `heat_sql.map_ready_sql`).
+- `leads` : les hot leads joignables à contacter d'abord (site d'abord, puis chaleur), hors prospects rejetés et hors identités supprimées.
+Le tableau de bord les affiche (`FocusPanel`, rafraîchi toutes les 15 s) ; une zone ouvre `/app/map?city=…` et la carte s'y rend (centre de mes
+prospects de cette ville, sinon liste officielle des communes). Les campagnes suggérées restent sur `/app/campaigns` (`GET /api/campaigns/suggestions`).
+
 ## Une recherche = un job enregistré
 `POST /api/map/search` crée un job (`map_search_jobs` : zone, catégorie, statut, source, nombre de résultats, erreur, durée,
 auteur, organisation) et répond tout de suite (`202`). Un exécutant en arrière-plan du processus de l'API :

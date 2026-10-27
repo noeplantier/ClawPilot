@@ -105,6 +105,8 @@ npm run e2e                    # Playwright, API réelle démarrée + build avec
   `unknown` s'affiche comme tel et ne vaut jamais un défaut. Ne pas coder en dur un statut d'intégration.
 - Chaleur : TOP (≥ 80) et lead vide (ni e-mail, ni téléphone, ni site) sont décidés par le serveur (`heat.top`, `heat.has_contact`, jumeau SQL dans
   `heat_sql.py`) ; l'interface ne recalcule rien et ne masque un lead que sur `has_contact === false`. Voir `docs/scoring.md`.
+- Suggestions : zones et leads à contacter viennent de `GET /api/suggestions/focus` (`FocusPanel` sur le tableau de bord), comptés par le serveur ;
+  une liste vide reste vide (jamais de suggestion inventée). Voir `docs/map-search.md`.
 - Recherche de ville de la carte : `components/outreach/CityBox.jsx` + `lib/cityComplete.js` (pur, testé). Les compteurs de leads par ville
   viennent de `GET /api/map/cities` (jumeau SQL de la chaleur, `repositories/prospect_repo.city_heat_rows`), jamais recalculés dans le
   navigateur ; sans compteurs chargés, rien n'est affiché (pas de 0 inventé). Voir `docs/map-search.md`.

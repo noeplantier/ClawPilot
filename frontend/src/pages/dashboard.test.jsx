@@ -32,13 +32,19 @@ const FULL = {
   geography: { total: 3, countries: [{ name: "FR", prospects: 2 }], cities: [{ name: "Lyon", prospects: 2 }], unknown_country: 1, unknown_city: 1 },
 };
 
+const NO_FOCUS = { generated_at: "2026-10-03T10:00:00Z", zones: [], leads: [] };
+const FOCUS = {
+  generated_at: "2026-10-03T10:00:00Z",
+  zones: [{ city: "Lyon", key: "lyon", hot: 4, warm: 0, cold: 0, total: 4, ready: 4, site: 3 }],
+  leads: [{ id: "p9", name: "Chez Marcel", company: "Chez Marcel", city: "Lyon", kind: "prospect", review_status: "approved", heat: { value: 92, tier: "hot", info_pct: 100 }, phone: "+33 4 78 00 00 01", email: "resa@marcel.example", website: "https://marcel.example" }],
+};
 let container;
 let root;
 const byId = (id) => container.querySelector(`[data-testid="${id}"]`);
 
-async function show(data, role = "owner") {
+async function show(data, role = "owner", focus = NO_FOCUS) {
   mockUser = { role };
-  api.get.mockResolvedValue({ data });
+  api.get.mockImplementation((url) => Promise.resolve({ data: url === "/suggestions/focus" ? focus : data }));
   await act(async () => root.render(<MemoryRouter><Dashboard /></MemoryRouter>));
   await act(async () => {});
 }
@@ -91,4 +97,24 @@ test("a server error shows a retryable error, not placeholder figures", async ()
   await act(async () => {});
   expect(byId("error-block").textContent).toContain("boom");
   expect(byId("kpi-strip")).toBeNull();
+});
+
+test("the dashboard suggests where to prospect and who to contact first, from the counts the server returned", async () => {
+  await show(FULL, "owner", FOCUS);
+  const zone = byId("focus-zone");
+  expect(zone.textContent).toContain("Lyon");
+  expect(zone.textContent).toContain("4 hot leads with a phone and an e-mail, 3 with a website");
+  expect(zone.getAttribute("href")).toBe("/app/map?city=Lyon");
+  const lead = byId("focus-lead");
+  expect(lead.textContent).toContain("Chez Marcel");
+  expect(lead.textContent).toContain("+33 4 78 00 00 01 · resa@marcel.example · marcel.example");
+  expect(lead.getAttribute("href")).toBe("/app/prospects/p9");
+  expect(byId("focus-empty")).toBeNull();
+});
+
+test("with nothing qualifying, the focus panel says why instead of inventing a suggestion", async () => {
+  await show(FULL);
+  expect(byId("focus-empty").textContent).toContain("phone and an e-mail");
+  expect(byId("focus-zone")).toBeNull();
+  expect(byId("focus-lead")).toBeNull();
 });
