@@ -941,6 +941,31 @@ class CityHeatOut(BaseModel):
     warm: int
     cold: int
     total: int
+    ready: int = 0  # hot leads with a phone and an e-mail really known
+    site: int = 0  # of those, with a website too
+
+
+class LeadSuggestionOut(BaseModel):
+    """A lead worth a person's time today: hot, with a phone and an e-mail really known."""
+
+    id: str
+    name: str
+    company: Optional[str] = None
+    city: Optional[str] = None
+    kind: Literal["prospect", "lead"]  # a discovery prospect (reviewed by a human) or a CRM lead
+    review_status: Optional[str] = None  # None for a CRM lead
+    heat: dict  # {value, tier, info_pct}
+    phone: str
+    email: str
+    website: Optional[str] = None
+
+
+class FocusOut(BaseModel):
+    """What to do next, computed from the organisation's own data at the time of the request."""
+
+    generated_at: datetime
+    zones: List[CityHeatOut]  # towns holding the most hot leads that can be called and e-mailed
+    leads: List[LeadSuggestionOut]  # the hottest of them, website first
 
 
 class SourceInfo(BaseModel):

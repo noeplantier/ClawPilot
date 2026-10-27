@@ -1,7 +1,7 @@
 /* global ResizeObserver */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -22,8 +22,8 @@ import {
 import { EmptyBlock, ErrorBlock, LoadingBlock } from "@/components/outreach/States";
 import PlacePopup from "@/components/outreach/PlacePopup";
 import AddedCard from "@/components/outreach/AddedCard";
-import CityBox from "@/components/outreach/CityBox";
-import { centroids, zoomFor } from "@/lib/cityComplete";
+import CityBox, { lookup } from "@/components/outreach/CityBox";
+import { centroids, fold, zoomFor } from "@/lib/cityComplete";
 
 const START = { center: [45.764, 4.8357], zoom: 14 }; // Lyon; move the map anywhere in the world
 // One real map: the standard OpenStreetMap style (no light/dark variants).
@@ -284,6 +284,19 @@ function MapView({ canImport }) {
 
   const known = useMemo(() => knownIds(mine), [mine]);
   const positions = useMemo(() => centroids(mine), [mine]); // where my prospects of each town are: a town of my leads is reachable at once
+
+  // "Open on the map" from a suggested zone (?city=Lyon): fly there once, from my own prospects of that town when I have some,
+  // else from the official communes list. Done after the first poll, so a town of my leads never costs a lookup.
+  const [searchParams] = useSearchParams();
+  const wanted = searchParams.get("city");
+  const flownTo = useRef(null);
+  useEffect(() => {
+    if (!wanted || !updatedAt || flownTo.current === wanted || !map.current) return;
+    flownTo.current = wanted;
+    const at = positions.get(fold(wanted));
+    if (at) { goTo({ lat: at.lat, lon: at.lon, population: null }); return; }
+    lookup(wanted).then((towns) => { const town = towns.find((t) => t.lat !== null && t.lat !== undefined); if (town) goTo(town); }).catch(() => {});
+  }, [wanted, updatedAt, positions, goTo]);
   // A popup must never open under a panel: keep the map's auto-pan away from the search card and the results drawer.
   const pad = useMemo(() => panelPadding({ narrow: window.innerWidth < 768, searchOpen, panelOpen, hidden: overlaysHidden }), [searchOpen, panelOpen, overlaysHidden]);
   // A place already in the prospects is shown by its prospect pin, not offered again.

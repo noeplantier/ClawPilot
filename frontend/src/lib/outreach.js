@@ -37,6 +37,11 @@ export const mapApi = {
   addPlace: (body) => api.post("/map/places/add", body).then((r) => r.data),
 };
 
+export const focusApi = {
+  // Where to prospect next and who to contact first, counted by the server from the organisation's own leads.
+  get: () => api.get("/suggestions/focus").then((r) => r.data),
+};
+
 export const campaignsApi = {
   create: (body) => api.post("/campaigns", body).then((r) => r.data),
   assign: (id, leadIds) => api.post(`/campaigns/${id}/assign-leads`, { lead_ids: leadIds }).then((r) => r.data),
