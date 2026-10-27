@@ -186,6 +186,9 @@ class MessageDraft(Base, UUIDPKMixin, TimestampMixin):
     )
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     review_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    edited_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )  # a human changed the text
 
 
 class SuppressionEntry(Base, UUIDPKMixin, CreatedAtMixin):

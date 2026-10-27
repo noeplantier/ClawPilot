@@ -30,6 +30,15 @@ Le champ « Go to a town or a postcode » de la carte propose les villes pendant
 - Limite connue : un lead porte le nom de sa ville, pas son code postal ; deux communes du même nom (Saint-Denis 93 / 974) se partagent donc
   le même compteur, attribué à la plus peuplée.
 
+## Ce que la carte affiche : les hot leads joignables
+- Les carrés sont les prospects dont `GET /api/map/prospects` dit `map_ready: true` : **hot** (chaleur ≥ 65) **avec un téléphone ET un e-mail réellement
+  connus**. Un site web n'est pas exigé : il classe seulement ces leads plus haut (site d'abord, puis chaleur) et s'affiche dans la fenêtre du point.
+  La règle est `heat.is_map_ready` (serveur) ; la page ne la recalcule pas. Les autres prospects restent dans la réponse (pour ne pas reproposer un
+  lieu déjà importé et pour la recherche de ville) mais ne sont pas dessinés. Un lead jamais scoré n'est classé que sur son information (cf. `docs/scoring.md`).
+- Les ronds sont les lieux trouvés par « Search this area » : ils n'ont pas encore de score, donc ne sont jamais « hot ». Ils ne sont dessinés
+  **que s'ils publient un téléphone ET un e-mail** ; le panneau dit « N of M shown » et une case permet de tout afficher (préférence mémorisée).
+  Une valeur absente est inconnue : elle n'est ni remplie ni supposée.
+
 ## Une recherche = un job enregistré
 `POST /api/map/search` crée un job (`map_search_jobs` : zone, catégorie, statut, source, nombre de résultats, erreur, durée,
 auteur, organisation) et répond tout de suite (`202`). Un exécutant en arrière-plan du processus de l'API :

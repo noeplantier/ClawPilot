@@ -80,7 +80,13 @@ def test_compliance_flags_missing_elements():
 
 
 def test_sender_identity_never_defaulted(monkeypatch):
-    for var in ("OUTREACH_SENDER_NAME", "OUTREACH_SENDER_COMPANY", "OUTREACH_SENDER_ADDRESS", "OUTREACH_SENDER_EMAIL"):
+    for var in (
+        "OUTREACH_SENDER_NAME",
+        "OUTREACH_SENDER_COMPANY",
+        "OUTREACH_SENDER_ADDRESS",
+        "OUTREACH_SENDER_EMAIL",
+        "OUTREACH_SENDER_WHATSAPP",
+    ):
         monkeypatch.delenv(var, raising=False)
     assert SenderIdentity.from_env() is None
     monkeypatch.setenv("OUTREACH_SENDER_NAME", "N")
@@ -88,7 +94,25 @@ def test_sender_identity_never_defaulted(monkeypatch):
     monkeypatch.setenv("OUTREACH_SENDER_ADDRESS", "A")
     assert SenderIdentity.from_env() is None  # still incomplete
     monkeypatch.setenv("OUTREACH_SENDER_EMAIL", "e@x.example")
-    assert SenderIdentity.from_env() == SenderIdentity("N", "C", "A", "e@x.example")
+    assert SenderIdentity.from_env() == SenderIdentity("N", "C", "A", "e@x.example")  # WhatsApp is optional
+    monkeypatch.setenv("OUTREACH_SENDER_WHATSAPP", "+33 6 00 00 00 02")
+    assert SenderIdentity.from_env().whatsapp == "+33 6 00 00 00 02"
+
+
+def test_a_copy_pasted_value_is_printed_without_its_quotes_spaces_and_newline(monkeypatch):
+    monkeypatch.setenv("OUTREACH_SENDER_NAME", " N ")
+    monkeypatch.setenv("OUTREACH_SENDER_COMPANY", '"Plantiers - Software Engineering"')
+    monkeypatch.setenv("OUTREACH_SENDER_ADDRESS", "'20 rue Jean Bourel, 22190 Plérin'\n")
+    monkeypatch.setenv("OUTREACH_SENDER_EMAIL", "e@x.example\n")
+    monkeypatch.delenv("OUTREACH_SENDER_WHATSAPP", raising=False)
+    sender = SenderIdentity.from_env()
+    assert (sender.name, sender.company, sender.postal_address, sender.reply_to, sender.whatsapp) == (
+        "N",
+        "Plantiers - Software Engineering",
+        "20 rue Jean Bourel, 22190 Plérin",
+        "e@x.example",
+        "",
+    )
 
 
 # ---- unsubscribe tokens ---------------------------------------------------------------------------------

@@ -4,7 +4,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
-jest.mock("@/lib/api", () => ({ api: { get: jest.fn(), post: jest.fn(), put: jest.fn() } }));
+jest.mock("@/lib/api", () => ({ api: { get: jest.fn(), post: jest.fn(), put: jest.fn(), patch: jest.fn() } }));
 jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
 jest.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: global.__user }) }));
 
@@ -29,6 +29,7 @@ beforeEach(() => {
   api.get.mockReset();
   api.post.mockReset();
   api.put.mockReset();
+  api.patch.mockReset();
   window.localStorage.clear(); // "show the empty leads" is remembered per browser
   global.__user = owner;
 });
@@ -183,6 +184,52 @@ describe("Prospect detail", () => {
     expect(text()).toContain("Aucun moyen de réserver.");
     expect(byId("approve-draft")).toBeTruthy();
     expect(byId("dispatch-draft")).toBeNull(); // only an approved draft can be dispatched
+  });
+
+  it("lets the message of a draft be edited while its footer stays automatic", async () => {
+    const footer = "—\nNoé Plantier — Plantiers - Software Engineering\n20 rue Jean Bourel, 22190 Plérin\nfounder@plantiers.com · WhatsApp : +33 6 66 16 77 88";
+    const draft = { id: "d1", channel: "email", subject: "À propos de X", message: "Bonjour", footer, body: `Bonjour\n\n${footer}`, facts: [], template_version: "v1", status: "approved", dry_run: true, review_note: null, reviewed_at: "2026-06-01T11:00:00Z", edited_at: null, created_at: "2026-06-01T10:00:00Z" };
+    load({ review_status: "approved", drafts: [draft] });
+    api.patch.mockResolvedValue({ data: { ...draft, message: "Bonjour Alice", status: "draft", edited_at: "2026-06-02T09:00:00Z" } });
+    await show(<ProspectDetail />, "/app/prospects/p1");
+    await act(async () => { byId("edit-draft").click(); });
+
+    expect(byId("draft-edit-message").value).toBe("Bonjour"); // only the message is editable
+    expect(byId("draft-edit-footer").textContent).toContain("20 rue Jean Bourel, 22190 Plérin");
+    expect(byId("draft-edit-footer").textContent).toContain("WhatsApp : +33 6 66 16 77 88");
+    expect(byId("draft-edit-footer").tagName).toBe("PRE"); // shown, not a field
+    expect(byId("draft-edit-rereview")).toBeTruthy(); // an approved draft goes back to review once saved
+
+    const typed = (el, value) => {
+      Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value").set.call(el, value);
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+    };
+    await act(async () => { typed(byId("draft-edit-message"), "Bonjour Alice"); });
+    await act(async () => { byId("draft-edit-save").click(); });
+    expect(api.patch).toHaveBeenCalledWith("/prospects/drafts/d1", { subject: "À propos de X", message: "Bonjour Alice" }); // never the footer
+    expect(byId("draft-editor")).toBeNull(); // saved: the editor closes
+  });
+
+  it("offers no editing once the draft is rejected or dispatched, nor to a member", async () => {
+    const base = { channel: "email", subject: "S", message: "M", footer: "—\nF", body: "M\n\n—\nF", facts: [], template_version: "v1", dry_run: true, review_note: null, reviewed_at: null, edited_at: null, created_at: "2026-06-01T10:00:00Z" };
+    answer({ "/prospects/p1": { ...DETAIL, review_status: "approved", drafts: [{ ...base, id: "d1", status: "rejected" }, { ...base, id: "d2", status: "approved" }] }, "/prospects/p1/events": [], "/outbound": [{ id: "m1", lead_id: "p1", draft_id: "d2", status: "sent", dry_run: true, dispatched_at: "2026-06-01T12:00:00Z" }], "/outbound/m1": { id: "m1", lead_id: "p1", draft_id: "d2", status: "sent", dry_run: true, dispatched_at: "2026-06-01T12:00:00Z", events: [] }, "/outbound/status": STATUS });
+    await show(<ProspectDetail />, "/app/prospects/p1");
+    expect(byId("draft-message")).toBeTruthy(); // d2 was dispatched; d1 is rejected: neither can be edited
+    expect(byId("edit-draft")).toBeNull();
+  });
+
+  it("offers a member no editing, while the same draft is editable by an owner", async () => {
+    const open = { channel: "email", subject: "S", message: "M", footer: "—\nF", body: "M\n\n—\nF", facts: [], template_version: "v1", dry_run: true, review_note: null, reviewed_at: null, edited_at: null, created_at: "2026-06-01T10:00:00Z", id: "d3", status: "draft" };
+    load({ review_status: "approved", drafts: [open] });
+    await show(<ProspectDetail />, "/app/prospects/p1");
+    expect(byId("edit-draft")).toBeTruthy();
+    act(() => root.unmount());
+    root = createRoot(container);
+    global.__user = member;
+    load({ review_status: "approved", drafts: [open] });
+    await show(<ProspectDetail />, "/app/prospects/p1");
+    expect(byId("draft-item")).toBeTruthy();
+    expect(byId("edit-draft")).toBeNull();
   });
 
   it("hides decisions from a member", async () => {

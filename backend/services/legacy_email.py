@@ -85,6 +85,8 @@ async def prepare(
         postal_address=sender.postal_address,
         source=source,
         unsubscribe_url=url,
+        reply_to=sender.reply_to,
+        whatsapp=sender.whatsapp,
     )
     full = email_footer.append_footer(body, footer, url)
     problems = email_footer.footer_problems(

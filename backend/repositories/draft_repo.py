@@ -62,3 +62,19 @@ async def review(
     draft.review_note = note
     await session.flush()
     return draft
+
+
+async def edit(
+    session: AsyncSession, draft: MessageDraft, *, subject: str, body: str, back_to_review: bool
+) -> MessageDraft:
+    """A human changed the text. What was approved is no longer what would leave: the draft goes back to review."""
+    draft.subject = subject
+    draft.body = body
+    draft.edited_at = datetime.now(timezone.utc)
+    if back_to_review:
+        draft.status = "draft"
+        draft.reviewed_by_user_id = None
+        draft.reviewed_at = None
+        draft.review_note = None
+    await session.flush()
+    return draft

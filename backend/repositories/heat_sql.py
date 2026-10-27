@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import Integer, String, Subquery, case, func, literal, select
+from sqlalchemy import Integer, String, Subquery, and_, case, func, literal, select
 from sqlalchemy.sql.elements import ColumnElement
 
 from db.models import Lead, ProspectScore
@@ -52,6 +52,11 @@ def tier_sql(heat: ColumnElement) -> ColumnElement:
 
 def top_sql(heat: ColumnElement) -> ColumnElement:
     return heat >= heat_rules.TOP_FROM
+
+
+def map_ready_sql(score: ColumnElement) -> ColumnElement:
+    """True for a hot lead with a phone and an e-mail really known (the Python `heat.is_map_ready`)."""
+    return and_(heat_sql(score) >= heat_rules.HOT_FROM, known(Lead.phone) == 1, known(Lead.email) == 1)
 
 
 def latest_scores() -> Subquery:

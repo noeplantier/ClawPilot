@@ -12,9 +12,26 @@ def _footer(source=None):
 
 def test_the_footer_carries_identity_origin_and_unsubscribe_link():
     footer = _footer("Registre public")
-    assert "Noé Plantier — Plantiers — 1 rue X, 75001 Paris" in footer
+    assert footer.splitlines()[:3] == ["—", "Noé Plantier — Plantiers", "1 rue X, 75001 Paris"]
     assert "Origine de vos données : Registre public." in footer
-    assert URL in footer
+    assert footer.splitlines()[-1] == f"Pour ne plus recevoir de messages de notre part : {URL}"
+
+
+def test_the_footer_prints_the_configured_coordinates_and_only_those():
+    full = email_footer.render_footer(
+        **ARGS, source="X", unsubscribe_url=URL, reply_to="founder@plantiers.com", whatsapp="+33 6 66 16 77 88"
+    )
+    assert "founder@plantiers.com · WhatsApp : +33 6 66 16 77 88" in full.splitlines()
+    only_mail = email_footer.render_footer(**ARGS, source="X", unsubscribe_url=URL, reply_to="founder@plantiers.com")
+    assert "founder@plantiers.com" in only_mail.splitlines() and "WhatsApp" not in only_mail  # nothing invented
+    assert "·" not in _footer("X") and "@" not in _footer("X")  # no coordinates configured: no empty line
+
+
+def test_the_message_and_the_footer_split_back_apart_at_the_last_separator():
+    footer = email_footer.render_footer(**ARGS, source="X", unsubscribe_url=URL, reply_to="a@b.example")
+    message = "Bonjour,\n\n—\nune ligne qui ressemble à un séparateur\n\nCordialement"
+    assert email_footer.split_footer(f"{message}\n\n{footer}") == (message, footer)
+    assert email_footer.split_footer("Sans pied") == ("Sans pied", "")
 
 
 def test_an_unrecorded_origin_is_stated_as_unrecorded_never_invented():

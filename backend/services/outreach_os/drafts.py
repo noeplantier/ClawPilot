@@ -11,12 +11,21 @@ import re
 from dataclasses import dataclass
 from datetime import date
 
+from services.outreach_os import email_footer
 from services.outreach_os import signals as sig
 from services.outreach_os.types import SignalResult, SignalState
 
 TEMPLATE_VERSION = "restaurant-fr-v1"
 UNSUBSCRIBE_PLACEHOLDER = "{{unsubscribe_url}}"
 _UNSUBSCRIBE_LINK = re.compile(r"https?://\S+/api/unsubscribe/\S+")
+
+
+def _clean(value: str | None) -> str:
+    """An environment value as printed: spaces, newlines and a pair of quotes left by a copy-paste are dropped."""
+    text = (value or "").strip()
+    if len(text) >= 2 and text[0] == text[-1] and text[0] in "\"'":
+        text = text[1:-1].strip()
+    return text
 
 
 @dataclass(frozen=True)
@@ -27,16 +36,19 @@ class SenderIdentity:
     company: str
     postal_address: str
     reply_to: str
+    whatsapp: str = ""  # optional: printed in the footer only when configured
 
     @classmethod
     def from_env(cls) -> SenderIdentity | None:
         values = {
-            "name": os.environ.get("OUTREACH_SENDER_NAME", "").strip(),
-            "company": os.environ.get("OUTREACH_SENDER_COMPANY", "").strip(),
-            "postal_address": os.environ.get("OUTREACH_SENDER_ADDRESS", "").strip(),
-            "reply_to": os.environ.get("OUTREACH_SENDER_EMAIL", "").strip(),
+            "name": _clean(os.environ.get("OUTREACH_SENDER_NAME")),
+            "company": _clean(os.environ.get("OUTREACH_SENDER_COMPANY")),
+            "postal_address": _clean(os.environ.get("OUTREACH_SENDER_ADDRESS")),
+            "reply_to": _clean(os.environ.get("OUTREACH_SENDER_EMAIL")),
         }
-        return cls(**values) if all(values.values()) else None
+        return (
+            cls(**values, whatsapp=_clean(os.environ.get("OUTREACH_SENDER_WHATSAPP"))) if all(values.values()) else None
+        )
 
 
 @dataclass(frozen=True)
@@ -106,16 +118,21 @@ def render_email_draft(
         f"{sender.company} accompagne les restaurateurs sur leur présence en ligne. "
         "Seriez-vous disposé(e) à un court échange pour voir si cela peut vous être utile ?",
         "",
-        f"Cordialement,\n{sender.name}\n{sender.company}",
-        "",
-        "—",
-        f"Vous recevez ce message car vos coordonnées professionnelles figurent dans l'annuaire « {source_name} ».",
-        f"Pour ne plus recevoir de messages de notre part : {unsubscribe_url}",
-        f"{sender.company} — {sender.postal_address}",
+        f"Cordialement,\n{sender.name}",
     ]
+    footer = email_footer.render_footer(
+        name=sender.name,
+        company=sender.company,
+        postal_address=sender.postal_address,
+        source=f"annuaire « {source_name} »",
+        unsubscribe_url=unsubscribe_url,
+        reply_to=sender.reply_to,
+        whatsapp=sender.whatsapp,
+    )
+    body = "\n".join(lines) + "\n\n" + footer
     return DraftContent(
         subject=f"À propos de {business_name}",
-        body="\n".join(lines),
+        body=body,
         facts=[sentence for _, sentence in facts],
     )
 
@@ -130,7 +147,7 @@ def compliance_problems(draft_body: str, sender: SenderIdentity) -> list[str]:
     ):
         if value not in draft_body:
             problems.append(f"missing {label}")
-    if "figurent dans l'annuaire" not in draft_body:
+    if "Origine de vos données" not in draft_body and "figurent dans l'annuaire" not in draft_body:  # older drafts
         problems.append("missing data-origin statement")
     if UNSUBSCRIBE_PLACEHOLDER in draft_body or not _UNSUBSCRIBE_LINK.search(draft_body):
         problems.append("missing working unsubscribe link")
