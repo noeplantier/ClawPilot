@@ -58,6 +58,14 @@ test("complete journey: discovery → review → draft → dry-run dispatch → 
   await page.getByTestId("create-draft").click();
   await expect(page.getByTestId("draft-item")).toBeVisible();
   await expect(page.getByTestId("draft-body")).toContainText("ne plus recevoir"); // the unsubscribe notice is in the draft
+  // The draft is editable; the footer (coordinates, data origin, opt-out link) is automatic and stays.
+  await page.getByTestId("edit-draft").click();
+  await expect(page.getByTestId("draft-edit-footer")).toContainText("WhatsApp : +33 6 00 00 00 02");
+  await page.getByTestId("draft-edit-message").fill("Bonjour, message modifié à la main.");
+  await page.getByTestId("draft-edit-save").click();
+  await expect(page.getByTestId("draft-body")).toContainText("message modifié à la main");
+  await expect(page.getByTestId("draft-body")).toContainText("ne plus recevoir");
+  await expect(page.getByTestId("draft-edited")).toBeVisible();
   await page.getByTestId("approve-draft").click();
 
   // 5. Dispatch is a dry run: the message is recorded, nothing is delivered.

@@ -43,6 +43,7 @@ TRACKED_ENV = (
     "OUTREACH_SENDER_COMPANY",
     "OUTREACH_SENDER_ADDRESS",
     "OUTREACH_SENDER_EMAIL",
+    "OUTREACH_SENDER_WHATSAPP",
     "SMTP_HOST",
     "SMTP_USERNAME",
     "SMTP_PASSWORD",
@@ -299,7 +300,8 @@ def _registry(f: Facts) -> dict[str, Any]:
 def _sender(f: Facts) -> dict[str, Any]:
     names = ("OUTREACH_SENDER_NAME", "OUTREACH_SENDER_COMPANY", "OUTREACH_SENDER_ADDRESS", "OUTREACH_SENDER_EMAIL")
     needs = _missing(f, names)
-    summary = "Identity, postal address and reply address that every outbound e-mail must carry."
+    shown = (*names, "OUTREACH_SENDER_WHATSAPP")  # the WhatsApp number is optional: printed in the footer only when set
+    summary = "Identity, postal address and contact details that every outbound e-mail must carry."
     if f.sender_configured:
         return _item(
             "sender",
@@ -308,7 +310,7 @@ def _sender(f: Facts) -> dict[str, Any]:
             "ready",
             "CONFIGURED",
             summary,
-            env=names,
+            env=shown,
             facts=[("sender.email", f.sender_email or "—")],
         )
     return _item(
@@ -318,7 +320,7 @@ def _sender(f: Facts) -> dict[str, Any]:
         "missing",
         "NOT CONFIGURED",
         summary + " Drafts and sends are refused without it.",
-        env=names,
+        env=shown,
         needs=needs,
     )
 

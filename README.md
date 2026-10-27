@@ -118,7 +118,8 @@ set (Settings > Integrations): nothing is ever recorded as sent, generated or fo
 | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM` | WhatsApp (refused, not simulated, when unset) |
 | `TWILIO_WEBHOOK_URL` | Exact public URL Twilio calls (e.g. `https://api.example.com/api/webhooks/twilio`); used to verify `X-Twilio-Signature` |
 | `SENDGRID_WEBHOOK_PUBLIC_KEY` | Verification key for `X-Twilio-Email-Event-Webhook-Signature` on `POST /api/webhooks/sendgrid` |
-| `OUTREACH_SENDER_NAME`, `_COMPANY`, `_ADDRESS`, `_EMAIL` | Sender identity printed in drafts; all four required, no default |
+| `OUTREACH_SENDER_NAME`, `_COMPANY`, `_ADDRESS`, `_EMAIL` | Sender identity printed in the footer of every e-mail; all four required, no default |
+| `OUTREACH_SENDER_WHATSAPP` | Optional: the WhatsApp number printed in the footer next to the e-mail address (nothing is printed when unset) |
 | `PUBLIC_BASE_URL` | Public API URL (https in production), used in unsubscribe links |
 | `FEATURE_PROSPECT_IMPORT` | `true` lets owners/admins import a prospect list (CSV/JSON); off by default |
 | `FEATURE_LIVE_SENDING`, `FEATURE_EXTERNAL_SOURCES` | Dangerous capabilities, off unless `true`. Live sending = real e-mail over SMTP (below). External sources = the **Sources** page (`docs/sources.md`), the **Map search** page (live OpenStreetMap places, see `docs/map-search.md`) and the opt-in "check websites" of a list import: each company's own public homepage is fetched (`robots.txt` respected, identified User-Agent, platforms and non-public addresses refused, 25 sites max per import). Enabling it is your attestation that this is permitted for the sites concerned |
