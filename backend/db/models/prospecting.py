@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, Text, UniqueConstraint, text
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -126,3 +126,78 @@ class PublicPageCache(Base, UUIDPKMixin, CreatedAtMixin):
         server_default=text("now()"),
     )
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ProspectingBatch(Base, UUIDPKMixin, CreatedAtMixin):
+    __tablename__ = "prospecting_batches"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('queued','discovering','enriching','qualifying','completed','partial','paused','failed','canceled')",
+            name="chk_prospecting_batches_status",
+        ),
+        Index("ix_prospecting_batches_account_status", "account_id", "status", text("created_at DESC")),
+        Index(
+            "uq_prospecting_batches_account_idempotency",
+            "account_id",
+            "idempotency_key",
+            unique=True,
+            postgresql_where=text("idempotency_key IS NOT NULL"),
+        ),
+    )
+
+    account_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("accounts.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, server_default="queued")
+    idempotency_key: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    config: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    counters: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    exclusion_reasons: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    error_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    checkpoint: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+
+
+class ProspectingBatchItem(Base, UUIDPKMixin, CreatedAtMixin):
+    __tablename__ = "prospecting_batch_items"
+    __table_args__ = (
+        CheckConstraint(
+            "stage IN ('discovered','enriched','qualified_strict','hot','excluded','failed')",
+            name="chk_prospecting_batch_items_stage",
+        ),
+        Index("ix_prospecting_batch_items_batch_stage", "batch_id", "stage"),
+        Index("ix_prospecting_batch_items_account_source", "account_id", "source_key"),
+    )
+
+    batch_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("prospecting_batches.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    account_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("accounts.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    lead_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("leads.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    source_key: Mapped[str] = mapped_column(String(120), nullable=False)
+    name: Mapped[str] = mapped_column(String(300), nullable=False)
+    category: Mapped[str] = mapped_column(String(80), nullable=False)
+    stage: Mapped[str] = mapped_column(String(30), nullable=False, server_default="discovered")
+    exclusion_reason: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    data: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+
