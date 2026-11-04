@@ -136,3 +136,7 @@ Ce qui a changé, sans clé, sans compte, sans rien de payant :
 
 À vérifier après mise en ligne : *System health → Check from the server* (la mesure ci-dessus se refait en un clic) ; aucune garantie
 qu'un serveur public accepte l'adresse de Netlify : c'est une hypothèse à mesurer, pas un fait.
+
+## Look de la carte
+Look « nuit » par défaut (filtre CSS sur les tuiles OpenStreetMap standard, HUD de position, balayage radar pendant la recherche), bouton soleil/lune pour revenir à la carte classique,
+préférence mémorisée dans le navigateur. Détails et règles de mouvement : `docs/design-system.md`, « Carte futuriste ».

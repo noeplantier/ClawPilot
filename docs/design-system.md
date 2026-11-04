@@ -24,7 +24,8 @@ l'en-tête mobile, l'écran de démarrage, la connexion et l'inscription. Favico
 ## Règles
 - Un écran n'écrit **aucune couleur** dans un nom de classe (`text-[#…]`, `bg-[#…]`) ni de gris Tailwind : il utilise les tokens ci-dessus. `src/theme.test.js` le vérifie.
 - Les couleurs de données (graphiques, étapes du pipeline, pastilles) viennent de la palette violet / vert / ambre / rouge, lisibles sur fond sombre.
-- La carte garde le fond OpenStreetMap standard (décision du produit) ; seuls ses panneaux, fenêtres et pastilles suivent le thème.
+- La carte garde les tuiles OpenStreetMap standard (décision du produit : une source, une attribution, aucune clé) ; son look « nuit » est un filtre CSS sur ces tuiles
+  (`.map-stage`, `index.css`), désactivable par le bouton soleil/lune (« Classic map », préférence mémorisée). Voir « Carte futuriste » plus bas.
 - Mouvement : transitions de 200-300 ms sur la couleur, la bordure et l'ombre ; `prefers-reduced-motion` coupe les animations.
 
 
@@ -57,3 +58,15 @@ vérifie que chaque écran de `App.js` appartient à une rubrique et que chaque 
   (`100dvh`), aucun statut serveur affiché (la page ne peut pas le connaître), champs `username` / `current-password` / `new-password` pour les gestionnaires de mots de passe.
 - « Batches » = l'historique réel (recherches de carte, imports) et l'avancement des brouillons ; **aucun préréglage ni pause/reprise** : aucun moteur serveur ne les porte
   (`ProspectingBatch` n'a que des modèles, sans route), donc rien n'est simulé.
+
+## Carte futuriste
+`pages/MapSearch.jsx`, styles `.map-*` de `index.css`. Rien n'y porte une couleur de son propre chef : tout vient des jetons (`--void`, `--brand-*`, `--leaf`, `--accent-warning`).
+- **Fond nuit** : filtre sur le panneau de tuiles (inversion, teintes remises à l'endroit, désaturé, éclairci) : parcs verts, eau bleue, étiquettes claires, routes lisibles.
+  Vignette violette, grain fin et quatre équerres (décor `aria-hidden`). « Classic map » les retire.
+- **Pastilles** : losange = prospect qualifié, rond = lieu trouvé par la recherche ; la couleur garde son sens (contact publié, statut de revue), la lueur est dans la teinte.
+  Anneau doré = intention observée **et sourcée** (jamais un score) ; anneau cyan = nouveau. Les anneaux pulsent 3 fois puis se figent ; rien ne tourne en boucle sur la carte,
+  sauf le **balayage radar** pendant qu'une requête OpenStreetMap est réellement en cours (et sa pastille dans le HUD) : ils disparaissent avec la requête et s'arrêtent sous
+  `prefers-reduced-motion` (`designTokens.test.js` le vérifie).
+- **HUD** (`MapHud`, `lib/mapHud.js`, ≥ 1024 px) : centre de la vue, zoom, et l'état de la zone (prêt / trop large / balayage). Chaque valeur est lue de la carte ou de la recherche ;
+  aucun chiffre inventé.
+- **Hauteur** : sur ordinateur la carte remplit `<main>` (`md:h-full`) : la barre de rubriques et le pied n'en retirent plus une valeur codée en dur ; les contrôles de zoom ne passent plus sous le pied.

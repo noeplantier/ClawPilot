@@ -5,7 +5,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { ArrowsOut, ArrowsIn, CaretDoubleRight, CaretDoubleLeft, CaretDown, CaretUp, Eye, EyeSlash, MagnifyingGlass, X } from "@phosphor-icons/react";
+import { ArrowsOut, ArrowsIn, CaretDoubleRight, CaretDoubleLeft, CaretDown, CaretUp, Eye, EyeSlash, MagnifyingGlass, Moon, Sun, X } from "@phosphor-icons/react";
 import { useAuth } from "@/contexts/AuthContext";
 import { campaignsApi, canDecide, importsApi, mapApi, prospectsApi, useAsync } from "@/lib/outreach";
 import * as swr from "@/lib/swr";
@@ -26,12 +26,14 @@ import PlacePopup from "@/components/outreach/PlacePopup";
 import AddedCard from "@/components/outreach/AddedCard";
 import DraftJobsStrip from "@/components/outreach/DraftJobsStrip";
 import CityBox, { lookup } from "@/components/outreach/CityBox";
+import MapHud from "@/components/outreach/MapHud";
 import { centroids, fold, zoomFor } from "@/lib/cityComplete";
 
 const START = { center: [45.764, 4.8357], zoom: 14 }; // Lyon; move the map anywhere in the world
-// One real map: the standard OpenStreetMap style (no light/dark variants).
+// One real map: the standard OpenStreetMap tiles. The "night" look is a CSS filter on them (index.css, .map-stage), so there is still one
+// source and one attribution; "Classic map" turns the filter off.
 const OSM_STANDARD = { url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png", credit: "© OpenStreetMap contributors" };
-const GLASS = "glass rounded-2xl";
+const GLASS = "glass map-glass rounded-2xl";
 
 const clusterIcon = (n) => {
   const size = clusterSize(n);
@@ -143,6 +145,8 @@ function MapView({ canImport }) {
   const [overlaysHidden, setOverlaysHidden] = useState(false); // every panel hidden: just the map
   const [importOpen, setImportOpen] = useState(true); // the import form of the selection, expanded or minimised
   const [full, setFull] = useState(false);
+  const [night, setNight] = useState(() => readPref("map.night", true)); // the futuristic night look, or the classic OpenStreetMap look
+  const [center, setCenter] = useState(START.center); // where the view is centred, for the head-up display
   // my leads per town, counted by the server (null until loaded); the last answer is shown at once, then replaced
   const [cityStats, setCityStats] = useState(() => { const hit = swr.read("map:cities"); return hit ? hit.data : null; });
   const [mine, setMine] = useState(() => { const hit = swr.read("map:prospects"); return hit ? hit.data : []; });
@@ -186,6 +190,7 @@ function MapView({ canImport }) {
     const check = () => setTooLarge(areaTooLarge(bounds(m)));
     m.on("moveend", check);
     m.on("zoomend", () => setZoom(m.getZoom()));
+    m.on("moveend", () => { const c = m.getCenter(); setCenter([c.lat, c.lng]); });
     check();
     map.current = m;
     const watch = new ResizeObserver(() => m.invalidateSize());
@@ -430,8 +435,17 @@ function MapView({ canImport }) {
   const chosen = found.filter((p) => selected.has(p.external_id));
 
   return (
-    <div ref={root} className="relative w-full h-[calc(100svh-11rem)] md:h-[calc(100vh-4.25rem)] min-h-0 md:min-h-[28rem] overflow-hidden bg-white/[0.04]" data-testid="map-page">
+    <div ref={root} className={`map-stage ${night ? "" : "map-classic"} relative w-full h-[calc(100svh-11rem)] md:h-full min-h-0 md:min-h-[28rem] overflow-hidden`} data-testid="map-page" data-look={night ? "night" : "classic"}>
       <div ref={el} className="absolute inset-0 z-0" data-testid="map" aria-label="Interactive map" />
+      {/* decorative head-up display: vignette and corner brackets (aria-hidden), a radar sweep while a search is running, the position readout */}
+      <div className="map-hud-vignette" aria-hidden="true" />
+      {night && ["tl", "tr", "bl", "br"].map((c) => <span key={c} className={`map-hud-corner ${c}`} aria-hidden="true" />)}
+      {busy && (
+        <div className="map-scan" aria-hidden="true" data-testid="map-scan">
+          <span className="map-scan-label">ASKING OPENSTREETMAP…</span>
+        </div>
+      )}
+      {!overlaysHidden && <MapHud center={center} zoom={zoom} busy={busy} tooLarge={tooLarge} />}
       {added && <AddedCard out={added.out} siteAsked={added.siteAsked} onClose={() => setAdded(null)} className="absolute z-[502] bottom-12 left-3 md:left-1/2 md:-translate-x-1/2" />}
       {found.map((p) => createPortal(<PlacePopup key={p.external_id} place={p} canAdd={canImport} offReason={addOff} onAdded={onAdded} />, hostFor(p.external_id)))}
 
@@ -439,6 +453,10 @@ function MapView({ canImport }) {
       <div className={`absolute z-[503] top-3 right-3 md:left-1/2 md:right-auto md:-translate-x-1/2 flex gap-1 p-1 ${GLASS} !rounded-full`} role="toolbar" aria-label="Map view">
         <button className="btn-ghost !rounded-full !px-3 !py-1 text-xs" onClick={() => setOverlaysHidden((v) => !v)} aria-pressed={overlaysHidden} title="Hide or show every panel (H)" data-testid="map-hide-panels">
           {overlaysHidden ? <Eye size={14} /> : <EyeSlash size={14} />} {overlaysHidden ? "SHOW PANELS" : "FULL MAP"}
+        </button>
+        <button className="btn-ghost !rounded-full !px-2 !py-1" onClick={() => setNight((v) => { writePref("map.night", !v); return !v; })} aria-pressed={night}
+          aria-label={night ? "Switch to the classic map" : "Switch to the night map"} title={night ? "Classic map" : "Night map"} data-testid="map-look">
+          {night ? <Sun size={14} /> : <Moon size={14} />}
         </button>
         <button className="btn-ghost !rounded-full !px-2 !py-1" onClick={toggleFull} aria-label={full ? "Leave full screen" : "Full screen"} data-testid="map-fullscreen">
           {full ? <ArrowsIn size={14} /> : <ArrowsOut size={14} />}
