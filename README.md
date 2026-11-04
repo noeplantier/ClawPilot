@@ -114,6 +114,8 @@ set (Settings > Integrations): nothing is ever recorded as sent, generated or fo
 | `APP_ENV` | `production` makes `scripts/seed_demo.py` refuse to run |
 | `CORS_ORIGINS` | Comma-separated allowed origins (default `http://localhost:3000`; never `*`) |
 | `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND`, `REDIS_URL` | Redis for Celery |
+| `EMBEDDED_WORKER` | Free-plan option, off unless exactly `1`: `start.sh` also runs the Celery worker and its beat inside the API container (needs `CELERY_BROKER_URL`, else nothing starts and the log says so). See `docs/deployment.md` |
+| `EMBEDDED_WORKER_QUEUES`, `EMBEDDED_WORKER_LOGLEVEL` | Queues the embedded worker consumes (default `sends,automation,webhooks`) and its log level (default `info`) |
 | `SENDGRID_API_KEY`, `SENDGRID_FROM_EMAIL` | E-mail for CRM messages and campaigns when SMTP is not used (refused, not simulated, when unset) |
 | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM` | WhatsApp (refused, not simulated, when unset) |
 | `TWILIO_WEBHOOK_URL` | Exact public URL Twilio calls (e.g. `https://api.example.com/api/webhooks/twilio`); used to verify `X-Twilio-Signature` |
