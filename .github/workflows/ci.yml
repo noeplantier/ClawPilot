@@ -205,7 +205,9 @@ jobs:
 
   e2e:
     # The complete journey through the real UI, against the real API and PostgreSQL. Dry-run, no provider key, no outbound call.
-    runs-on: ubuntu-latest
+    # Pinned: `ubuntu-latest` became Ubuntu 26.04, which Playwright 1.56.1 cannot install Chromium on ("does not support chromium on
+    # ubuntu26.04-x64"). Move to a newer Ubuntu together with a Playwright upgrade, not before.
+    runs-on: ubuntu-24.04
     needs: [test-backend, build-frontend]
     services:
       postgres:
