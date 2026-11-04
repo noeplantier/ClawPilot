@@ -24,6 +24,7 @@ import {
 import { EmptyBlock, ErrorBlock, LoadingBlock } from "@/components/outreach/States";
 import PlacePopup from "@/components/outreach/PlacePopup";
 import AddedCard from "@/components/outreach/AddedCard";
+import DraftJobsStrip from "@/components/outreach/DraftJobsStrip";
 import CityBox, { lookup } from "@/components/outreach/CityBox";
 import { centroids, fold, zoomFor } from "@/lib/cityComplete";
 
@@ -479,6 +480,7 @@ function MapView({ canImport }) {
             <input type="checkbox" checked={showMine} onChange={(e) => setShowMine(e.target.checked)} />
             <span><b>Qualified prospects</b> (squares) — {readySummary(mine)}</span>
           </label>
+          <DraftJobsStrip />
           {mine.length > 0 && showMine && (
             <div className="space-y-2" data-testid="map-filters">
               <div className="grid grid-cols-2 gap-2">

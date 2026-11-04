@@ -23,18 +23,20 @@ Le champ « Go to a town or a postcode » de la carte propose les villes pendant
 - Précision : sans accents, casse, tirets ni apostrophes (`St-Etienne` = `Saint-Étienne`). `st` reste ambigu tant que le mot est en cours
   (Saint… ou Strasbourg) : les deux lectures sont proposées.
 - Si aucun des deux services ne répond, la liste le dit (« The official town lists did not answer ») et ne montre que les villes de vos leads.
-- Les compteurs viennent de `GET /api/map/cities` (même sondage que les prospects de la carte, toutes les 20 s) : `hot` / `warm` / `cold`
+- Les compteurs viennent de `GET /api/map/cities` (même rythme que les prospects de la carte : ~10 s, ~2 s pendant deux minutes après une action) : `hot` / `warm` / `cold` (paliers de chaleur, pas d'intention d'achat) et `ready` (prospects qualifiés)
   calculés **dans la base** avec la même règle que partout (`repositories/heat_sql.py`, jumeau de `services/outreach_os/heat.py`), sur les leads
   du CRM et les prospects non rejetés, supprimés exclus. Une ville vide, `unknown` ou `unspecified` n'est comptée nulle part ; `Lyon`, `lyon `
   et `LYON` sont une seule ville. Tant que les compteurs ne sont pas chargés, rien n'est affiché (jamais un 0 inventé).
 - Limite connue : un lead porte le nom de sa ville, pas son code postal ; deux communes du même nom (Saint-Denis 93 / 974) se partagent donc
   le même compteur, attribué à la plus peuplée.
 
-## Ce que la carte affiche : les hot leads joignables
-- Les carrés sont les prospects dont `GET /api/map/prospects` dit `map_ready: true` : **hot** (chaleur ≥ 65) **avec un téléphone ET un e-mail réellement
-  connus**. Un site web n'est pas exigé : il classe seulement ces leads plus haut (site d'abord, puis chaleur) et s'affiche dans la fenêtre du point.
-  La règle est `heat.is_map_ready` (serveur) ; la page ne la recalcule pas. Les autres prospects restent dans la réponse (pour ne pas reproposer un
-  lieu déjà importé et pour la recherche de ville) mais ne sont pas dessinés. Un lead jamais scoré n'est classé que sur son information (cf. `docs/scoring.md`).
+## Ce que la carte affiche : les prospects qualifiés
+- Les carrés sont les prospects que `GET /api/map/prospects` renvoie : ceux que la **politique d'éligibilité commune** qualifie (`docs/eligibility.md`) :
+  **e-mail** valide, **téléphone** normalisable, **adresse** et **position** sur une source **non démo et fraîche**, **score de fit** récent. La décision
+  est prise en SQL **avant** la limite ; la page ne filtre rien. **Le site web et WhatsApp sont facultatifs** : un prospect avec ou sans site est jugé
+  pareil. « **Hot** » veut dire une **intention commerciale observée et sourcée** (anneau jaune), jamais un score : sans elle, « Qualifié prioritaire ».
+  Les prospects incomplets ne sont pas dessinés : ils restent dans **To enrich** (`/app/prospects/to-enrich`) avec ce qui leur manque, non contactables.
+  `GET /api/map/known` donne les identifiants déjà connus (dessinés ou non) pour que la recherche ne reproposer pas le même lieu.
 - Les ronds sont les lieux trouvés par « Search this area » : ils n'ont pas encore de score, donc ne sont jamais « hot ». Ils ne sont dessinés
   **que s'ils publient un téléphone ET un e-mail** ; le panneau dit « N of M shown » et une case permet de tout afficher (préférence mémorisée).
   Une valeur absente est inconnue : elle n'est ni remplie ni supposée.

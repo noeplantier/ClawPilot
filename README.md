@@ -128,6 +128,7 @@ set (Settings > Integrations): nothing is ever recorded as sent, generated or fo
 | `OUTREACH_SANDBOX`, `OUTREACH_LIVE_ALLOWLIST`, `OUTREACH_LIVE_PHONES` | While the sandbox is on, only the allowlisted addresses/`@domains` receive e-mail and only the listed numbers (E.164, comma separated, no spaces) receive WhatsApp. The sandbox is on unless set to `false`; an empty list allows nobody. `POST /api/outbound/test-whatsapp` only reaches `OUTREACH_LIVE_PHONES` |
 | `FEATURE_DEMO_DATA` | `true` offers the built-in demo directory (fictional businesses) as a source; off by default so only real data is shown |
 | `OUTREACH_TEST_SINK` | Automated tests only: records sends in-process (ids start with `sink:`) instead of calling a provider. Ignored when `APP_ENV=production` |
+| `OUTREACH_SOURCE_TTL_DAYS`, `OUTREACH_FIT_TTL_DAYS`, `OUTREACH_INTENT_TTL_DAYS`, `OUTREACH_MIN_FIT_SCORE` | Eligibility of the commercial map (`docs/eligibility.md`): a source and a fit score older than 30 days, or a fit score below 60, send a prospect back to *To enrich*; an observed intent older than 30 days stops counting as Hot. Defaults 30 / 30 / 30 / 60 |
 | `SEND_KILL_SWITCH` | `true` halts every send immediately (dispatch, SMTP test, SendGrid, Twilio) |
 | `AI_PROVIDER` | AI composer: `groq`, `gemini`, `mistral` or `custom`. No default: you choose who receives the recipient's name and company. Unset, the composer refuses with the reason (no canned text) |
 | `AI_API_KEY` | The provider's key (a free one exists at Groq and Mistral). Never shown, never logged |

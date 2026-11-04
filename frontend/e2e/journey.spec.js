@@ -205,10 +205,11 @@ test("the map shows real places from the search, marks what is published and nev
   });
   await page.route(/(tile\.openstreetmap\.org|basemaps\.cartocdn\.com)/, (route) =>
     route.fulfill({ contentType: "image/png", body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64") }));
+  await page.route("**/api/map/known", (route) => route.fulfill({ json: ["node/1"] })); // every prospect already held, drawn or not
   await page.route("**/api/map/prospects", (route) =>
     route.fulfill({
       json: [
-        { id: "p1", name: "Chez Marcel", city: "Lyon", lat: 45.7641, lon: 4.8358, review_status: "pending", has_email: true, external_id: "node/1", map_ready: true, has_phone: true, has_website: true, phone: "+33 4 78 12 34 56", email: "contact@chez-marcel.example", website: "https://chez-marcel.example", heat: { value: 82, tier: "hot", info_pct: 88 } },
+        { id: "p1", name: "Chez Marcel", city: "Lyon", lat: 45.7641, lon: 4.8358, review_status: "pending", has_email: true, external_id: "node/1", map_ready: true, eligible: true, priority: "qualified", address: "12 Rue Merciere", has_phone: true, has_website: true, phone: "+33 4 78 12 34 56", email: "contact@chez-marcel.example", website: "https://chez-marcel.example", heat: { value: 82, tier: "hot", info_pct: 88 } },
         { id: "p2", name: "Déjà prospect", city: "Lyon", lat: 45.762, lon: 4.83, review_status: "approved", has_email: false, external_id: null, map_ready: false, has_phone: false, has_website: false },
       ],
     }));
@@ -234,15 +235,15 @@ test("the map shows real places from the search, marks what is published and nev
   await expect(page.getByTestId("map-empty")).toBeVisible();
   await page.getByTestId("map-search").click();
   await expect(page.getByTestId("map-job")).toContainText("2 places saved from OpenStreetMap");
-  // "Chez Marcel" is already one of my prospects: it is drawn as a hot lead (square), not offered again as a search result.
-  // "Déjà prospect" is not hot and has no phone or e-mail: it stays out of the map.
-  await expect(page.getByTestId("map-mine-toggle")).toContainText("1 hot lead with a phone and an e-mail, 1 with a website.");
+  // "Chez Marcel" is already one of my prospects: it is drawn as a qualified prospect (square), not offered again as a search result.
+  // "Déjà prospect" is not qualified (the server says so): it stays out of the map.
+  await expect(page.getByTestId("map-mine-toggle")).toContainText("1 qualified prospect with e-mail, phone and address, 1 with a website, none hot: no commercial intent observed.");
   await expect(page.getByTestId("map-summary")).toHaveText("1 place: 0 with a published e-mail, 0 with a phone, 0 with a website.");
   await expect(page.getByTestId("map-found-toggle")).toContainText("0 of 1 shown"); // the new place published neither a phone nor an e-mail
-  await expect(page.locator(".map-pin")).toHaveCount(1); // only the hot lead
+  await expect(page.locator(".map-pin")).toHaveCount(1); // only the qualified prospect
   await showAllFound(page);
   await expect(page.getByTestId("map-found-toggle")).toContainText("1 of 1 shown");
-  await expect(page.locator(".map-pin")).toHaveCount(2); // the hot lead + the place, now asked for
+  await expect(page.locator(".map-pin")).toHaveCount(2); // the qualified prospect + the place, now asked for
   await page.locator(".map-pin").nth(1).dispatchEvent("click"); // the search result (drawn last)
   await expect(page.locator(".leaflet-popup-content")).toContainText("source on OpenStreetMap");
   await page.getByTestId("map-select-all").click();
@@ -299,10 +300,11 @@ test("the prospects map clusters nearby prospects, filters them, refreshes by po
     { ...base, id: "a2", name: "Boulangerie Deux", city: "Lyon", lat: 45.7643, lon: 4.8361, review_status: "pending", vertical: "bakery", score: null, signals: [] },
     { ...base, id: "a3", name: "Hôtel Trois", city: "Lyon", lat: 45.7642, lon: 4.8359, review_status: "approved", vertical: "hotel", score: 40, signals: ["outdated_technology"] },
     { ...base, id: "a4", name: "Café Lointain", city: "Paris", lat: 48.8566, lon: 2.3522, review_status: "approved", vertical: "restaurant", score: 55, signals: [] },
-    // not hot, or no phone or e-mail: the server says so, and the map leaves it out
+    // not qualified (no phone, address…): the server says so, and the map leaves it out
     { ...base, id: "a5", name: "Tiède Cinq", city: "Lyon", lat: 45.7644, lon: 4.8362, review_status: "approved", vertical: "bakery", score: 20, signals: [], map_ready: false, has_phone: false },
   ];
   let polled = 0;
+  await page.route("**/api/map/known", (route) => route.fulfill({ json: [] }));
   await page.route("**/api/map/prospects", (route) => { polled += 1; return route.fulfill({ json: rows }); });
   let assigned = null;
   await page.route("**/api/campaigns", (route) =>
@@ -310,7 +312,7 @@ test("the prospects map clusters nearby prospects, filters them, refreshes by po
   await page.route("**/api/campaigns/c-map/assign-leads", (route) => { assigned = route.request().postDataJSON(); return route.fulfill({ json: { id: "c-map" } }); });
 
   await page.goto("/app/map");
-  await expect(page.getByTestId("map-mine-toggle")).toContainText("4 hot leads with a phone and an e-mail, 0 with a website.");
+  await expect(page.getByTestId("map-mine-toggle")).toContainText("4 qualified prospects with e-mail, phone and address, 0 with a website, none hot: no commercial intent observed.");
   await expect(page.getByTestId("filter-summary")).toHaveText("4 prospects on the map.");
   await expect(page.locator(".map-cluster")).toHaveText("3"); // the three Lyon prospects merge; Paris is out of view
   await page.getByTestId("filter-vertical").selectOption("hotel");
@@ -322,7 +324,7 @@ test("the prospects map clusters nearby prospects, filters them, refreshes by po
   await page.getByTestId("filter-clear").click();
 
   await page.locator(".map-cluster").dispatchEvent("click");
-  await expect(page.getByTestId("map-mine-list")).toContainText("Cluster · 3 hot leads");
+  await expect(page.getByTestId("map-mine-list")).toContainText("Cluster · 3 qualified prospects");
   await expect(page.getByTestId("map-mine-list")).not.toContainText("Tiède Cinq");
   await expect(page.getByTestId("map-mine-list")).toContainText("not scored");
   await page.getByTestId("mine-row").nth(0).getByRole("checkbox").check();
@@ -651,14 +653,17 @@ test("one click on a map point adds the business to the CRM, with the attestatio
   await page.route(/(tile\.openstreetmap\.org)/, (route) =>
     route.fulfill({ contentType: "image/png", body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64") }));
   let mine = [];
+  let known = [];
   await page.route("**/api/map/prospects", (route) => route.fulfill({ json: mine }));
+  await page.route("**/api/map/known", (route) => route.fulfill({ json: known }));
   await page.route(/\/api\/map\/search(\?.*)?$/, (route) =>
     route.fulfill(route.request().method() === "POST" ? { status: 202, json: JOB("succeeded", { id: "j9", result_count: 1 }) } : { json: [] }));
   await page.route("**/api/map/search/j9/places", (route) => route.fulfill({ json: ONE_PLACE }));
   let sent = null;
   await page.route("**/api/map/places/add", async (route) => {
     sent = route.request().postDataJSON();
-    mine = [{ id: "p77", name: "Boulangerie Sept", city: "Lyon", lat: 45.76, lon: 4.835, review_status: "approved", has_email: false, external_id: "node/7", map_ready: false, has_phone: false, has_website: false }];
+    mine = []; // incomplete: the server does not qualify it, so it is not drawn
+    known = ["node/7"]; // but it is held: the search must not offer it again
     await route.fulfill({
       json: { lead_id: "p77", name: "Boulangerie Sept", created: true, review_status: "approved", in_crm: true, email: null, phone: null, website: null, email_found_on_site: false, website_checked: false, heat: null },
     });
@@ -684,8 +689,9 @@ test("one click on a map point adds the business to the CRM, with the attestatio
   expect(sent).toMatchObject({ attestation: true, approve: true, check_website: false });
   expect(sent.place).toMatchObject({ external_id: "node/7", name: "Boulangerie Sept", lat: 45.76, lon: 4.835, source_url: "https://www.openstreetmap.org/node/7" });
   expect(sent.place.phone).toBeUndefined();
-  // It is now one of my prospects and is no longer offered as a search result; it is not a hot lead with a phone and an e-mail, so no square.
-  await expect(page.getByTestId("map-mine-toggle")).toContainText("No hot lead with a phone and an e-mail yet (1 prospect with a position");
+  await expect(page.getByTestId("place-added")).toContainText("Not on the map yet: it needs an e-mail, a phone and an address");
+  // It is now one of my prospects (held, so no longer offered as a search result) but it is not qualified, so no square.
+  await expect(page.getByTestId("map-mine-toggle")).toContainText("No qualified prospect on the map yet: the incomplete ones wait in Leads, to enrich.");
 });
 
 async function apiGet(page, path) {
@@ -762,7 +768,7 @@ test("the dashboard suggests the best zones and leads to contact, and a zone ope
     return route.fulfill({ json: [{ nom: "Lyon", code: "69123", centre: { type: "Point", coordinates: [4.8357, 45.764] }, population: 522000, codesPostaux: ["69001"], departement: { code: "69", nom: "Rhône" } }] });
   });
   await page.goto("/app/dashboard");
-  await expect(page.getByTestId("focus-zone")).toContainText("4 hot leads with a phone and an e-mail, 3 with a website");
+  await expect(page.getByTestId("focus-zone")).toContainText("4 qualified prospects with e-mail, phone and address, 3 with a website");
   await expect(page.getByTestId("focus-lead")).toContainText("resa@marcel.example");
   await expect(page.getByTestId("focus-lead")).toHaveAttribute("href", "/app/prospects/p9");
   await page.getByTestId("focus-zone").click();

@@ -29,3 +29,35 @@ chaque page repartait d'un écran vide. Le reste (hébergement statique Netlify,
 - Playwright : « a returning visitor sees the app and the last data at once, even while the API is still waking up » (l'API répond en 5 s,
   l'application et le dernier tableau de bord sont affichés en moins de 4 s) et « signing out leaves nothing of the organisation in the browser ».
 - `curl -sI -H 'Accept-Encoding: gzip' https://clawpilot-api.onrender.com/openapi.json` : `content-encoding: gzip`.
+
+
+## Carte : le retard d'environ deux minutes, mesuré
+Chaîne : action → API → (file) → découverte → enrichissement → qualification → persistance → sondage → marqueur. Fournisseur Overpass **factice** local
+(`measure` : un serveur muet + un serveur rapide à 0,3 s) ; PostgreSQL 16 local, même machine, aucune latence réseau. Le temps du fournisseur réel
+n'est pas mesurable d'ici (pas d'accès réseau aux serveurs Overpass) ni sur Render (les métriques HTTP du service sont vides).
+
+| Étape | Avant | Après |
+|---|---|---|
+| Découverte Celery (`tasks/prospecting_tasks`), 1 serveur muet | **73,1 s** (2 × 35 s + pauses) | ≤ 15 s une fois, puis ~0,3 s (cooldown) |
+| Découverte Celery, 2 serveurs muets | ≈ 2 min 25 s (calculé) | ≤ 30 s une fois |
+| Recherche `/map/search`, 1 serveur muet | 15,4 s puis cache 28 ms | inchangé (déjà le client partagé) |
+| Lieu complet ajouté → présent sur la carte | **jamais** (score 10, « pas hot », rien ne re-score) | au prochain sondage (≤ 2 s en rafale) |
+| Rythme de sondage | 20 s fixes | ~10 s, ~2 s pendant 2 min après une action, 0 en arrière-plan |
+
+Cause du retard : la découverte Celery avait **sa propre liste de serveurs** (3 en dur), 35 s par requête, 2 essais par serveur et aucune mémoire d'un
+serveur tombé ; un serveur muet la retenait 73 s. Et **en production il n'y a aucun worker Celery ni Beat** (un seul service web `clawpilot-api`,
+`start.sh` = uvicorn) : ce chemin n'avance pas sans worker. Le chemin réellement utilisé par la page (`/map/search`) tourne dans le processus de l'API.
+
+Volume 2 000 prospects dont 400 incomplets (1 600 dessinés), 50 requêtes, local :
+
+| Endpoint | Avant (p50 / p95) | Après, données inchangées (p50 / p95) |
+|---|---|---|
+| `GET /map/prospects` | 544 / 696 ms (le 304 coûtait pareil) | **36 / 40 ms** ; **9 / 11 ms** en 304 |
+| `GET /map/cities` | 330 / 400 ms | 9 / 12 ms |
+| `GET /suggestions/focus` | 689 / 780 ms | 9 / 11 ms |
+| `GET /prospects/to-enrich` | 576 / 991 ms | mis en cache de la même façon |
+| Premier calcul après un changement | — | ≈ 290 ms (prédicat de qualification ≈ 180 ms, dont suppression ≈ 110 ms) |
+
+Un jeton de changement (`prospect_repo.change_token`, sept agrégats indexés, une requête) décide si la dernière réponse est encore valable ; l'heure
+en fait partie (les fenêtres de fraîcheur sont en jours). Les chiffres d'une instance Render gratuite (0,1 CPU) seront plus élevés : à mesurer après
+déploiement avec `docs/performance.md` § Vérifier.
