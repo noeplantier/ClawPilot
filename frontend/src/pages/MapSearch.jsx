@@ -416,7 +416,7 @@ function MapView({ canImport }) {
     setRetrying(true);
     setError(null);
     try {
-      const data = await fetchOverpass(job.fallback.query, job.fallback.endpoints);
+      const data = await fetchOverpass(job.fallback.query, job.fallback.endpoints, { relay: true });
       const done = await mapApi.ingest(job.id, data);
       setJob(done);
       show(await mapApi.places(done.id));

@@ -114,3 +114,25 @@ Page *System health* → « Check from the server », depuis Render (Francfort, 
 refusent ou ralentissent cette adresse partagée : ce n'est pas un défaut de la requête. Le repli navigateur fonctionne indépendamment
 (l'adresse du visiteur n'est pas celle de l'hébergeur). Solutions durables : un autre serveur public qui répond (`overpass.openstreetmap.fr`
 est ajouté, à vérifier avec la même mesure), un Overpass auto-hébergé (`OVERPASS_ENDPOINTS`), ou une API hébergée ailleurs.
+
+## Quand les serveurs Overpass refusent l'hébergeur (4 novembre 2026)
+Journaux de l'API en production : `overpass-api.de` **connexion refusée**, `overpass.openstreetmap.fr` **HTTP 403**, et la recherche
+s'arrêtait là sans interroger les trois autres serveurs : le code traitait tout 4xx comme une erreur de la requête. Un 403 est un refus
+**de ce serveur** pour cette adresse (adresse d'hébergement bloquée, règle d'usage) : c'est maintenant un serveur à sauter, pas une raison
+d'arrêter. Seul un `400` (notre requête est fausse, tous les serveurs le diraient) arrête la recherche.
+
+Ce qui a changé, sans clé, sans compte, sans rien de payant :
+- **Course entre serveurs** (`services/overpass_svc.py`) : le premier est interrogé tout de suite ; s'il est seulement lent, le suivant est
+  interrogé à côté après 4 s (jamais plus de 2 requêtes en même temps pour une recherche, par politesse) ; la première réponse valide gagne.
+- **Relais gratuit** (`frontend/netlify/functions/overpass.mjs`, joignable sur `/relay/overpass`) : une fonction Netlify (offre gratuite) qui
+  interroge ces mêmes serveurs depuis l'adresse de Netlify, une **troisième adresse** différente de celle de l'API et de celle du visiteur.
+  Elle ne relaie que les requêtes JSON de l'application (≤ 8 000 caractères, délai serveur ≤ 30 s), refuse les pages d'un autre site
+  (`Origin`) et ne transmet jamais vers un serveur nommé par le client. Elle répond avant les 10 s que Netlify accorde à une fonction : une
+  zone très large peut donc échouer ici et passer par un autre chemin.
+- **Repli navigateur en course** (`lib/overpassBrowser.js`) : le relais d'abord (même origine, pas de refus inter-origines), puis les
+  serveurs publics, avec la même course (3 en parallèle au plus, relance après 2,5 s).
+- **Côté API** : `OVERPASS_RELAY_URL=https://<votre-site-netlify>/relay/overpass` (https uniquement) place le relais en tête de la liste du
+  serveur. Sans cette variable, rien ne change. `OVERPASS_ENDPOINTS` (liste explicite) remplace tout, relais compris.
+
+À vérifier après mise en ligne : *System health → Check from the server* (la mesure ci-dessus se refait en un clic) ; aucune garantie
+qu'un serveur public accepte l'adresse de Netlify : c'est une hypothèse à mesurer, pas un fait.
