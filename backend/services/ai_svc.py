@@ -201,6 +201,28 @@ def _generate_sync(cfg: AIConfig, messages: list[dict[str, str]]) -> str:
     return content
 
 
+async def complete(messages: list[dict[str, str]]) -> dict[str, Optional[str]]:
+    """The provider's answer to `messages` as {"subject", "body"}, or `AIUnavailable` saying why (not configured,
+    rejected, limit, unreachable). The one place that talks to the provider, for the composer and the automatic drafts.
+    """
+    cfg, reason = _read()
+    if cfg is None:
+        raise AIUnavailable(
+            "ai_not_configured",
+            f"The AI composer is off: {reason}. Write the message yourself, or set it up in Settings > Integrations.",
+        )
+    try:
+        raw = await asyncio.to_thread(_generate_sync, cfg, messages)  # blocking socket: never on the event loop
+    except AIUnavailable:
+        raise
+    except requests.Timeout:
+        raise AIUnavailable("ai_failed", "The AI provider did not answer in time. Nothing was generated.")
+    except requests.RequestException as exc:
+        logger.warning("AI provider unreachable: %s", type(exc).__name__)
+        raise AIUnavailable("ai_failed", "The AI provider could not be reached. Nothing was generated.")
+    return parse_answer(raw)
+
+
 async def generate_message(
     recipient_name: str,
     product: str,
@@ -211,23 +233,7 @@ async def generate_message(
     company: str | None = None,
 ) -> dict:
     """A message from the provider, or `AIUnavailable` saying why (not configured, rejected, limit, unreachable)."""
-    cfg, reason = _read()
-    if cfg is None:
-        raise AIUnavailable(
-            "ai_not_configured",
-            f"The AI composer is off: {reason}. Write the message yourself, or set it up in Settings > Integrations.",
-        )
-    messages = build_messages(recipient_name, product, language, tone, channel, goal, company)
-    try:
-        raw = await asyncio.to_thread(_generate_sync, cfg, messages)  # blocking socket: never on the event loop
-    except AIUnavailable:
-        raise
-    except requests.Timeout:
-        raise AIUnavailable("ai_failed", "The AI provider did not answer in time. Nothing was generated.")
-    except requests.RequestException as exc:
-        logger.warning("AI provider unreachable: %s", type(exc).__name__)
-        raise AIUnavailable("ai_failed", "The AI provider could not be reached. Nothing was generated.")
-    answer = parse_answer(raw)
+    answer = await complete(build_messages(recipient_name, product, language, tone, channel, goal, company))
     return {
         "subject": answer["subject"] if channel == "email" else None,
         "body": answer["body"] or "",

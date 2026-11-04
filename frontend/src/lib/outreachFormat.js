@@ -238,3 +238,58 @@ export function limitsPatch(original, values) {
   });
   return patch;
 }
+
+// What is missing to qualify a prospect, in plain words (the codes are the server's: eligibility.MISSING_FIELDS).
+export const GAP_LABEL = {
+  name_missing: "name",
+  email_missing: "e-mail",
+  email_invalid: "valid e-mail",
+  phone_missing: "phone",
+  phone_invalid: "readable phone",
+  address_missing: "address",
+  coordinates_missing: "position on the map",
+  source_missing: "source",
+  source_stale: "fresh source",
+  fit_missing: "fit score",
+  fit_stale: "recent fit score",
+  fit_low: "better fit",
+};
+
+// "Missing: e-mail, address" — an unknown code is shown as it is, never hidden.
+export function gapLine(missing) {
+  if (!missing || missing.length === 0) return "Nothing missing";
+  return `Missing: ${missing.map((code) => GAP_LABEL[code] || code).join(", ")}`;
+}
+
+// The state of one automatic draft, in the words a person reads. A draft is a proposal: it is never sent by this flow.
+export const DRAFT_JOB_META = {
+  queued: { label: "Draft queued", chip: "chip-ink" },
+  generating: { label: "Draft being written", chip: "chip-warn" },
+  ready: { label: "Draft ready to review", chip: "chip-success" },
+  failed: { label: "Draft failed", chip: "chip-danger" },
+  unavailable: { label: "Draft waiting for the AI", chip: "chip-warn" },
+  offer_required: { label: "Offer required", chip: "chip-warn" },
+};
+
+export const SITE_STATE_LABEL = {
+  site_found: "Website found",
+  site_unreachable: "Website found, not reachable at the last check",
+  none_identified: "No official website identified in the listing",
+  unknown: "Website not checked",
+};
+
+// "3 ready · 2 being written · 1 waiting for the AI": exactly the counts the server returned; zero states are left out.
+export function draftSummaryLine(summary) {
+  if (!summary) return "";
+  const parts = [
+    ["ready", "ready"],
+    ["generating", "being written"],
+    ["queued", "queued"],
+    ["unavailable", "waiting for the AI"],
+    ["failed", "failed"],
+    ["offer_required", "need an offer"],
+  ]
+    .filter(([key]) => (summary.counts[key] || 0) > 0)
+    .map(([key, label]) => `${summary.counts[key]} ${label}`);
+  return parts.length ? parts.join(" · ") : "No draft prepared yet";
+}

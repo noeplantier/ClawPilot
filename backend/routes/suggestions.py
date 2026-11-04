@@ -12,9 +12,11 @@ from db.session import get_db_session
 from deps import get_current_user
 from models import FocusOut
 from repositories import focus_repo, prospect_repo
+from services.live_cache import TokenCache
 from services.outreach_os import cities
 
 router = APIRouter(prefix="/suggestions", tags=["suggestions"])
+_answers = TokenCache()
 
 
 @router.get("/focus", response_model=FocusOut)
@@ -24,12 +26,22 @@ async def focus(
     user: dict = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ) -> FocusOut:
-    """The towns with the most hot leads that can be called and e-mailed, and the hottest such leads. Counted from the
-    stored leads: nothing is estimated and nothing is suggested when nothing qualifies (the lists are then empty)."""
+    """The towns with the most qualified prospects (e-mail, phone, address) and the best such prospects, hot ones (an
+    observed, sourced intent) first. Counted from the stored data: nothing is estimated and nothing is suggested when
+    nothing qualifies (the lists are then empty). Recomputed only when the data behind the decision changed."""
     account_id = uuid.UUID(user["org_id"])
+    token = await prospect_repo.change_token(session, account_id)
+    key = (account_id, zones, leads)
+    hit = _answers.get(key, token)
+    if hit is not None:
+        return hit
     merged = cities.merge(await prospect_repo.city_heat_rows(session, account_id))
-    return FocusOut(
-        generated_at=datetime.now(timezone.utc),
-        zones=cities.best_zones(merged, zones),
-        leads=await focus_repo.best_leads(session, account_id, leads),
+    return _answers.put(
+        key,
+        token,
+        FocusOut(
+            generated_at=datetime.now(timezone.utc),
+            zones=cities.best_zones(merged, zones),
+            leads=await focus_repo.best_leads(session, account_id, leads),
+        ),
     )

@@ -57,7 +57,21 @@ export const systemApi = {
   probeOverpass: () => api.post("/system/health/overpass").then((r) => r.data),
 };
 
+export const draftJobsApi = {
+  // Automatic AI drafts: counts by state, the state of one prospect's draft, and "prepare the pending ones now" (background).
+  summary: () => api.get("/prospects/draft-jobs/summary").then((r) => r.data),
+  run: () => api.post("/prospects/draft-jobs/run").then((r) => r.data),
+  forLead: (id) => api.get(`/prospects/${id}/draft-job`).then((r) => r.data),
+};
+
+export const offerApi = {
+  get: () => api.get("/settings/offer").then((r) => r.data),
+  put: (body) => api.put("/settings/offer", body).then((r) => r.data),
+};
+
 export const prospectsApi = {
+  // The "to enrich" queue: prospects not qualified yet, with what is missing (server pagination).
+  toEnrich: (params) => api.get("/prospects/to-enrich", { params }).then((r) => r.data),
   list: (params) => api.get("/prospects", { params }).then((r) => r.data),
   // `hideEmpty`: leave out the leads with no e-mail, phone or website (the answer still says how many there are: `empty`).
   queues: (status = "pending", { hideEmpty = false } = {}) =>

@@ -168,3 +168,36 @@ def test_the_answer_has_an_etag_and_an_unchanged_poll_costs_an_empty_304():
     insert_rows(account, [row("Nouveau")])  # a new qualified prospect changes the tag at once
     changed = requests.get(f"{API}/map/prospects", headers={**h, "If-None-Match": etag})
     assert changed.status_code == 200 and {p["name"] for p in changed.json()} == {"Stable", "Nouveau"}
+
+
+def test_the_cached_answer_follows_every_change_that_matters_at_once():
+    from sqlalchemy import update
+
+    from db.models import Lead, SuppressionEntry
+    from services.outreach_os.normalize import identity_hash, normalize_email
+
+    h, account = _org()
+    keep, gone, weak = row("Reste"), row("Supprimé"), row("Dégradé")
+    insert_rows(account, [keep, gone, weak])
+    assert set(_map(h)) == {"Reste", "Supprimé", "Dégradé"}  # warm: the next answers may come from the cache
+
+    async def suppress(session):
+        email = normalize_email(gone["lead"]["email"])
+        session.add(
+            SuppressionEntry(
+                account_id=account, kind="email", identity_hash=identity_hash("email", email), reason="opt_out"
+            )
+        )
+
+    run_async(suppress)
+    assert set(_map(h)) == {"Reste", "Dégradé"}  # an opt-out leaves the map on the very next poll
+
+    async def degrade(session):
+        await session.execute(
+            update(Lead).where(Lead.account_id == account, Lead.full_name == "Dégradé").values(fit_score=10)
+        )
+
+    run_async(degrade)
+    assert set(_map(h)) == {"Reste"}
+    queue, _ = _queue(h)
+    assert queue["Dégradé"]["missing_fields"] == ["fit_low"]  # and it did not vanish: it waits to be enriched

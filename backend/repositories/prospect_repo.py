@@ -13,7 +13,7 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import Subquery, and_, case, func, not_, or_, select, update
+from sqlalchemy import Subquery, and_, case, func, not_, or_, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -548,7 +548,7 @@ async def list_positions(
     Ranked hot first, then by heat (a website ranks after the heat, it does not decide who is shown)."""
     src = eligibility_sql.latest_source(account_id)
     latest = _latest_scores_subquery()
-    hot = eligibility_sql.hot(src, now)
+    hot = eligibility_sql.intent(now)  # the rows are already qualified: only the intent is left to look at
     heat_value = heat_sql.heat_sql(latest.c.score)
     rows = (
         await session.execute(
@@ -595,6 +595,33 @@ async def list_positions(
             }
         )
     return out
+
+
+async def change_token(session: AsyncSession, account_id: uuid.UUID, now: Optional[datetime] = None) -> str:
+    """A cheap fingerprint of everything the eligibility decision reads for this organisation: when it is unchanged, the
+    decision is unchanged, so the last answer can be served without recomputing it. Seven indexed aggregates, one trip.
+
+    The hour is part of it: freshness windows are days, so an answer is never older than an hour whatever happens."""
+    row = (
+        await session.execute(
+            text("""
+                SELECT
+                  (SELECT count(*) || ':' || coalesce(max(updated_at)::text, '') FROM leads WHERE account_id = :a),
+                  (SELECT count(*) || ':' || coalesce(max(created_at)::text, '') FROM prospect_sources
+                     WHERE account_id = :a),
+                  (SELECT coalesce(max(created_at)::text, '') FROM prospect_signals WHERE account_id = :a),
+                  (SELECT coalesce(max(created_at)::text, '') FROM prospect_scores WHERE account_id = :a),
+                  (SELECT count(*) || ':' || coalesce(max(created_at)::text, '') FROM suppression_entries
+                     WHERE account_id = :a),
+                  (SELECT coalesce(max(cc.updated_at)::text, '') FROM consent_current cc
+                     JOIN contacts c ON c.id = cc.contact_id WHERE c.account_id = :a),
+                  (SELECT count(*) || ':' || coalesce(max(created_at)::text, '') FROM contacts WHERE account_id = :a)
+                """),
+            {"a": account_id},
+        )
+    ).one()
+    hour = int((now or datetime.now(timezone.utc)).timestamp() // 3600)
+    return hashlib.sha256(("|".join(row) + f"|{hour}|{policy.POLICY_VERSION}").encode()).hexdigest()[:24]
 
 
 async def known_external_ids(session: AsyncSession, account_id: uuid.UUID) -> list[str]:

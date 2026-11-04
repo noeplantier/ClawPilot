@@ -216,6 +216,7 @@ class DraftJob(Base, UUIDPKMixin, TimestampMixin):
     channel: Mapped[str] = mapped_column(String, nullable=False, server_default="email")
     status: Mapped[str] = mapped_column(String, nullable=False, server_default="queued")
     idempotency_key: Mapped[str] = mapped_column(String, nullable=False)
+    offer_hash: Mapped[str] = mapped_column(String, nullable=False, server_default="no-offer")
     language: Mapped[str] = mapped_column(String, nullable=False, server_default="fr")
     site_state: Mapped[str] = mapped_column(String, nullable=False, server_default="unknown")
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))

@@ -19,7 +19,7 @@ from db.session import get_db_session
 from deps import get_current_user, require_roles
 from models import ImportBatchOut, ImportIn, ImportOut, ImportRowError
 from repositories import audit_repo, import_repo
-from services import feature_flags
+from services import draft_runner, feature_flags
 from services.outreach_os import importer, pipeline
 from services.site_fetcher_svc import HttpSiteFetcher
 
@@ -173,6 +173,8 @@ async def import_prospects(
             "sites_checked": summary.sites_checked,
         },
     )
+    await session.commit()  # stored: their drafts are prepared in the background, nothing waits for them
+    draft_runner.kick(account_id)
     return result(
         preview=False,
         batch_id=str(batch.id),

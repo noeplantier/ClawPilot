@@ -191,23 +191,30 @@ def qualified(src: Subquery, now: Optional[datetime] = None) -> ColumnElement[bo
     )
 
 
-def hot(src: Subquery, now: Optional[datetime] = None) -> ColumnElement[bool]:
-    """Qualified AND a recent, detected, evidenced `commercial_intent` signal that points at a real source of it."""
+def intent(now: Optional[datetime] = None) -> ColumnElement[bool]:
+    """A recent, detected, evidenced `commercial_intent` signal that points at a real source of this prospect.
+    Use it alone on rows `qualified` already kept; `hot` is the standalone decision (qualified AND intent)."""
     now = _now(now)
-    intent = exists(
-        select(1)
-        .select_from(ProspectSignal)
-        .join(ProspectSource, ProspectSource.id == ProspectSignal.source_id)
-        .where(
-            ProspectSignal.account_id == Lead.account_id,
-            ProspectSignal.lead_id == Lead.id,
-            ProspectSignal.signal_key == policy.INTENT_SIGNAL,
-            ProspectSignal.state == "detected",
-            func.length(func.btrim(ProspectSignal.evidence)) > 0,
-            ProspectSignal.created_at >= now - timedelta(days=policy.rules().intent_days),
-            ProspectSource.account_id == Lead.account_id,
-            ProspectSource.lead_id == Lead.id,
-            not_(is_demo_source()),
+    return _strict(
+        exists(
+            select(1)
+            .select_from(ProspectSignal)
+            .join(ProspectSource, ProspectSource.id == ProspectSignal.source_id)
+            .where(
+                ProspectSignal.account_id == Lead.account_id,
+                ProspectSignal.lead_id == Lead.id,
+                ProspectSignal.signal_key == policy.INTENT_SIGNAL,
+                ProspectSignal.state == "detected",
+                func.length(func.btrim(ProspectSignal.evidence)) > 0,
+                ProspectSignal.created_at >= now - timedelta(days=policy.rules().intent_days),
+                ProspectSource.account_id == Lead.account_id,
+                ProspectSource.lead_id == Lead.id,
+                not_(is_demo_source()),
+            )
         )
     )
-    return _strict(and_(qualified(src, now), intent))
+
+
+def hot(src: Subquery, now: Optional[datetime] = None) -> ColumnElement[bool]:
+    """Qualified AND an observed, sourced commercial intent (the Python `evaluate(...)["is_hot"]`)."""
+    return _strict(and_(qualified(src, now), intent(now)))

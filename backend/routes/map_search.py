@@ -16,7 +16,6 @@ import time
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from fastapi.encoders import jsonable_encoder
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.session import get_db_session
@@ -38,12 +37,15 @@ from repositories import audit_repo, map_job_repo, prospect_repo, suppression_re
 from routes import prospect_imports
 from routes.prospects import heat_out
 from services import feature_flags, map_job_runner, overpass_svc
+from services.live_cache import TokenCache
 from services.outreach_os import cities, importer, map_jobs, osm
 from services.outreach_os.dedupe import build_candidate
 from services.outreach_os.normalize import normalize_domain, normalize_email, normalize_phone
 from services.rate_limit import AttemptLimiter
 
 router = APIRouter(prefix="/map", tags=["map"])
+_towns = TokenCache()
+_positions = TokenCache()  # per organisation: recomputed only when the data behind the decision changed
 decider = require_roles("owner", "admin")
 _limiter = AttemptLimiter(6, 60.0)
 _ingest_limiter = AttemptLimiter(12, 60.0)
@@ -62,9 +64,14 @@ async def my_prospects(
     phone, address and position on a fresh, non-demo source, and a fit score). Decided in SQL, before the limit.
 
     The answer carries an ETag: a page that polls sends it back and gets an empty 304 while nothing changed."""
-    rows = await prospect_repo.list_positions(session, uuid.UUID(user["org_id"]))
-    body = json.dumps(jsonable_encoder(rows), sort_keys=True, separators=(",", ":"))
-    etag = '"' + hashlib.sha256(body.encode()).hexdigest()[:24] + '"'
+    account = uuid.UUID(user["org_id"])
+    token = await prospect_repo.change_token(session, account)
+    entry = _positions.get(account, token)
+    if entry is None:
+        rows = await prospect_repo.list_positions(session, account)
+        body = json.dumps(rows, sort_keys=True, separators=(",", ":"), default=str)
+        entry = _positions.put(account, token, (body, '"' + hashlib.sha256(body.encode()).hexdigest()[:24] + '"'))
+    body, etag = entry
     headers = {"ETag": etag, "Cache-Control": "private, no-cache"}
     if request.headers.get("if-none-match") == etag:
         return Response(status_code=304, headers=headers)
@@ -79,8 +86,14 @@ async def known_places(user: dict = Depends(get_current_user), session: AsyncSes
 
 @router.get("/cities", response_model=list[CityHeatOut])
 async def my_cities(user: dict = Depends(get_current_user), session: AsyncSession = Depends(get_db_session)):
-    """Where the organisation's leads are: hot / warm / cold counted per town, hottest towns first."""
-    return cities.merge(await prospect_repo.city_heat_rows(session, uuid.UUID(user["org_id"])))
+    """Where the organisation's leads are: counted per town and heat tier, with how many are qualified (what the map
+    draws). Recomputed only when the data behind the decision changed."""
+    account = uuid.UUID(user["org_id"])
+    token = await prospect_repo.change_token(session, account)
+    hit = _towns.get(account, token)
+    if hit is not None:
+        return hit
+    return _towns.put(account, token, cities.merge(await prospect_repo.city_heat_rows(session, account)))
 
 
 @router.get("/categories")

@@ -938,6 +938,41 @@ class MapProspectOut(BaseModel):
     website: Optional[str] = None
 
 
+class OfferIn(BaseModel):
+    """What the organisation sells: the only offer an automatic draft may talk about (never invented)."""
+
+    name: str = Field(min_length=2, max_length=120)
+    pitch: str = Field(min_length=20, max_length=600)  # what it brings to the customer, in the organisation's words
+    cta: str = Field(min_length=3, max_length=160)  # the one simple next step the message asks for
+    language: Literal["fr", "en"] = "fr"  # the campaign language, used when the prospect gives no hint of its own
+
+
+class OfferOut(BaseModel):
+    configured: bool
+    offer: Optional[OfferIn] = None
+
+
+class DraftJobOut(BaseModel):
+    """The state of the automatic draft of one prospect. A draft is a proposal: it is never sent by this flow."""
+
+    id: str
+    lead_id: str
+    status: Literal["queued", "generating", "ready", "failed", "unavailable", "offer_required"]
+    site_state: Literal["site_found", "site_unreachable", "none_identified", "unknown"]
+    language: str
+    attempts: int
+    error_code: Optional[str] = None
+    error: Optional[str] = None  # a sentence for the person
+    draft_id: Optional[str] = None
+    updated_at: Optional[datetime] = None
+
+
+class DraftJobSummary(BaseModel):
+    counts: dict[str, int]  # prospects by the state of their latest draft job
+    offer_configured: bool
+    ai_active: bool  # the provider is configured; false = jobs wait as "unavailable" and resume when it is
+
+
 class ToEnrichItem(BaseModel):
     """A discovery prospect kept in the "to enrich" queue: not contactable by default, with what is missing."""
 

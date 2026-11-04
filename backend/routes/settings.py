@@ -18,9 +18,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from db.session import get_db_session
 from db.url import describe_database
 from deps import get_current_user, require_roles
-from models import AIStatus, IntegrationSettings, IntegrationTestOut, OutreachStatus, WebhookStatus
+from models import AIStatus, IntegrationSettings, IntegrationTestOut, OfferIn, OfferOut, OutreachStatus, WebhookStatus
+from repositories import audit_repo, draft_job_repo
 from services import (
     ai_svc,
+    draft_runner,
     feature_flags,
     imap_svc,
     integration_checks,
@@ -30,6 +32,7 @@ from services import (
     smtp_svc,
     twilio_svc,
 )
+from services.outreach_os import ai_draft
 from services.outreach_os.drafts import SenderIdentity
 from services.rate_limit import AttemptLimiter
 
@@ -161,3 +164,32 @@ async def test_integration(
     else:
         result = await asyncio.to_thread(_checks()[item_id])  # blocking sockets: never on the event loop
     return IntegrationTestOut(id=item_id, checked_at=datetime.now(timezone.utc), **result)
+
+
+@router.get("/offer", response_model=OfferOut)
+async def get_offer(user: dict = Depends(get_current_user), session: AsyncSession = Depends(get_db_session)):
+    """The offer the automatic drafts talk about. Nothing is invented: `configured: false` until it is complete."""
+    offer = ai_draft.valid_offer(await draft_job_repo.offer_of(session, uuid.UUID(user["org_id"])))
+    return OfferOut(configured=offer is not None, offer=OfferIn(**offer) if offer else None)
+
+
+@router.put("/offer", response_model=OfferOut)
+async def put_offer(payload: OfferIn, user: dict = Depends(decider), session: AsyncSession = Depends(get_db_session)):
+    """Save the offer, then prepare the drafts of the prospects that were waiting for it (in the background)."""
+    account_id = uuid.UUID(user["org_id"])
+    offer = ai_draft.valid_offer(payload.model_dump())
+    if offer is None:
+        raise HTTPException(status_code=422, detail="The offer is incomplete")
+    await draft_job_repo.set_offer(session, account_id, offer)
+    await audit_repo.log(
+        session,
+        account_id,
+        action="offer.updated",
+        resource_type="account",
+        resource_id=account_id,
+        actor_user_id=uuid.UUID(user["id"]),
+        diff={"name": offer["name"][:80], "language": offer["language"]},
+    )
+    await session.commit()
+    draft_runner.kick(account_id)
+    return OfferOut(configured=True, offer=OfferIn(**offer))

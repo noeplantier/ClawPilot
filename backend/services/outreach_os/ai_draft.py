@@ -41,6 +41,25 @@ BENEFITS = {  # what a web page does for this kind of activity (chosen from the 
 DEFAULT_BENEFIT = "présenter l'activité et faciliter la prise de contact"
 
 
+OFFER_LIMITS = {"name": (2, 120), "pitch": (20, 600), "cta": (3, 160)}
+LANGUAGES = ("fr", "en")
+
+
+def valid_offer(raw: object) -> Optional[dict[str, str]]:
+    """The organisation's offer when complete ({name, pitch, cta, language}), else None. Nothing is ever filled in."""
+    if not isinstance(raw, dict):
+        return None
+    out: dict[str, str] = {}
+    for field, (low, high) in OFFER_LIMITS.items():
+        value = raw.get(field)
+        if not isinstance(value, str) or not low <= len(value.strip()) <= high:
+            return None
+        out[field] = value.strip()
+    language = raw.get("language", "fr")
+    out["language"] = language if language in LANGUAGES else "fr"
+    return out
+
+
 def site_state(*, website: Optional[str], detected: Mapping[str, str]) -> str:
     """How the web presence is known. `detected` maps the keys of the signals detected now (a reviewer's dismissal
     applied) to their evidence. Listing without a site is stated only when the signal was really detected."""

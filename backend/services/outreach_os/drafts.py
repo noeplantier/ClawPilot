@@ -93,6 +93,11 @@ def _fact_lines(results: list[SignalResult], source_name: str, last_updated: dat
     return lines
 
 
+def observed_facts(results: list[SignalResult], source_name: str, last_updated: date | None) -> list[tuple[str, str]]:
+    """(signal key, sentence) of the signals detected now: the only observations a draft may state."""
+    return _fact_lines(results, source_name, last_updated)
+
+
 def render_email_draft(
     *,
     business_name: str,

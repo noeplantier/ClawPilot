@@ -27,6 +27,7 @@ def upgrade() -> None:
     sa.Column('channel', sa.String(), server_default='email', nullable=False),
     sa.Column('status', sa.String(), server_default='queued', nullable=False),
     sa.Column('idempotency_key', sa.String(), nullable=False),
+    sa.Column('offer_hash', sa.String(), server_default='no-offer', nullable=False),
     sa.Column('language', sa.String(), server_default='fr', nullable=False),
     sa.Column('site_state', sa.String(), server_default='unknown', nullable=False),
     sa.Column('attempts', sa.Integer(), server_default=sa.text('0'), nullable=False),
