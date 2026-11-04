@@ -188,3 +188,95 @@ def test_a_success_clears_the_cooldown_and_a_client_error_never_starts_one(monke
     monkeypatch.setattr(overpass_svc, "_open", _answering({"elements": []}))
     overpass_svc.http_fetch("q")
     assert overpass_svc.cooling_hosts() == []
+
+
+def test_a_server_that_refuses_us_with_403_is_skipped_not_a_reason_to_stop(monkeypatch):
+    """Production, measured: overpass-api.de refused the connection and overpass.openstreetmap.fr answered 403, and the
+    search gave up there without ever asking the three other public servers."""
+    seen = []
+
+    def fake(request, timeout):
+        seen.append(request.full_url)
+        if "openstreetmap.fr" in request.full_url:
+            raise urllib.error.HTTPError(request.full_url, 403, "Forbidden", {}, None)
+        if "overpass-api.de" in request.full_url:
+            raise urllib.error.URLError(ConnectionRefusedError(111, "Connection refused"))
+        return _Answer(json.dumps({"elements": [{"id": 1}]}).encode())
+
+    monkeypatch.setattr(overpass_svc, "_open", fake)
+    assert overpass_svc.http_fetch("[out:json];") == {"elements": [{"id": 1}]}
+    assert seen[:3] == list(overpass_svc.ENDPOINTS[:3])  # .de refused, .fr 403, then private.coffee answered
+    assert sorted(overpass_svc.cooling_hosts()) == ["overpass-api.de", "overpass.openstreetmap.fr"]
+
+
+def test_when_every_server_refuses_each_one_is_named_and_none_is_skipped(monkeypatch):
+    def fake(request, timeout):
+        raise urllib.error.HTTPError(request.full_url, 403, "Forbidden", {}, None)
+
+    monkeypatch.setattr(overpass_svc, "_open", fake)
+    with pytest.raises(overpass_svc.Unavailable) as err:
+        overpass_svc.http_fetch("q")
+    assert len(err.value.failures) == len(overpass_svc.ENDPOINTS) and err.value.code == "overpass_unreachable"
+
+
+def test_a_slow_server_is_hedged_by_the_next_one_and_nobody_waits_for_the_loser(monkeypatch):
+    import threading
+    import time
+
+    monkeypatch.setattr(overpass_svc, "HEDGE_SECONDS", 0.05)
+    release = threading.Event()
+    seen = []
+
+    def fake(request, timeout):
+        seen.append(request.full_url)
+        if "overpass-api.de" in request.full_url:
+            release.wait(5)  # silent: it would answer only after a long time
+            raise TimeoutError()
+        return _Answer(json.dumps({"elements": []}).encode())
+
+    monkeypatch.setattr(overpass_svc, "_open", fake)
+    started = time.monotonic()
+    try:
+        assert overpass_svc.http_fetch("q") == {"elements": []}
+        assert time.monotonic() - started < 2  # the silent first server did not hold the search back
+    finally:
+        release.set()
+    assert [u for u in seen] == list(overpass_svc.ENDPOINTS[:2])  # asked in order, the hedge being the second one
+
+
+def test_never_more_than_max_parallel_requests_are_in_flight(monkeypatch):
+    import threading
+    import time
+
+    monkeypatch.setattr(overpass_svc, "HEDGE_SECONDS", 0.02)
+    lock = threading.Lock()
+    state = {"now": 0, "max": 0}
+
+    def fake(request, timeout):
+        if "mail.ru" in request.full_url:  # the last of the five: the four before it are all slow
+            return _Answer(json.dumps({"elements": []}).encode())
+        with lock:
+            state["now"] += 1
+            state["max"] = max(state["max"], state["now"])
+        try:
+            time.sleep(0.2)
+            raise TimeoutError()
+        finally:
+            with lock:
+                state["now"] -= 1
+
+    monkeypatch.setattr(overpass_svc, "_open", fake)
+    assert overpass_svc.http_fetch("q") == {"elements": []}
+    assert 1 < state["max"] <= 2  # hedged (more than one at a time), never more than two for one search
+
+
+def test_a_relay_comes_first_only_when_it_is_an_https_url_and_an_explicit_list_wins(monkeypatch):
+    monkeypatch.delenv("OVERPASS_ENDPOINTS", raising=False)
+    monkeypatch.setenv("OVERPASS_RELAY_URL", "https://plantiers.example/relay/overpass")
+    assert overpass_svc.endpoints() == ("https://plantiers.example/relay/overpass",) + overpass_svc.ENDPOINTS
+    for bad in ("http://insecure.example/x", "javascript:alert(1)", "not a url", ""):
+        monkeypatch.setenv("OVERPASS_RELAY_URL", bad)
+        assert overpass_svc.endpoints() == overpass_svc.ENDPOINTS, bad
+    monkeypatch.setenv("OVERPASS_RELAY_URL", "https://plantiers.example/relay/overpass")
+    monkeypatch.setenv("OVERPASS_ENDPOINTS", "https://mine.example/i")
+    assert overpass_svc.endpoints() == ("https://mine.example/i",)  # a self-hosted list replaces everything

@@ -110,6 +110,7 @@ set (Settings > Integrations): nothing is ever recorded as sent, generated or fo
 |---|---|
 | `DATABASE_URL` | PostgreSQL (`postgres://` / `postgresql://` are auto-converted to the asyncpg driver; `sslmode=` is translated to asyncpg's `ssl=`). On Supabase use the **session pooler** address, see `docs/supabase.md` |
 | `OVERPASS_ENDPOINTS` | Optional, comma separated Overpass URLs replacing the public servers (a self-hosted instance). Empty = the built-in public list |
+| `OVERPASS_RELAY_URL` | Optional, an `https` URL of an Overpass-compatible relay tried first (the Netlify function of this application: `https://<your-site>/relay/overpass`, see `docs/map-search.md`). Empty = no relay |
 | `JWT_SECRET` | Signs access tokens — generate with `openssl rand -hex 32` |
 | `APP_ENV` | `production` makes `scripts/seed_demo.py` refuse to run |
 | `CORS_ORIGINS` | Comma-separated allowed origins (default `http://localhost:3000`; never `*`) |

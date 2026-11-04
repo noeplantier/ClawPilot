@@ -10,6 +10,16 @@
   NODE_VERSION = "20"
   CI = "false" # CRA turns lint warnings into build errors when CI=true; 21 warnings pre-exist
 
+# Free Overpass relay (frontend/netlify/functions/overpass.mjs): same origin for the browser, another address for the public servers.
+[functions]
+  directory = "netlify/functions"
+
+[[redirects]]
+  from = "/relay/overpass"
+  to = "/.netlify/functions/overpass"
+  status = 200
+  force = true
+
 # SPA fallback: react-router handles every path client-side.
 [[redirects]]
   from = "/*"

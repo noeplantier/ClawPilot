@@ -1,10 +1,14 @@
 """Overpass API client (OpenStreetMap data). Network I/O, only behind FEATURE_EXTERNAL_SOURCES.
 
-Polite by construction: identified User-Agent, one request per search (several public servers tried in turn,
-15 s each), 5 MB cap, a small in-memory cache
-(10 min) so panning back and forth does not hit the public servers again, and a fallback to the next public instance
-only on 429/502/503/504. No key, no account, nothing paid. Implements `Fetcher` so tests inject a fake: no socket is
-ever opened in tests.
+Polite by construction: identified User-Agent, one request per search, 15 s per server, 5 MB cap, a small in-memory
+cache (10 min) so panning back and forth does not hit the public servers again. No key, no account, nothing paid.
+Implements `Fetcher` so tests inject a fake: no socket is ever opened in tests.
+
+Resilient by construction: the public servers are tried in turn, a server that refuses us (403, 429, 5xx, connection
+refused, timeout) is skipped for a while, only a 400 (our own bad query) stops the search, and a server that is merely
+slow is *hedged*: after HEDGE_SECONDS a second server is asked too (never more than MAX_PARALLEL at once) and the first
+valid answer wins. A relay (OVERPASS_RELAY_URL: the Netlify function of this application, or any Overpass-compatible
+URL) comes first.
 """
 
 from __future__ import annotations
@@ -19,6 +23,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from typing import Any, Callable, Protocol
 
 from services.outreach_os import map_jobs
@@ -38,6 +43,8 @@ ENDPOINTS = (
     "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
 )
 TIMEOUT_SECONDS = 15.0
+HEDGE_SECONDS = 4.0  # a server silent for this long gets a second one asked beside it (the first keeps running)
+MAX_PARALLEL = 2  # never more than this many requests in flight for one search: polite to the public servers
 COOLDOWN_SECONDS = (
     300.0  # a server that just failed is tried last for this long, so the next search does not wait on it
 )
@@ -68,7 +75,15 @@ def cooling_hosts() -> list[str]:
 def endpoints() -> tuple[str, ...]:
     """OVERPASS_ENDPOINTS (comma separated URLs) replaces the public list: a self-hosted Overpass, or a test double."""
     configured = tuple(u.strip() for u in os.environ.get("OVERPASS_ENDPOINTS", "").split(",") if u.strip())
-    return configured or ENDPOINTS
+    return configured or (_relay() + ENDPOINTS)
+
+
+def _relay() -> tuple[str, ...]:
+    """OVERPASS_RELAY_URL: an https Overpass-compatible URL that reaches the public servers from another address (the
+    Netlify function of this application). It is tried first; anything that is not an https URL is ignored."""
+    url = os.environ.get("OVERPASS_RELAY_URL", "").strip()
+    parsed = urllib.parse.urlparse(url)
+    return (url,) if parsed.scheme == "https" and parsed.hostname else ()
 
 
 MAX_BYTES = 5_000_000
@@ -128,53 +143,82 @@ def _kind_of_http(status: int) -> str:
     return "busy" if status in RETRY_STATUS else "unreachable"
 
 
+_Outcome = tuple[dict[str, Any] | None, str, str, bool]  # (payload, failure text, failure kind, our query is at fault)
+
+
+def _ask(endpoint: str, body: bytes) -> _Outcome:
+    """One request to one server. Never raises for a server's own refusal: it returns what happened. Does not touch the
+    shared cooldown table (the caller does, from one thread)."""
+    host = urllib.parse.urlparse(endpoint).hostname or endpoint
+    request = urllib.request.Request(
+        endpoint, data=body, headers={"User-Agent": user_agent() or PRODUCT, "Accept": "application/json"}
+    )
+    try:
+        with _open(request, TIMEOUT_SECONDS) as response:  # noqa: S310 (https, fixed hosts)
+            raw = response.read(MAX_BYTES + 1)
+        if len(raw) > MAX_BYTES:
+            raise Unavailable("answer too large: zoom in", code="overpass_too_large")
+        payload = json.loads(raw)
+        if not isinstance(payload, dict) or not isinstance(payload.get("elements"), list):
+            return None, f"{host}: unexpected answer", "bad_answer", False
+        if "runtime error" in str(payload.get("remark", "")):
+            # HTTP 200 but the query was cut short on the server: its (partial or empty) elements are not an answer
+            return None, f"{host}: query timed out on the server", "busy", False
+        return payload, "", "", False
+    except urllib.error.HTTPError as exc:
+        # 400 = our query is wrong (every server would say so). 403/401/406/451 = THIS server refuses us (blocked
+        # address, policy): the next one may well answer, so it is skipped, never a reason to stop the search.
+        return None, f"{host}: HTTP {exc.code}", _kind_of_http(exc.code), exc.code == 400
+    except json.JSONDecodeError:
+        return None, f"{host}: not JSON", "bad_answer", False
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        reason = getattr(exc, "reason", None)  # URLError wraps the socket/SSL/DNS cause: it says what to fix
+        failure = f"{host}: {type(exc).__name__}" + (f" ({type(reason).__name__}: {reason})"[:120] if reason else "")
+        timed_out = isinstance(exc, TimeoutError) or isinstance(reason, TimeoutError)
+        return None, failure, "timeout" if timed_out else "unreachable", False
+
+
 def http_fetch(query: str) -> dict[str, Any]:
     body = urllib.parse.urlencode({"data": query}).encode()
+    queue = list(ordered(endpoints()))
     failures: list[str] = []
     kinds: list[str] = []
-    for endpoint in ordered(endpoints()):
-        host = urllib.parse.urlparse(endpoint).hostname or endpoint
-        request = urllib.request.Request(
-            endpoint, data=body, headers={"User-Agent": user_agent() or PRODUCT, "Accept": "application/json"}
-        )
-        try:
-            with _open(request, TIMEOUT_SECONDS) as response:  # noqa: S310 (https, fixed hosts)
-                raw = response.read(MAX_BYTES + 1)
-            if len(raw) > MAX_BYTES:
-                raise Unavailable("answer too large: zoom in", code="overpass_too_large")
-            payload = json.loads(raw)
-            if not isinstance(payload, dict) or not isinstance(payload.get("elements"), list):
-                failures.append(f"{host}: unexpected answer")
-                kinds.append("bad_answer")
-                _cool(endpoint)
+    pending: dict[Future[_Outcome], str] = {}
+    pool = ThreadPoolExecutor(max_workers=MAX_PARALLEL, thread_name_prefix="overpass")
+
+    def launch() -> None:
+        endpoint = queue.pop(0)
+        pending[pool.submit(_ask, endpoint, body)] = endpoint
+
+    try:
+        if queue:
+            launch()
+        stop = False
+        while pending and not stop:
+            # a server that is merely slow is hedged: after HEDGE_SECONDS the next one is asked beside it
+            hedge = bool(queue) and len(pending) < MAX_PARALLEL
+            done, _ = wait(list(pending), timeout=HEDGE_SECONDS if hedge else None, return_when=FIRST_COMPLETED)
+            if not done:
+                launch()
                 continue
-            if "runtime error" in str(payload.get("remark", "")):
-                # HTTP 200 but the query was cut short on the server: its (partial or empty) elements are not an answer
-                failures.append(f"{host}: query timed out on the server")
-                kinds.append("busy")
-                _cool(endpoint)
-                continue
-            _cooldown.pop(endpoint, None)
-            return payload
-        except urllib.error.HTTPError as exc:
-            failures.append(f"{host}: HTTP {exc.code}")
-            kinds.append(_kind_of_http(exc.code))
-            if exc.code not in RETRY_STATUS:
-                break  # our request is at fault (4xx): not the server's health
-            _cool(endpoint)
-        except json.JSONDecodeError:
-            failures.append(f"{host}: not JSON")
-            kinds.append("bad_answer")
-            _cool(endpoint)
-        except (urllib.error.URLError, TimeoutError, OSError) as exc:
-            reason = getattr(exc, "reason", None)  # URLError wraps the socket/SSL/DNS cause: it says what to fix
-            failures.append(
-                f"{host}: {type(exc).__name__}" + (f" ({type(reason).__name__}: {reason})"[:120] if reason else "")
-            )
-            kinds.append(
-                "timeout" if isinstance(exc, TimeoutError) or isinstance(reason, TimeoutError) else "unreachable"
-            )
-            _cool(endpoint)
+            for future in done:
+                endpoint = pending.pop(future)
+                payload, failure, kind, at_fault = future.result()  # re-raises Unavailable("answer too large")
+                if payload is not None:
+                    _cooldown.pop(endpoint, None)
+                    return payload
+                failures.append(failure)
+                kinds.append(kind)
+                if at_fault:
+                    stop = True  # our own bad request: asking the other servers cannot help
+                else:
+                    _cool(endpoint)
+            if queue and not pending and not stop:
+                launch()  # the failed server is replaced by the next one, in turn
+    finally:
+        # the slower request of a hedged pair may still be running: it ends by itself at TIMEOUT_SECONDS, nobody
+        # waits for it
+        pool.shutdown(wait=False, cancel_futures=True)
     last = "; ".join(failures) or "no endpoint"
     logger.warning("overpass unavailable (%s)", last)
     raise Unavailable(
