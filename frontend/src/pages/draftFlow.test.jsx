@@ -112,7 +112,7 @@ test("the offer form stays disabled until the offer is complete and saves exactl
   expect(byId("offer-save").disabled).toBe(true);
   const type = async (id, value) => {
     const el = byId(id);
-    const proto = el.tagName === "TEXTAREA" ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    const proto = el.tagName === "TEXTAREA" ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
     await act(async () => {
       Object.getOwnPropertyDescriptor(proto, "value").set.call(el, value);
       el.dispatchEvent(new Event("input", { bubbles: true }));
