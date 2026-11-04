@@ -56,5 +56,9 @@ test("the primary button is the site's: solid brand-500, light top edge and glow
 test("motion respects prefers-reduced-motion: the lift and the press are switched off, and nothing loops on the map or the tables", () => {
   const reduced = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce) {"));
   expect(reduced).toContain(".btn-primary:hover, .btn-primary:active, .btn-ghost:active { transform: none; }");
-  expect(css).not.toMatch(/\.map-[\w-]+[^{]*\{[^}]*animation:[^}]*infinite/); // the map does not animate in a loop
+  // Nothing that stays on the map loops (pins, clusters, popups pulse a few times, then rest). The only loops are the progress sweep
+  // of a search in flight and the HUD dot beside it: they exist only while the request runs, and reduced motion stops them.
+  const loops = (css.match(/\.map-[\w-]+[^{]*\{[^}]*animation:[^}]*infinite[^}]*\}/g) || []).map((rule) => rule.split("{")[0].trim());
+  expect(loops.sort()).toEqual(['.map-hud-dot[data-state="scanning"]', ".map-scan::before"]);
+  expect(reduced).toMatch(/\.map-scan::before[^}]*animation: none/);
 });
