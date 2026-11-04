@@ -125,7 +125,36 @@ Le Blueprint (`render.yaml`, *New → Blueprint*) est la voie recommandée : il 
 3. `RUN_MIGRATIONS=0` désactive les migrations au démarrage si un *pre-deploy command* les exécute déjà (offres payantes).
 4. Netlify : `REACT_APP_BACKEND_URL` = URL publique de l'API, puis relancer le build.
 5. Offre gratuite : l'API se met en veille après inactivité et la base gratuite expire au bout de 30 jours ; pas de worker ni de beat
-   (planification et envois différés exigent les offres payantes du Blueprint).
+   par défaut (planification et envois différés exigent les offres payantes du Blueprint), sauf l'option du worker embarqué
+   ci-dessous.
+
+## Worker embarqué (offre gratuite, sans service payant)
+
+`EMBEDDED_WORKER=1` fait lancer par `start.sh` le worker Celery **et** son beat dans le conteneur de l'API (`backend/embedded_worker.sh`),
+à côté d'`uvicorn`. Désactivé par défaut : fusionner ce changement ne modifie rien tant que la variable n'est pas posée.
+
+1. Un Key Value gratuit dans la **même région** que l'API (URL interne `redis://red-…:6379`) ; politique mémoire **`noeviction`**
+   (sinon Redis peut supprimer des tâches en attente sans le dire). Accès externe fermé.
+2. Sur `clawpilot-api` : `CELERY_BROKER_URL` et `CELERY_RESULT_BACKEND` = cette URL interne, puis `EMBEDDED_WORKER=1`. Un redéploiement
+   suit. Sans URL de broker (ou avec `localhost`), rien ne démarre et le journal le dit : l'API continue de servir.
+3. Vérifier dans les logs : `starting the worker with its beat`, `Connected to redis://…`, `celery@… ready`, puis
+   `Scheduler: Sending due task …` et `Task … succeeded`. L'URL du broker n'est jamais écrite dans nos messages.
+
+À savoir avant de l'activer :
+- **Le beat reprend les tâches planifiées**, dont `advance-due-campaign-steps` (toutes les 30 s) : les étapes de campagne arrivées à
+  échéance partent alors vers la file d'envoi. Les envois restent soumis à `send_gate` (kill switch, pause, limites) et au bac à sable ;
+  vérifiez `OUTREACH_SANDBOX=true` et `FEATURE_LIVE_SENDING` vide avant de l'activer, ou limitez d'abord
+  `EMBEDDED_WORKER_QUEUES=automation,webhooks` (les envois restent en file, sans partir).
+- **Un seul processus de tâches** (`--pool=solo`) : une tâche longue (découverte Overpass) retarde les suivantes. Mesure en local :
+  ~240 Mo de mémoire au total (API ~112 Mo, worker ~68 Mo, beat ~60 Mo, parts partagées comptées une fois) contre 512 Mo disponibles sur
+  l'offre gratuite ; la mesure sur Render reste à faire (onglet *Metrics*).
+- **L'instance gratuite s'endort** après 15 minutes sans trafic (le worker avec) : les tâches planifiées ne tournent que réveillée. Le
+  workflow `.github/workflows/keepalive.yml` appelle `/api/health` toutes les 10 minutes pour la garder éveillée, mais GitHub peut
+  retarder une exécution planifiée : rien ne le garantit.
+- **Pas d'arrêt propre** : à chaque déploiement ou redémarrage, la tâche en cours est interrompue. Pendant le court recouvrement de deux
+  instances lors d'un déploiement, deux beats coexistent quelques secondes ; les envois restent idempotents.
+- Un service payant (`clawpilot-worker`, `clawpilot-beat` du Blueprint) remplace cette option sans autre changement : retirer
+  `EMBEDDED_WORKER` de l'API ensuite, sinon deux beats tournent.
 
 ## Un service Render « Node » qui échoue à chaque fusion
 Un déploiement qui affiche `Running 'yarn start'` puis `Couldn't find a package.json file` appartient à un **ancien service de type Node**

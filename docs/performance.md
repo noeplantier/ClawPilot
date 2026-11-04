@@ -46,7 +46,8 @@ n'est pas mesurable d'ici (pas d'accès réseau aux serveurs Overpass) ni sur Re
 
 Cause du retard : la découverte Celery avait **sa propre liste de serveurs** (3 en dur), 35 s par requête, 2 essais par serveur et aucune mémoire d'un
 serveur tombé ; un serveur muet la retenait 73 s. Et **en production il n'y a aucun worker Celery ni Beat** (un seul service web `clawpilot-api`,
-`start.sh` = uvicorn) : ce chemin n'avance pas sans worker. Le chemin réellement utilisé par la page (`/map/search`) tourne dans le processus de l'API.
+`start.sh` = uvicorn) : ce chemin n'avance pas sans worker (sauf avec l'option gratuite `EMBEDDED_WORKER=1`, voir `docs/deployment.md`). Le chemin réellement
+utilisé par la page (`/map/search`) tourne dans le processus de l'API.
 
 Volume 2 000 prospects dont 400 incomplets (1 600 dessinés), 50 requêtes, local :
 
