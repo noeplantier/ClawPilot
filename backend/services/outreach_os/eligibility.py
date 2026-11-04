@@ -1,43 +1,67 @@
-"""One fail-closed eligibility policy for commercial prospect surfaces.
+"""One eligibility policy for every commercial prospect surface (map, lists, counters, dashboard, suggestions).
 
-Digital-need scores are not purchase intent. A prospect is strictly qualified only when
-source, freshness, public email, explicit WhatsApp evidence, an official checked website,
-and a recent ICP score are all present. Missing evidence stays unknown.
-Real businesses using Gmail are never rejected on email provider grounds.
+Pure: no I/O, `now` injected. The SQL twin is `repositories/eligibility_sql.py`; both are tested against each other.
+
+A prospect is **qualified** (shown on the commercial map) when all of this is true, from persisted evidence only:
+- a real establishment identity (a name that is not blank / "unknown");
+- an e-mail with valid syntax and a phone that normalises (E.164), both published by the source: a valid syntax does not
+  prove the mailbox exists, and a phone does not prove WhatsApp;
+- a physical address and coordinates (a valid position, never the null island) on its latest non-demo source;
+- that source is identifiable and fresh (`OUTREACH_SOURCE_TTL_DAYS`, 30 by default);
+- a recent explainable fit score at or above `OUTREACH_MIN_FIT_SCORE` (60 by default).
+The website and WhatsApp are NOT required: a prospect with or without a site is judged on the same terms.
+
+It is **hot** only when it is qualified AND carries a recent `commercial_intent` signal that was detected, has evidence
+and points at a real source of that same prospect. Need signals (no website, no booking page…) are not purchase
+intent: nothing here ever invents one, so "Hot" can legitimately be empty.
+
+Gaps that enrichment could fill are `missing_fields` (the prospect stays in the "to enrich" queue, never contactable by
+default). Suppressed, opted-out, rejected or demo records are `reasons` (excluded, not enrichable).
 """
 
 from __future__ import annotations
 
 import os
 import re
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from urllib.parse import urlsplit
+from typing import Any, Mapping, Optional, Sequence
 
-from sqlalchemy import Integer, String, and_, cast, exists, func, literal, not_, or_, select
-from sqlalchemy.sql.elements import ColumnElement
+from services.outreach_os.heat import NOT_KNOWN
+from services.outreach_os.normalize import normalize_email, normalize_phone
 
-from db.models import (
-    ConsentCurrent,
-    ConsentRecord,
-    Contact,
-    Lead,
-    ProspectSignal,
-    ProspectSource,
-    PublicPageCache,
-    SuppressionEntry,
-)
-
-POLICY_VERSION = "strict-v1"
+POLICY_VERSION = "map-v2"
 DEMO_SOURCE_NAMES = ("fixture_directory", "world_fixture")
-THIRD_PARTY_HOSTS = (
-    "facebook.com",
-    "instagram.com",
-    "linkedin.com",
-    "tiktok.com",
-    "twitter.com",
-    "x.com",
-    "youtube.com",
+INTENT_SIGNAL = "commercial_intent"
+PLACEHOLDER_EMAIL_DOMAIN = re.compile(
+    r"(^|\.)(example|invalid|test|localhost)(\.|$)"
+)  # reserved names: never a real mailbox
+MIN_ADDRESS_CHARS = 5
+
+# Machine-readable gaps, in the order the UI lists them.
+MISSING_FIELDS = (
+    "name_missing",
+    "email_missing",
+    "email_invalid",
+    "phone_missing",
+    "phone_invalid",
+    "address_missing",
+    "coordinates_missing",
+    "source_missing",
+    "source_stale",
+    "fit_missing",
+    "fit_stale",
+    "fit_low",
 )
+EXCLUSIONS = ("rejected", "suppressed", "opted_out", "demo_data")
+
+
+@dataclass(frozen=True)
+class Rules:
+    source_days: int
+    fit_days: int
+    intent_days: int
+    min_fit: int
 
 
 def _days(name: str, default: int) -> int:
@@ -47,343 +71,142 @@ def _days(name: str, default: int) -> int:
         return default
 
 
-def _extract_digits(phone: str) -> str:
-    return "".join(c for c in phone if c.isdigit())
-
-
-def _match_whatsapp(phone_digits: str, whatsapp_urls: list[str]) -> bool:
-    if not phone_digits or len(phone_digits) < 8 or len(phone_digits) > 15:
-        return False
-    # Local French: 0612345678 -> 612345678; International: 33612345678 -> 612345678
-    significant = phone_digits
-    if len(phone_digits) == 10 and phone_digits.startswith("0"):
-        significant = phone_digits[1:]
-    elif len(phone_digits) == 11 and phone_digits.startswith("33"):
-        significant = phone_digits[2:]
-
-    for raw_url in whatsapp_urls:
-        url_str = str(raw_url).lower().strip()
-        if not (url_str.startswith("https://wa.me/") or url_str.startswith("http://wa.me/")):
-            continue
-        url_digits = "".join(c for c in url_str if c.isdigit())
-        if phone_digits in url_digits or significant in url_digits:
-            return True
-    return False
-
-
-def evaluate(
-    lead: dict,
-    *,
-    sources: list[dict],
-    signals: list[dict],
-    website_check: dict | None,
-    suppressed: bool = False,
-    now: datetime | None = None,
-) -> dict:
-    """Explain one lead's strict status from persisted evidence; no unknown is inferred as a negative."""
-    now = now or datetime.now(timezone.utc)
-    source_days = _days("OUTREACH_SOURCE_TTL_DAYS", 30)
-    site_days = _days("OUTREACH_SITE_TTL_DAYS", 30)
-    fit_days = _days("OUTREACH_FIT_TTL_DAYS", 30)
+def rules() -> Rules:
     try:
         min_fit = max(0, min(100, int(os.environ.get("OUTREACH_MIN_FIT_SCORE", 60))))
     except (TypeError, ValueError):
         min_fit = 60
+    return Rules(
+        source_days=_days("OUTREACH_SOURCE_TTL_DAYS", 30),
+        fit_days=_days("OUTREACH_FIT_TTL_DAYS", 30),
+        intent_days=_days("OUTREACH_INTENT_TTL_DAYS", 30),
+        min_fit=min_fit,
+    )
 
-    def recent(value, days: int) -> bool:  # type: ignore[no-untyped-def]
-        return isinstance(value, datetime) and value.tzinfo is not None and value >= now - timedelta(days=days)
 
-    reasons: list[str] = []
+def is_known(value: object) -> bool:
+    return isinstance(value, str) and value.strip().lower() not in NOT_KNOWN
+
+
+def email_state(raw: object) -> Optional[str]:
+    """None when usable, else the gap: `email_missing` (blank) or `email_invalid` (syntax / placeholder domain)."""
+    if not is_known(raw):
+        return "email_missing"
+    email = normalize_email(str(raw))
+    if email is None or PLACEHOLDER_EMAIL_DOMAIN.search(email.rsplit("@", 1)[-1]):
+        return "email_invalid"
+    return None
+
+
+def phone_state(raw: object) -> Optional[str]:
+    if not is_known(raw):
+        return "phone_missing"
+    return None if normalize_phone(str(raw)) else "phone_invalid"
+
+
+def address_ok(value: object) -> bool:
+    return is_known(value) and len(str(value).strip()) >= MIN_ADDRESS_CHARS
+
+
+def coordinates_ok(lat: object, lon: object) -> bool:
+    """A real position: numbers (a bool is not one), in range, and not the null island an empty value turns into."""
+    if isinstance(lat, bool) or isinstance(lon, bool) or not isinstance(lat, (int, float)):
+        return False
+    if not isinstance(lon, (int, float)) or not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        return False
+    return not (lat == 0 and lon == 0)
+
+
+def is_demo_source(source: Mapping[str, Any]) -> bool:
+    """Durable demo provenance only; a name that merely looks fictional is never proof."""
+    fields = source.get("fields")
+    return bool(
+        source.get("source_name") in DEMO_SOURCE_NAMES
+        or str(source.get("source_url") or "").startswith("fixture://")
+        or "fictional data" in str(source.get("license_note") or "").lower()
+        or (isinstance(fields, dict) and fields.get("demo_data") is True)
+    )
+
+
+def _aware(value: object) -> Optional[datetime]:
+    return value if isinstance(value, datetime) and value.tzinfo is not None else None
+
+
+def latest_source(sources: Sequence[Mapping[str, Any]]) -> Optional[Mapping[str, Any]]:
+    real = [s for s in sources if not is_demo_source(s) and _aware(s.get("fetched_at"))]
+    return max(real, key=lambda s: s["fetched_at"]) if real else None
+
+
+def evaluate(
+    lead: Mapping[str, Any],
+    *,
+    sources: Sequence[Mapping[str, Any]],
+    signals: Sequence[Mapping[str, Any]] = (),
+    suppressed: bool = False,
+    opted_out: bool = False,
+    now: Optional[datetime] = None,
+) -> dict[str, Any]:
+    """Explain one prospect's status from persisted evidence. An unknown is never read as a value, never invented."""
+    now = now or datetime.now(timezone.utc)
+    rule = rules()
     missing: list[str] = []
 
-    valid_sources = [
-        source
-        for source in sources
-        if source.get("account_id") == lead.get("account_id")
-        and source.get("lead_id") == lead.get("id")
-        and source.get("source_name") not in DEMO_SOURCE_NAMES
-        and not str(source.get("source_url", "")).startswith("fixture://")
-        and "fictional data" not in str(source.get("license_note", "")).lower()
-        and not bool((source.get("fields") or {}).get("demo_data"))
-        and recent(source.get("fetched_at"), source_days)
-    ]
-    if not lead.get("id") or not lead.get("account_id"):
-        reasons.append("missing_internal_identity")
-    if not valid_sources:
-        missing.append("fresh_identifiable_source")
+    if not is_known(lead.get("full_name")):
+        missing.append("name_missing")
+    for gap in (email_state(lead.get("email")), phone_state(lead.get("phone"))):
+        if gap:
+            missing.append(gap)
 
-    email = str(lead.get("email") or "").strip().lower()
-    email_domain = email.rsplit("@", 1)[-1] if "@" in email else ""
-    email_syntax_ok = bool(
-        "@" in email
-        and "." in email_domain
-        and not email.endswith(".example")
-        and not email_domain.startswith("example.")
-        and not email.endswith("@example.com")
-    )
-    email_verification = (website_check or {}).get("email_verification", {}).get(email)
-    verification_ok = email_verification in ("syntax_valid", "deliverable", "mx_valid")
-    if not email_syntax_ok or not verification_ok or suppressed:
-        missing.append("sourced_verified_unsuppressed_business_email")
+    real = [s for s in sources if not is_demo_source(s)]
+    source = latest_source(sources)
+    fields = (source or {}).get("fields")
+    fields = fields if isinstance(fields, dict) else {}
+    if not address_ok(fields.get("address")):
+        missing.append("address_missing")
+    if not coordinates_ok(fields.get("lat"), fields.get("lon")):
+        missing.append("coordinates_missing")
+    if source is None:
+        missing.append("source_missing")
+    elif source["fetched_at"] < now - timedelta(days=rule.source_days):
+        missing.append("source_stale")
 
-    phone = str(lead.get("phone") or "").strip()
-    digits = _extract_digits(phone)
-    whatsapp_urls = (website_check or {}).get("whatsapp_urls") or []
-    has_whatsapp_proof = _match_whatsapp(digits, whatsapp_urls)
-    if not (phone and digits and has_whatsapp_proof):
-        missing.append("published_whatsapp_proof_and_normalized_number")
+    fit, scored_at = lead.get("fit_score"), _aware(lead.get("qualification_scored_at"))
+    if not isinstance(fit, int) or isinstance(fit, bool) or scored_at is None:
+        missing.append("fit_missing")
+    elif scored_at < now - timedelta(days=rule.fit_days):
+        missing.append("fit_stale")
+    elif fit < rule.min_fit:
+        missing.append("fit_low")
 
-    website = str(lead.get("website") or "").strip()
-    try:
-        host = (urlsplit(website if "://" in website else f"https://{website}").hostname or "").lower()
-    except ValueError:
-        host = ""
-    host = host[4:] if host.startswith("www.") else host
-    third_party = any(host == domain or host.endswith(f".{domain}") for domain in THIRD_PARTY_HOSTS)
-    http_status = (website_check or {}).get("http_status")
-    site_status = (website_check or {}).get("status")
-    site_collected = (website_check or {}).get("collected_at")
-    recent_site = recent(site_collected, site_days) if site_collected else False
-
-    if not website or third_party or site_status != "completed" or http_status != 200 or not recent_site:
-        missing.append("recently_checked_official_website")
-
-    fit_score = lead.get("fit_score")
-    scored_at = lead.get("qualification_scored_at")
-    recent_score = recent(scored_at, fit_days) if scored_at else False
-    if fit_score is None or fit_score < min_fit or not recent_score:
-        missing.append("recent_icp_fit_score")
-
+    excluded: list[str] = []
+    if lead.get("review_status") == "rejected":
+        excluded.append("rejected")
     if suppressed:
-        reasons.append("suppressed_or_bounced")
+        excluded.append("suppressed")
+    if opted_out:
+        excluded.append("opted_out")
+    if any(is_demo_source(s) for s in sources):
+        excluded.append("demo_data")
 
-    has_intent = False
-    intent_signals = [
-        sig
-        for sig in signals
-        if sig.get("signal_key") == "commercial_intent"
+    qualified = not missing and not excluded
+    real_ids = {s.get("id") for s in real if s.get("id") is not None}
+    intent = qualified and any(
+        sig.get("signal_key") == INTENT_SIGNAL
         and sig.get("state") == "detected"
         and bool(str(sig.get("evidence") or "").strip())
-        and recent(sig.get("created_at"), _days("OUTREACH_INTENT_TTL_DAYS", 30))
-        and any(s.get("id") == sig.get("source_id") for s in valid_sources)
-    ]
-    if intent_signals:
-        has_intent = True
-
-    is_qualified = len(reasons) == 0 and len(missing) == 0
-
+        and sig.get("source_id") in real_ids
+        and (created := _aware(sig.get("created_at"))) is not None
+        and created >= now - timedelta(days=rule.intent_days)
+        for sig in signals
+    )
     return {
-        "eligible": is_qualified,
-        "status": "qualified" if is_qualified else "to_enrich",
-        "priority_label": "Hot — intention observée" if (is_qualified and has_intent) else ("Qualifié prioritaire" if is_qualified else "À enrichir"),
-        "is_hot": is_qualified and has_intent,
-        "reasons": reasons,
+        "eligible": qualified,
+        "status": "excluded" if excluded else "qualified" if qualified else "to_enrich",
+        "priority": "hot" if intent else "qualified" if qualified else None,
+        "priority_label": "Hot — intention observée" if intent else "Qualifié prioritaire" if qualified else None,
+        "is_hot": intent,
+        "reasons": excluded,
         "missing_fields": missing,
         "policy_version": POLICY_VERSION,
         "evaluated_at": now.isoformat(),
     }
-
-
-def _fresh(column, days: int, now: datetime) -> ColumnElement[bool]:  # type: ignore[no-untyped-def]
-    return column >= now - timedelta(days=days)
-
-
-def strict_conditions(now: datetime | None = None) -> list[ColumnElement[bool]]:
-    """Fail-closed conditions: complete provenance required across CRM tables."""
-    now = now or datetime.now(timezone.utc)
-    source_days = _days("OUTREACH_SOURCE_TTL_DAYS", 30)
-    site_days = _days("OUTREACH_SITE_TTL_DAYS", 30)
-    fit_days = _days("OUTREACH_FIT_TTL_DAYS", 30)
-    try:
-        min_fit = max(0, min(100, int(os.environ.get("OUTREACH_MIN_FIT_SCORE", 60))))
-    except (TypeError, ValueError):
-        min_fit = 60
-
-    source = exists(
-        select(1).select_from(ProspectSource).where(
-            ProspectSource.account_id == Lead.account_id,
-            ProspectSource.lead_id == Lead.id,
-            ProspectSource.source_name.notin_(DEMO_SOURCE_NAMES),
-            ~ProspectSource.source_url.startswith("fixture://"),
-            func.lower(ProspectSource.license_note).notilike("%fictional data%"),
-            _fresh(ProspectSource.fetched_at, source_days, now),
-        )
-    )
-
-    email_syntax = and_(
-        func.position("@", Lead.email) > 1,
-        func.position(".", func.split_part(Lead.email, "@", 2)) > 1,
-    )
-    no_example_email = and_(
-        ~Lead.email.ilike("%.example"),
-        ~Lead.email.ilike("%@example.%"),
-    )
-
-    normalized_phone = func.length(func.regexp_replace(Lead.phone, r"\D", "", "g")) >= 8
-
-    official_website = and_(
-        Lead.website.is_not(None),
-        ~Lead.website.ilike("%.example/%"),
-        ~Lead.website.ilike("%.example"),
-        *[~Lead.website.ilike(f"%{domain}%") for domain in THIRD_PARTY_HOSTS],
-    )
-
-    published_whatsapp = exists(
-        select(1)
-        .select_from(PublicPageCache)
-        .where(
-            PublicPageCache.url == Lead.website,
-            PublicPageCache.status == "completed",
-            _fresh(PublicPageCache.collected_at, site_days, now),
-            cast(PublicPageCache.data["whatsapp_urls"].astext, String).ilike(
-                func.concat("%", func.regexp_replace(Lead.phone, r"\D", "", "g"), "%")
-            ),
-        )
-    )
-
-    site_check = and_(
-        exists(
-            select(1).select_from(PublicPageCache).where(
-                PublicPageCache.url == Lead.website,
-                PublicPageCache.status == "completed",
-                cast(PublicPageCache.data["http_status"].astext, Integer) == 200,
-                _fresh(PublicPageCache.collected_at, site_days, now),
-            )
-        ),
-        published_whatsapp,
-    )
-
-    no_suppression = not_(
-        exists(
-            select(1).select_from(SuppressionEntry).where(
-                SuppressionEntry.account_id == Lead.account_id,
-                SuppressionEntry.kind == "email",
-                SuppressionEntry.identity_hash
-                == func.encode(
-                    func.sha256(func.convert_to(literal("email:") + func.lower(func.btrim(Lead.email)), "UTF8")),
-                    "hex",
-                ),
-            )
-        )
-    )
-
-    no_domain_suppression = not_(
-        exists(
-            select(1).select_from(SuppressionEntry).where(
-                SuppressionEntry.account_id == Lead.account_id,
-                SuppressionEntry.kind == "domain",
-                SuppressionEntry.identity_hash
-                == func.encode(
-                    func.sha256(
-                        func.convert_to(
-                            literal("domain:") + func.split_part(func.lower(func.btrim(Lead.email)), "@", 2),
-                            "UTF8",
-                        )
-                    ),
-                    "hex",
-                ),
-            )
-        )
-    )
-
-    no_phone_suppression = not_(
-        exists(
-            select(1).select_from(SuppressionEntry).where(
-                SuppressionEntry.account_id == Lead.account_id,
-                SuppressionEntry.kind == "phone",
-                SuppressionEntry.identity_hash
-                == func.encode(
-                    func.sha256(func.convert_to(literal("phone:") + Lead.phone, "UTF8")),
-                    "hex",
-                ),
-            )
-        )
-    )
-
-    not_opted_out = not_(
-        exists(
-            select(1)
-            .select_from(Contact)
-            .join(ConsentCurrent, ConsentCurrent.contact_id == Contact.id)
-            .where(
-                Contact.account_id == Lead.account_id,
-                Contact.lead_id == Lead.id,
-                func.lower(Contact.email) == func.lower(Lead.email),
-                ConsentCurrent.channel == "email",
-                ConsentCurrent.status == "opted_out",
-            )
-        )
-    )
-
-    qualified = and_(
-        Lead.email.is_not(None),
-        email_syntax,
-        no_example_email,
-        Lead.phone.is_not(None),
-        normalized_phone,
-        source,
-        official_website,
-        site_check,
-        Lead.fit_score.is_not(None),
-        Lead.fit_score >= min_fit,
-        Lead.qualification_scored_at.is_not(None),
-        _fresh(Lead.qualification_scored_at, fit_days, now),
-        no_suppression,
-        no_domain_suppression,
-        no_phone_suppression,
-        not_opted_out,
-    )
-    return [qualified]
-
-
-def strict_expression(now: datetime | None = None) -> ColumnElement[bool]:
-    return and_(*strict_conditions(now))
-
-
-def hot_conditions(now: datetime | None = None) -> list[ColumnElement[bool]]:
-    """Strict qualification plus a recent, source-linked, explicit commercial-intent signal."""
-    now = now or datetime.now(timezone.utc)
-    intent = exists(
-        select(1).select_from(ProspectSignal).join(
-            ProspectSource, ProspectSource.id == ProspectSignal.source_id
-        ).where(
-            ProspectSignal.account_id == Lead.account_id,
-            ProspectSignal.lead_id == Lead.id,
-            ProspectSignal.signal_key == "commercial_intent",
-            ProspectSignal.state == "detected",
-            func.length(func.btrim(ProspectSignal.evidence)) > 0,
-            _fresh(ProspectSignal.created_at, _days("OUTREACH_INTENT_TTL_DAYS", 30), now),
-            ProspectSource.account_id == Lead.account_id,
-            ProspectSource.lead_id == Lead.id,
-            ProspectSource.source_name.notin_(DEMO_SOURCE_NAMES),
-            ~ProspectSource.source_url.startswith("fixture://"),
-        )
-    )
-    return [strict_expression(now), intent]
-
-
-def hot_expression(now: datetime | None = None) -> ColumnElement[bool]:
-    return and_(*hot_conditions(now))
-
-
-def exclude_confirmed_demo() -> ColumnElement[bool]:
-    """Hide records with durable demo provenance; names alone are never used as proof."""
-    source_demo = exists(
-        select(1).select_from(ProspectSource).where(
-            ProspectSource.account_id == Lead.account_id,
-            ProspectSource.lead_id == Lead.id,
-            ProspectSource.source_name.in_(DEMO_SOURCE_NAMES),
-        )
-    )
-    seed_demo = exists(
-        select(1)
-        .select_from(Contact)
-        .join(ConsentRecord, ConsentRecord.contact_id == Contact.id)
-        .where(
-            Contact.account_id == Lead.account_id,
-            Contact.lead_id == Lead.id,
-            ConsentRecord.account_id == Lead.account_id,
-            ConsentRecord.source == "demo_seed",
-        )
-    )
-    return not_(or_(source_demo, seed_demo))

@@ -41,8 +41,8 @@ def _place(uid, **over):
         "postcode": "69002",
         "city": "Lyon",
         "phone": "+33 4 78 00 00 01",
-        "email": f"contact_{uid}@chez-test.example",
-        "website": f"https://chez-test-{uid}.example",
+        "email": f"contact_{uid}@chez-test.fr",
+        "website": f"https://chez-test-{uid}.fr",
         "source_url": f"https://www.openstreetmap.org/node/{uid}",
     }
     return {**base, **over}
@@ -69,7 +69,7 @@ def test_one_click_puts_the_business_in_the_crm_with_what_the_map_published():
     uid, h, me = _org()
     out = _add(me, _place(uid))
     assert out.created and out.in_crm and out.review_status == "approved"
-    assert out.email == f"contact_{uid}@chez-test.example" and out.phone and out.website
+    assert out.email == f"contact_{uid}@chez-test.fr" and out.phone and out.website
     assert out.email_found_on_site is False and out.website_checked is False  # nothing was read from the site
     assert out.heat is not None and out.heat.info_pct > 0
 
@@ -115,7 +115,7 @@ def test_it_refuses_without_the_attestation_and_without_the_import_flag():
 
 def test_a_business_on_the_suppression_list_is_not_added():
     uid, h, me = _org()
-    address = f"contact_{uid}@chez-test.example"
+    address = f"contact_{uid}@chez-test.fr"
     assert requests.post(f"{API}/prospects/suppressions", headers=h, json={"email": address}).status_code in (200, 201)
     with pytest.raises(HTTPException) as refused:
         _add(me, _place(uid))

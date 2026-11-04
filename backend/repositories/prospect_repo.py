@@ -13,7 +13,7 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import Subquery, and_, case, func, or_, select, update
+from sqlalchemy import Subquery, and_, case, func, not_, or_, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,14 +26,17 @@ from db.models import (
     ProspectScore,
     ProspectSignal,
     ProspectSource,
+    PublicPageCache,
     ScoreVersion,
     SignalDismissal,
 )
-from repositories import consent_repo, heat_sql, lead_repo, suppression_repo
+from repositories import consent_repo, eligibility_sql, heat_sql, lead_repo, suppression_repo
+from services.outreach_os import eligibility as policy
 from services.outreach_os import heat as heat_rules
 from services.outreach_os.normalize import normalize_email, normalize_phone
 from services.outreach_os.scoring import ScoreConfig, ScoreResult
 from services.outreach_os.types import Candidate, RawListing, SignalResult, SignalState
+from services.qualification_scoring import score_qualification
 
 ACTIVE = Lead.deleted_at.is_(None)
 IN_DISCOVERY = Lead.review_status.is_not(None)
@@ -280,6 +283,39 @@ async def append_signals(
     return added
 
 
+async def score_fit(session: AsyncSession, lead: Lead, now: Optional[datetime] = None) -> int:
+    """The prospect's explainable fit, computed in the request or task that stored it (pure arithmetic: no network, no
+    worker, no Beat), with or without a website. A page already read by the enrichment (PublicPageCache) is used when
+    there is one; a missing site is not a failure. Returns the fit score."""
+    cache = None
+    if heat_rules.is_known(lead.website):
+        cache = (
+            await session.execute(
+                select(PublicPageCache.data).where(
+                    PublicPageCache.url == lead.website, PublicPageCache.status == "completed"
+                )
+            )
+        ).scalar_one_or_none()
+    result = score_qualification(
+        website_url=lead.website if heat_rules.is_known(lead.website) else "",
+        cache_data=cache or {},
+        company_name=lead.company,
+        vertical=lead.vertical,
+        city=lead.city,
+        country=lead.country,
+        email=lead.email,
+        phone=lead.phone,
+        title=lead.title,
+    )
+    lead.website_quality = result.website_quality
+    lead.digital_maturity = result.digital_maturity
+    lead.fit_score = result.fit_score
+    lead.priority = result.priority
+    lead.qualification_scored_at = now or datetime.now(timezone.utc)
+    await session.flush()
+    return result.fit_score
+
+
 async def latest_score(session: AsyncSession, lead_id: uuid.UUID) -> Optional[ProspectScore]:
     return (
         await session.execute(
@@ -391,17 +427,21 @@ async def tier_counts(
     return {**counts, "total": sum(counts.values()), "top": top, "empty": empty}
 
 
-async def city_heat_rows(session: AsyncSession, account_id: uuid.UUID) -> list[tuple[str, str, int, int, int]]:
-    """(city as written, heat tier, leads, ready, ready with a website) over the CRM leads and the prospects not
-    rejected (rejected = not a lead). `ready` is `heat.is_map_ready` in SQL: hot, phone and e-mail really known.
+async def city_heat_rows(
+    session: AsyncSession, account_id: uuid.UUID, now: Optional[datetime] = None
+) -> list[tuple[str, str, int, int, int]]:
+    """(city as written, heat tier, leads, qualified, qualified with a website) over the CRM leads and the prospects not
+    rejected (rejected = not a lead). `qualified` is the common eligibility policy in SQL (`eligibility_sql.qualified`):
+    e-mail, phone, address and position, a fresh source and a fit score; the website is only counted apart.
 
     A prospect's score is its latest `prospect_scores` row, a CRM lead's is `Lead.score` (0 = not scored); a lead whose
     city is blank or unknown is left out rather than counted under a made-up town."""
     latest = _latest_scores_subquery()
+    src = eligibility_sql.latest_source(account_id)
     score = func.coalesce(latest.c.score, func.nullif(Lead.score, 0))
     tier = heat_sql.tier_sql(heat_sql.heat_sql(score)).label("tier")
     city = func.btrim(Lead.city).label("city")
-    is_ready = heat_sql.map_ready_sql(score)
+    is_ready = eligibility_sql.qualified(src, now)
     rows = await session.execute(
         select(
             city,
@@ -412,6 +452,7 @@ async def city_heat_rows(session: AsyncSession, account_id: uuid.UUID) -> list[t
         )
         .select_from(Lead)
         .outerjoin(latest, latest.c.lead_id == Lead.id)
+        .outerjoin(src, src.c.lead_id == Lead.id)
         .where(
             Lead.account_id == account_id,
             ACTIVE,
@@ -466,12 +507,16 @@ def _heat_value(lead: Lead, score: Optional[int]) -> dict:
     return {"value": h.value, "tier": h.tier, "info_pct": h.info_pct}
 
 
-async def detected_by_lead(session: AsyncSession, account_id: uuid.UUID) -> dict[uuid.UUID, list[str]]:
-    """lead_id -> signal keys currently detected, a reviewer-dismissed signal not counting (it reads as unknown)."""
+async def detected_by_lead(
+    session: AsyncSession, account_id: uuid.UUID, lead_ids: Optional[list[uuid.UUID]] = None
+) -> dict[uuid.UUID, list[str]]:
+    """lead_id -> signal keys currently detected, a reviewer-dismissed signal not counting (it reads as unknown).
+    `lead_ids` limits the read to the prospects a page is about to show (not the whole organisation on every poll)."""
+    only = [ProspectSignal.lead_id.in_(lead_ids)] if lead_ids is not None else []
     signals = await session.execute(
         select(ProspectSignal.lead_id, ProspectSignal.signal_key, ProspectSignal.state)
         .join(Lead, Lead.id == ProspectSignal.lead_id)
-        .where(ProspectSignal.account_id == account_id, Lead.deleted_at.is_(None), IN_DISCOVERY)
+        .where(ProspectSignal.account_id == account_id, Lead.deleted_at.is_(None), IN_DISCOVERY, *only)
         .distinct(ProspectSignal.lead_id, ProspectSignal.signal_key)
         .order_by(
             ProspectSignal.lead_id, ProspectSignal.signal_key, ProspectSignal.created_at.desc(), ProspectSignal.id
@@ -493,61 +538,184 @@ async def detected_by_lead(session: AsyncSession, account_id: uuid.UUID) -> dict
     return out
 
 
-async def list_positions(session: AsyncSession, account_id: uuid.UUID, limit: int = 2000) -> list[dict]:
-    """Discovery prospects whose latest source carries a position (lat/lon), for the map. Newest first."""
+async def list_positions(
+    session: AsyncSession, account_id: uuid.UUID, limit: int = 2000, now: Optional[datetime] = None
+) -> list[dict]:
+    """What the commercial map draws: the discovery prospects the common eligibility policy qualifies (e-mail, phone,
+    address and position on a fresh non-demo source, a fit score), decided in SQL before the limit, never by the page.
+
+    `priority` is "hot" only with an observed, sourced commercial intent, else "qualified"; a website is never required.
+    Ranked hot first, then by heat (a website ranks after the heat, it does not decide who is shown)."""
+    src = eligibility_sql.latest_source(account_id)
     latest = _latest_scores_subquery()
-    detected = await detected_by_lead(session, account_id)
-    ranked = (
-        select(
-            ProspectSource.lead_id,
-            ProspectSource.fields,
-            func.row_number()
-            .over(partition_by=ProspectSource.lead_id, order_by=ProspectSource.created_at.desc())
-            .label("rn"),
+    hot = eligibility_sql.intent(now)  # the rows are already qualified: only the intent is left to look at
+    heat_value = heat_sql.heat_sql(latest.c.score)
+    rows = (
+        await session.execute(
+            select(Lead, src.c.address, src.c.lat, src.c.lon, src.c.external_id, latest.c.score, hot.label("is_hot"))
+            .join(src, src.c.lead_id == Lead.id)
+            .outerjoin(latest, latest.c.lead_id == Lead.id)
+            .where(Lead.account_id == account_id, ACTIVE, IN_DISCOVERY, eligibility_sql.qualified(src, now))
+            .order_by(
+                hot.desc(), heat_value.desc(), heat_sql.known(Lead.website).desc(), Lead.created_at.desc(), Lead.id
+            )
+            .limit(limit)
         )
-        .where(ProspectSource.account_id == account_id)
-        .subquery()
-    )
-    rows = await session.execute(
-        select(Lead, ranked.c.fields, latest.c.score)
-        .join(ranked, ranked.c.lead_id == Lead.id)
-        .outerjoin(latest, latest.c.lead_id == Lead.id)
-        .where(ranked.c.rn == 1, Lead.account_id == account_id, ACTIVE, IN_DISCOVERY)
-        .order_by(Lead.created_at.desc())
-        .limit(limit * 2)
-    )
+    ).all()
+    detected = await detected_by_lead(session, account_id, [row[0].id for row in rows])
     out: list[dict] = []
-    for lead, fields, score in rows.all():
-        lat, lon = fields.get("lat"), fields.get("lon")
-        if isinstance(lat, (int, float)) and isinstance(lon, (int, float)) and -90 <= lat <= 90 and -180 <= lon <= 180:
-            values = {f: getattr(lead, f) for f in heat_rules.INFO_FIELDS}
-            out.append(
+    for lead, address, lat, lon, external_id, score, is_hot in rows:
+        out.append(
+            {
+                "id": str(lead.id),
+                "name": lead.full_name,
+                "city": lead.city,
+                "address": address,
+                "lat": float(lat),
+                "lon": float(lon),
+                "phone": lead.phone,
+                "email": lead.email,
+                "website": lead.website if heat_rules.is_known(lead.website) else None,
+                "has_phone": True,
+                "has_email": True,
+                "has_website": heat_rules.is_known(lead.website),
+                "eligible": True,
+                "map_ready": True,  # kept for older clients: it now means "qualified by the common policy"
+                "priority": "hot" if is_hot else "qualified",
+                "priority_label": "Hot — intention observée" if is_hot else "Qualifié prioritaire",
+                "fit_score": lead.fit_score,
+                "review_status": lead.review_status,
+                "external_id": external_id,
+                "vertical": lead.vertical,
+                "country": lead.country,
+                "score": score,  # None = not scored, never 0
+                "heat": _heat_value(lead, score),
+                "signals": sorted(detected.get(lead.id, [])),
+                "created_at": lead.created_at,
+            }
+        )
+    return out
+
+
+async def change_token(session: AsyncSession, account_id: uuid.UUID, now: Optional[datetime] = None) -> str:
+    """A cheap fingerprint of everything the eligibility decision reads for this organisation: when it is unchanged, the
+    decision is unchanged, so the last answer can be served without recomputing it. Seven indexed aggregates, one trip.
+
+    The hour is part of it: freshness windows are days, so an answer is never older than an hour whatever happens."""
+    row = (
+        await session.execute(
+            text("""
+                SELECT
+                  (SELECT count(*) || ':' || coalesce(max(updated_at)::text, '') FROM leads WHERE account_id = :a),
+                  (SELECT count(*) || ':' || coalesce(max(created_at)::text, '') FROM prospect_sources
+                     WHERE account_id = :a),
+                  (SELECT coalesce(max(created_at)::text, '') FROM prospect_signals WHERE account_id = :a),
+                  (SELECT coalesce(max(created_at)::text, '') FROM prospect_scores WHERE account_id = :a),
+                  (SELECT count(*) || ':' || coalesce(max(created_at)::text, '') FROM suppression_entries
+                     WHERE account_id = :a),
+                  (SELECT coalesce(max(cc.updated_at)::text, '') FROM consent_current cc
+                     JOIN contacts c ON c.id = cc.contact_id WHERE c.account_id = :a),
+                  (SELECT count(*) || ':' || coalesce(max(created_at)::text, '') FROM contacts WHERE account_id = :a)
+                """),
+            {"a": account_id},
+        )
+    ).one()
+    hour = int((now or datetime.now(timezone.utc)).timestamp() // 3600)
+    return hashlib.sha256(("|".join(row) + f"|{hour}|{policy.POLICY_VERSION}").encode()).hexdigest()[:24]
+
+
+async def known_external_ids(session: AsyncSession, account_id: uuid.UUID) -> list[str]:
+    """The source ids (e.g. OpenStreetMap node/123) of every prospect the organisation already holds, drawn or not, so
+    the map's search never offers the same place again. Only the ids: no contact data."""
+    rows = await session.execute(
+        select(ProspectSource.external_id)
+        .join(Lead, Lead.id == ProspectSource.lead_id)
+        .where(ProspectSource.account_id == account_id, Lead.account_id == account_id, ACTIVE, IN_DISCOVERY)
+        .distinct()
+    )
+    return sorted(rows.scalars())
+
+
+async def list_to_enrich(
+    session: AsyncSession, account_id: uuid.UUID, limit: int = 50, offset: int = 0, now: Optional[datetime] = None
+) -> tuple[list[dict], int]:
+    """The "to enrich" queue: discovery prospects that are neither qualified nor excluded (suppressed, opted out,
+    rejected, demo), with what is missing (named by the same policy). They are kept, never contactable by default.
+    Server pagination: (page, total)."""
+    src = eligibility_sql.latest_source(account_id)
+    where = [
+        Lead.account_id == account_id,
+        ACTIVE,
+        IN_DISCOVERY,
+        not_(eligibility_sql.excluded()),
+        not_(eligibility_sql.qualified(src, now)),
+    ]
+    total = (
+        await session.execute(
+            select(func.count()).select_from(Lead).outerjoin(src, src.c.lead_id == Lead.id).where(*where)
+        )
+    ).scalar_one()
+    leads = (
+        (
+            await session.execute(
+                select(Lead)
+                .outerjoin(src, src.c.lead_id == Lead.id)
+                .where(*where)
+                .order_by(Lead.created_at.desc(), Lead.id)
+                .limit(limit)
+                .offset(offset)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    ids = [lead.id for lead in leads]
+    sources: dict[uuid.UUID, list[dict]] = {}
+    if ids:
+        for row in (
+            await session.execute(
+                select(ProspectSource).where(ProspectSource.account_id == account_id, ProspectSource.lead_id.in_(ids))
+            )
+        ).scalars():
+            sources.setdefault(row.lead_id, []).append(
                 {
-                    "phone": lead.phone if heat_rules.is_known(lead.phone) else None,
-                    "email": lead.email if heat_rules.is_known(lead.email) else None,
-                    "website": lead.website if heat_rules.is_known(lead.website) else None,
-                    "has_phone": heat_rules.is_known(lead.phone),
-                    "has_website": heat_rules.is_known(lead.website),
-                    "map_ready": heat_rules.is_map_ready(values, score),
-                    "id": str(lead.id),
-                    "name": lead.full_name,
-                    "city": lead.city,
-                    "lat": float(lat),
-                    "lon": float(lon),
-                    "review_status": lead.review_status,
-                    "has_email": bool(lead.email),
-                    "external_id": fields.get("external_id"),
-                    "vertical": lead.vertical,
-                    "country": lead.country,
-                    "score": score,  # None = not scored, never 0
-                    "heat": _heat_value(lead, score),
-                    "signals": sorted(detected.get(lead.id, [])),
-                    "created_at": lead.created_at,
+                    "id": row.id,
+                    "source_name": row.source_name,
+                    "source_url": row.source_url,
+                    "license_note": row.license_note,
+                    "fetched_at": row.fetched_at,
+                    "fields": row.fields,
                 }
             )
-    # the leads the map shows come first (website, then heat), so the limit never cuts a hot lead for a cold one
-    out.sort(key=lambda p: (not p["map_ready"], not p["has_website"], -p["heat"]["value"]))
-    return out[:limit]
+    out: list[dict] = []
+    for lead in leads:
+        verdict = policy.evaluate(
+            {
+                "full_name": lead.full_name,
+                "email": lead.email,
+                "phone": lead.phone,
+                "fit_score": lead.fit_score,
+                "qualification_scored_at": lead.qualification_scored_at,
+                "review_status": lead.review_status,
+            },
+            sources=sources.get(lead.id, []),
+            now=now,
+        )
+        out.append(
+            {
+                "id": str(lead.id),
+                "name": lead.full_name,
+                "city": lead.city if heat_rules.is_known(lead.city) else None,
+                "phone": lead.phone if heat_rules.is_known(lead.phone) else None,
+                "email": lead.email if heat_rules.is_known(lead.email) else None,
+                "website": lead.website if heat_rules.is_known(lead.website) else None,
+                "review_status": lead.review_status,
+                "fit_score": lead.fit_score,
+                "missing_fields": verdict["missing_fields"],
+                "created_at": lead.created_at,
+            }
+        )
+    return out, int(total)
 
 
 async def sources_of(session: AsyncSession, lead_id: uuid.UUID) -> list[ProspectSource]:

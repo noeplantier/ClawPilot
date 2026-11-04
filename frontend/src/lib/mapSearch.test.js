@@ -1,4 +1,4 @@
-import { areaTooLarge, importRows, summarize, summaryText, markerColor, knownIds, panelPadding, reachablePlace, readyOnly, readySummary } from "@/lib/mapSearch";
+import { areaTooLarge, importRows, summarize, summaryText, markerColor, panelPadding, reachablePlace, isHot, readyOnly, readySummary } from "@/lib/mapSearch";
 
 const A = { external_id: "node/1", name: "A", lat: 45.7, lon: 4.8, email: "a@a.fr", phone: "+33 1", website: "https://a.fr", source_url: "u" };
 const B = { external_id: "node/2", name: "B", lat: 45.7, lon: 4.8, email: null, phone: "+33 2", website: null, source_url: "u" };
@@ -29,27 +29,20 @@ test("marker colours tell what is reachable", () => {
   expect(markerColor(C)).toBe("#6B6B66");
 });
 
-test("already imported places are recognised by their source id, ready or not", () => {
+test("only the prospects the server qualified are drawn, and the summary counts them exactly, hot apart", () => {
   const mine = [
-    { id: "1", external_id: "node/1", review_status: "pending", map_ready: false },
-    { id: "2", external_id: null, review_status: "approved", map_ready: true },
-    { id: "3", external_id: "way/9", review_status: "rejected" },
-  ];
-  expect([...knownIds(mine)].sort()).toEqual(["node/1", "way/9"]); // a place stays "known" even when its pin is not drawn
-});
-
-test("only the leads the server marked map-ready are drawn, and the summary counts them exactly", () => {
-  const mine = [
-    { id: "1", map_ready: true, has_website: true },
-    { id: "2", map_ready: true, has_website: false },
-    { id: "3", map_ready: false, has_website: true }, // not hot, or no phone, or no e-mail: the server decided
-    { id: "4" }, // an older answer without the flag is never guessed ready
+    { id: "1", map_ready: true, has_website: true, priority: "hot" },
+    { id: "2", map_ready: true, has_website: false, priority: "qualified" },
+    { id: "3", map_ready: false, has_website: true }, // an e-mail, a phone, an address or a position is missing: the server decided
+    { id: "4" }, // an older answer without the flag is never guessed qualified
   ];
   expect(readyOnly(mine).map((p) => p.id)).toEqual(["1", "2"]);
-  expect(readySummary(mine)).toBe("2 hot leads with a phone and an e-mail, 1 with a website.");
-  expect(readySummary([mine[0]])).toBe("1 hot lead with a phone and an e-mail, 1 with a website.");
-  expect(readySummary([mine[2], mine[3]])).toBe("No hot lead with a phone and an e-mail yet (2 prospects with a position, not hot or missing a phone or an e-mail).");
-  expect(readySummary([])).toBe("No prospect with a position yet.");
+  expect(isHot(mine[0])).toBe(true);
+  expect(isHot(mine[1])).toBe(false); // qualified is not hot: only an observed, sourced intent makes a prospect hot
+  expect(readySummary(mine)).toBe("2 qualified prospects with e-mail, phone and address, 1 with a website, 1 hot (observed intent).");
+  expect(readySummary([mine[1]])).toBe("1 qualified prospect with e-mail, phone and address, 0 with a website, none hot: no commercial intent observed.");
+  expect(readySummary([mine[2], mine[3]])).toBe("No qualified prospect on the map yet: the incomplete ones wait in Leads, to enrich.");
+  expect(readySummary([])).toBe("No qualified prospect on the map yet: the incomplete ones wait in Leads, to enrich.");
 });
 
 describe("panelPadding", () => {

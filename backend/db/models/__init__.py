@@ -11,6 +11,7 @@ from db.models.map_jobs import MapSearchJob, MapSearchResult, SourceCache
 from db.models.outbound import OutboundEvent, OutboundMessage
 from db.models.outreach import EmailSend, OutreachEvent, WhatsappSend
 from db.models.prospect import (
+    DraftJob,
     MessageDraft,
     ProspectImportBatch,
     ProspectScore,
@@ -69,6 +70,7 @@ __all__ = [
     "AuditLog",
     "Note",
     "Task",
+    "DraftJob",
     "MessageDraft",
     "ProspectScore",
     "ProspectSignal",

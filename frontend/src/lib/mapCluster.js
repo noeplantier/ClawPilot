@@ -1,6 +1,5 @@
 // Pure helpers of the live prospects map: grid clustering by zoom, filters and facets. No DOM, no network.
 export const CELL_PX = 64;
-export const POLL_MS = 20000; // Render's free plan has no WebSocket worker: the map polls, visibly, while the tab is shown
 
 const worldPx = (lat, lon, zoom) => {
   const scale = 256 * 2 ** zoom;

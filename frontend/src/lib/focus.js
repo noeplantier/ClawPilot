@@ -1,9 +1,9 @@
 // "What to do next" as the API reports it: counted facts about the organisation's own leads. Pure helpers, no I/O.
 export const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
-// "4 hot leads with a phone and an e-mail, 3 with a website": exactly the counts the server returned.
+// "4 qualified prospects with e-mail, phone and address, 3 with a website": exactly the counts the server returned.
 export function zoneLine(z) {
-  const base = `${plural(z.ready, "hot lead", "hot leads")} with a phone and an e-mail`;
+  const base = `${plural(z.ready, "qualified prospect", "qualified prospects")} with e-mail, phone and address`;
   return z.site > 0 ? `${base}, ${z.site} with a website` : base;
 }
 
@@ -19,4 +19,4 @@ export function leadLine(l) {
 }
 
 export const EMPTY_FOCUS =
-  "Nothing to suggest yet: zones and contacts appear as soon as hot leads have both a phone and an e-mail. Enrich and score your leads to get there.";
+  "Nothing to suggest yet: zones and contacts appear as soon as a prospect has an e-mail, a phone and an address on a fresh source. Enrich the incomplete ones to get there.";

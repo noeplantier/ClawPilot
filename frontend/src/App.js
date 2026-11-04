@@ -23,6 +23,8 @@ const ProspectDetail = lazy(pages.prospectDetail);
 const ReviewQueue = lazy(pages.review);
 const Sending = lazy(pages.sending);
 const ProspectImport = lazy(pages.prospectImport);
+const ToEnrich = lazy(pages.toEnrich);
+const Offer = lazy(pages.offer);
 const Legal = lazy(() => import("@/pages/legal/Legal"));
 const Privacy = lazy(() => import("@/pages/legal/Privacy"));
 const Terms = lazy(() => import("@/pages/legal/Terms"));
@@ -66,12 +68,14 @@ function App() {
               <Route path="system" element={<SystemHealth />} />
               <Route path="prospects/import" element={<ProspectImport />} />
               <Route path="prospects/review" element={<ReviewQueue />} />
+              <Route path="prospects/to-enrich" element={<ToEnrich />} />
               <Route path="prospects/:id" element={<ProspectDetail />} />
               <Route path="sending" element={<Sending />} />
               <Route path="agents" element={<Agents />} />
               <Route path="messages" element={<Messages />} />
               <Route path="analytics" element={<Analytics />} />
               <Route path="settings" element={<Settings />} />
+              <Route path="settings/offer" element={<Offer />} />
             </Route>
             <Route path="*" element={<Navigate to="/app/dashboard" replace />} />
           </Routes>

@@ -132,7 +132,8 @@ class ProspectingBatch(Base, UUIDPKMixin, CreatedAtMixin):
     __tablename__ = "prospecting_batches"
     __table_args__ = (
         CheckConstraint(
-            "status IN ('queued','discovering','enriching','qualifying','completed','partial','paused','failed','canceled')",
+            "status IN ('queued','discovering','enriching','qualifying','completed','partial','paused','failed',"
+            "'canceled')",
             name="chk_prospecting_batches_status",
         ),
         Index("ix_prospecting_batches_account_status", "account_id", "status", text("created_at DESC")),
@@ -200,4 +201,3 @@ class ProspectingBatchItem(Base, UUIDPKMixin, CreatedAtMixin):
     stage: Mapped[str] = mapped_column(String(30), nullable=False, server_default="discovered")
     exclusion_reason: Mapped[str | None] = mapped_column(String(120), nullable=True)
     data: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
-

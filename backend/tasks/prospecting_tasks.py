@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import ipaddress
-import json
 import logging
 import re
 import socket
@@ -22,15 +21,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from celery_app import celery_app
 from db.models import Contact, DiscoveredPlace, DiscoveryJob, EnrichmentJob, Lead, PublicPageCache
+from services import overpass_svc
 
 logger = logging.getLogger("outreachos.prospecting")
-ENDPOINTS = (
-    "https://overpass-api.de/api/interpreter",
-    "https://overpass.kumi.systems/api/interpreter",
-    "https://overpass.private.coffee/api/interpreter",
-)
 QUERY_VERSION = "v1"
-MAX_OVERPASS_RESPONSE_BYTES = 5_000_000
 CATEGORIES = {
     "restaurant": 'amenity="restaurant"',
     "cafe": 'amenity="cafe"',
@@ -59,32 +53,14 @@ def _overpass_query(bbox: list[float], category: str) -> str:
 
 
 async def _fetch_overpass(bbox: list[float], category: str) -> list[dict]:
-    timeout = aiohttp.ClientTimeout(total=35, connect=8)
-    async with aiohttp.ClientSession(
-        timeout=timeout,
-        headers={"User-Agent": "Plantiers-OutreachOS/1.0 (public OSM discovery)"},
-    ) as session:
-        for endpoint in ENDPOINTS:
-            for attempt in range(2):
-                try:
-                    async with session.post(endpoint, data={"data": _overpass_query(bbox, category)}) as response:
-                        if response.status == 429 or response.status >= 500:
-                            if attempt == 0:
-                                await asyncio.sleep(1.5)
-                                continue
-                            break
-                        response.raise_for_status()
-                        body = bytearray()
-                        async for chunk in response.content.iter_chunked(64 * 1024):
-                            body.extend(chunk)
-                            if len(body) > MAX_OVERPASS_RESPONSE_BYTES:
-                                raise ValueError("overpass_response_too_large")
-                        payload = json.loads(body)
-                        return payload.get("elements", [])
-                except (aiohttp.ClientError, TimeoutError, ValueError):
-                    if attempt == 0:
-                        await asyncio.sleep(1.5)
-        raise RuntimeError("overpass_unavailable")
+    """One request through the shared Overpass client: servers in turn with a short timeout each, a failing one is tried
+    last for a few minutes. Measured before: one silent server held this task 73 s, two of them about 2 min 25 s."""
+    try:
+        payload = await asyncio.to_thread(overpass_svc.http_fetch, _overpass_query(bbox, category))
+    except overpass_svc.Unavailable as exc:
+        logger.warning("Overpass unavailable code=%s servers=%d", exc.code, len(exc.failures))
+        raise RuntimeError("overpass_unavailable") from exc
+    return payload.get("elements", [])
 
 
 def _discover(job_id: str) -> int:

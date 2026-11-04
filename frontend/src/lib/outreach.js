@@ -31,9 +31,13 @@ export const mapApi = {
   recent: (limit = 10) => api.get("/map/search", { params: { limit } }).then((r) => r.data),
   // Explicit fallback: the browser asked a public Overpass server itself because the server could not.
   ingest: (id, data) => api.post(`/map/search/${id}/ingest`, { data }).then((r) => r.data),
-  prospects: () => api.get("/map/prospects").then((r) => r.data),
-  // Where my leads are: hot / warm / cold counted per town (the dropdown of the town search).
-  cities: () => api.get("/map/cities").then((r) => r.data),
+  // What the map draws: the prospects the server qualifies (e-mail, phone, address, position). The server revalidates it
+  // with an ETag, so an unchanged poll is an empty 304 the browser answers from its cache. `opts.signal` cancels it.
+  prospects: (opts) => api.get("/map/prospects", opts).then((r) => r.data),
+  // Source ids of every prospect already held, drawn or not: the search does not offer them a second time.
+  known: (opts) => api.get("/map/known", opts).then((r) => r.data),
+  // Where my leads are, counted per town (the dropdown of the town search); `ready` = qualified prospects.
+  cities: (opts) => api.get("/map/cities", opts).then((r) => r.data),
   // One click on a pin: the place becomes a prospect (and, by the person's choice, joins the CRM).
   addPlace: (body) => api.post("/map/places/add", body).then((r) => r.data),
 };
@@ -53,7 +57,21 @@ export const systemApi = {
   probeOverpass: () => api.post("/system/health/overpass").then((r) => r.data),
 };
 
+export const draftJobsApi = {
+  // Automatic AI drafts: counts by state, the state of one prospect's draft, and "prepare the pending ones now" (background).
+  summary: () => api.get("/prospects/draft-jobs/summary").then((r) => r.data),
+  run: () => api.post("/prospects/draft-jobs/run").then((r) => r.data),
+  forLead: (id) => api.get(`/prospects/${id}/draft-job`).then((r) => r.data),
+};
+
+export const offerApi = {
+  get: () => api.get("/settings/offer").then((r) => r.data),
+  put: (body) => api.put("/settings/offer", body).then((r) => r.data),
+};
+
 export const prospectsApi = {
+  // The "to enrich" queue: prospects not qualified yet, with what is missing (server pagination).
+  toEnrich: (params) => api.get("/prospects/to-enrich", { params }).then((r) => r.data),
   list: (params) => api.get("/prospects", { params }).then((r) => r.data),
   // `hideEmpty`: leave out the leads with no e-mail, phone or website (the answer still says how many there are: `empty`).
   queues: (status = "pending", { hideEmpty = false } = {}) =>

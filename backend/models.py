@@ -923,13 +923,76 @@ class MapProspectOut(BaseModel):
     signals: List[str] = Field(default_factory=list)  # keys detected now; a dismissed signal does not count
     created_at: Optional[datetime] = None
     heat: Optional[dict] = None  # {value, tier, info_pct}: the hottest prospects are listed first on the map
-    # The map shows only `map_ready` leads: hot, with a phone and an e-mail really known (the server decides).
-    map_ready: bool = False
+    # The map draws only prospects the common eligibility policy qualifies (the server decides, before the limit):
+    # e-mail, phone, address and position on a fresh source, a fit score. A website or WhatsApp is never required.
+    address: Optional[str] = None
+    eligible: bool = True
+    map_ready: bool = False  # kept for older clients: same meaning as `eligible`
+    priority: Literal["qualified", "hot"] = "qualified"  # "hot" only with an observed, sourced commercial intent
+    priority_label: Optional[str] = None
+    fit_score: Optional[int] = None
     has_phone: bool = False
     has_website: bool = False
     phone: Optional[str] = None
     email: Optional[str] = None
     website: Optional[str] = None
+
+
+class OfferIn(BaseModel):
+    """What the organisation sells: the only offer an automatic draft may talk about (never invented)."""
+
+    name: str = Field(min_length=2, max_length=120)
+    pitch: str = Field(min_length=20, max_length=600)  # what it brings to the customer, in the organisation's words
+    cta: str = Field(min_length=3, max_length=160)  # the one simple next step the message asks for
+    language: Literal["fr", "en"] = "fr"  # the campaign language, used when the prospect gives no hint of its own
+
+
+class OfferOut(BaseModel):
+    configured: bool
+    offer: Optional[OfferIn] = None
+
+
+class DraftJobOut(BaseModel):
+    """The state of the automatic draft of one prospect. A draft is a proposal: it is never sent by this flow."""
+
+    id: str
+    lead_id: str
+    status: Literal["queued", "generating", "ready", "failed", "unavailable", "offer_required"]
+    site_state: Literal["site_found", "site_unreachable", "none_identified", "unknown"]
+    language: str
+    attempts: int
+    error_code: Optional[str] = None
+    error: Optional[str] = None  # a sentence for the person
+    draft_id: Optional[str] = None
+    updated_at: Optional[datetime] = None
+
+
+class DraftJobSummary(BaseModel):
+    counts: dict[str, int]  # prospects by the state of their latest draft job
+    offer_configured: bool
+    ai_active: bool  # the provider is configured; false = jobs wait as "unavailable" and resume when it is
+
+
+class ToEnrichItem(BaseModel):
+    """A discovery prospect kept in the "to enrich" queue: not contactable by default, with what is missing."""
+
+    id: str
+    name: str
+    city: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    website: Optional[str] = None
+    review_status: Optional[str] = None
+    fit_score: Optional[int] = None
+    missing_fields: List[str] = Field(default_factory=list)  # eligibility.MISSING_FIELDS codes
+    created_at: Optional[datetime] = None
+
+
+class ToEnrichPage(BaseModel):
+    items: List[ToEnrichItem]
+    total: int
+    limit: int
+    offset: int
 
 
 class CityHeatOut(BaseModel):
@@ -941,12 +1004,12 @@ class CityHeatOut(BaseModel):
     warm: int
     cold: int
     total: int
-    ready: int = 0  # hot leads with a phone and an e-mail really known
+    ready: int = 0  # qualified by the common eligibility policy (what the map draws)
     site: int = 0  # of those, with a website too
 
 
 class LeadSuggestionOut(BaseModel):
-    """A lead worth a person's time today: hot, with a phone and an e-mail really known."""
+    """A lead worth a person's time today: qualified by the common eligibility policy (e-mail, phone, address)."""
 
     id: str
     name: str
@@ -955,6 +1018,7 @@ class LeadSuggestionOut(BaseModel):
     kind: Literal["prospect", "lead"]  # a discovery prospect (reviewed by a human) or a CRM lead
     review_status: Optional[str] = None  # None for a CRM lead
     heat: dict  # {value, tier, info_pct}
+    priority: Literal["qualified", "hot"] = "qualified"  # "hot" only with an observed, sourced commercial intent
     phone: str
     email: str
     website: Optional[str] = None

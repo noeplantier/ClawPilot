@@ -11,6 +11,7 @@ import SignalList from "@/components/outreach/SignalList";
 import SourceList from "@/components/outreach/SourceList";
 import HistoryTimeline from "@/components/outreach/HistoryTimeline";
 import DraftPanel from "@/components/outreach/DraftPanel";
+import DraftJobStatus from "@/components/outreach/DraftJobStatus";
 import { ErrorBlock, LoadingBlock } from "@/components/outreach/States";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
@@ -153,6 +154,7 @@ export default function ProspectDetail() {
       </Section>
 
       <Section title="Drafts" hint="Messages prepared for a human to approve." testId="section-drafts">
+        <DraftJobStatus prospectId={p.id} />
         <DraftPanel prospect={p} drafts={p.drafts} messages={messages} canDecide={decide} dryRun={status ? status.dry_run : null} onChanged={page.reload} />
       </Section>
 

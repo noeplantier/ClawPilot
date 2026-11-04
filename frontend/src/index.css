@@ -441,5 +441,6 @@ select option { background: var(--void-surface); color: var(--text-primary); }
 .map-pin-square { display:block; width:16px; height:16px; margin:3px; border-radius:4px; background:var(--c); border:3px solid #fff; box-shadow:0 2px 8px rgba(15,23,42,.45); transform:rotate(45deg); }
 
 .map-cluster { display:flex; align-items:center; justify-content:center; border-radius:9999px; background:radial-gradient(circle at 30% 25%, #9B74FA, #3B1578 70%); color:#fff; font-weight:700; font-size:13px; border:3px solid #fff; box-shadow:0 0 0 1px rgba(11,16,32,.3), 0 6px 20px rgba(124,58,237,.55); }
+.map-pin-square.is-hot { outline: 3px solid #FACC15; outline-offset: 2px; } /* an observed, sourced intent */
 .map-pin-square.is-new { animation: pos-pulse 1.6s 3; outline: 3px solid #22D3EE; outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { .map-pin-square.is-new { animation: none; } }

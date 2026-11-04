@@ -25,6 +25,8 @@ export function describeAdded(out, { siteAsked = false } = {}) {
   if (out.email) lines.push(`E-mail: ${out.email}${out.email_found_on_site ? " (found on its own website)" : " (published on the map)"}.`);
   else lines.push("E-mail: not known.");
   lines.push(out.phone ? `Phone: ${out.phone}.` : "Phone: not known.");
+  // The map draws only qualified prospects: say where this one stands instead of letting it vanish.
+  if (!out.email || !out.phone) lines.push("Not on the map yet: it needs an e-mail, a phone and an address. It waits in Prospects > To enrich.");
   if (siteAsked) {
     lines.push(out.website_checked ? "Its website was read." : "Its website could not be read (blocked by its robots.txt, unreachable, or over the limit): that says nothing about its e-mail.");
   }

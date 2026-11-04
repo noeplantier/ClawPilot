@@ -61,7 +61,7 @@ export default function Login() {
           initial={{ opacity: 0, y: 12, scale: 0.99 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           transition={{ duration: 0.35, ease: "easeOut" }}
-          className="w-full bg-[#0C0A14]/90 backdrop-blur-xl border border-white/10 rounded-2xl p-6 sm:p-9 shadow-[0_20px_50px_rgba(0,0,0,0.5),0_0_30px_rgba(124,58,237,0.12)] relative"
+          className="w-full bg-void-elevated/90 backdrop-blur-xl border border-white/10 rounded-2xl p-6 sm:p-9 shadow-[0_20px_50px_rgba(0,0,0,0.5),0_0_30px_rgba(124,58,237,0.12)] relative"
         >
           <div className="flex items-center justify-between mb-4">
             <span className="mono-accent text-[11px] text-brand-lilac flex items-center gap-1.5">

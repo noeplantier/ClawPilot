@@ -41,9 +41,20 @@ def test_my_prospects_layer_lists_only_this_organisations_positioned_prospects()
             "lat": 45.76,
             "lon": 4.83,
             "external_id": f"node/{uid}",
-            "email": f"p_{uid}@pose.example",
+            "email": f"p_{uid}@pose.fr",
+            "phone": "+33 4 78 00 00 01",
+            "address": "12 rue de la République",
         },
         {"name": f"Sans position {uid}", "city": "Paris", "external_id": f"node/np{uid}"},
+        {  # a position, an e-mail and a phone, but no address: waits in the "to enrich" queue
+            "name": f"Sans adresse {uid}",
+            "city": "Lyon",
+            "lat": 45.77,
+            "lon": 4.84,
+            "external_id": f"node/na{uid}",
+            "email": f"a_{uid}@pose.fr",
+            "phone": "+33 4 78 00 00 02",
+        },
     ]
     os.environ["FEATURE_PROSPECT_IMPORT"] = "true"
     try:
@@ -65,7 +76,7 @@ def test_my_prospects_layer_lists_only_this_organisations_positioned_prospects()
     layer = requests.get(f"{API}/map/prospects", headers=h)
     assert layer.status_code == 200, layer.text
     items = layer.json()
-    assert [p["name"] for p in items] == [f"Placé {uid}"]  # no position, no pin
+    assert [p["name"] for p in items] == [f"Placé {uid}"]  # no position or no address: no pin (queued to enrich)
     assert (items[0]["lat"], items[0]["lon"], items[0]["review_status"], items[0]["has_email"]) == (
         45.76,
         4.83,

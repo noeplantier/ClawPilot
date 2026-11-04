@@ -1,4 +1,4 @@
-/* global ResizeObserver */
+/* global ResizeObserver, AbortController */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
@@ -12,17 +12,19 @@ import * as swr from "@/lib/swr";
 import { describeApiError } from "@/lib/outreachFormat";
 import { isTypingTarget, readPref, writePref } from "@/lib/uiPrefs";
 import {
-  CATEGORY_LABELS, IMPORT_ORIGIN, MAX_SITES_CHECKED, STATUS_COLOR, STATUS_LABEL, areaTooLarge, importRows, knownIds, markerColor,
+  CATEGORY_LABELS, IMPORT_ORIGIN, MAX_SITES_CHECKED, STATUS_COLOR, STATUS_LABEL, areaTooLarge, importRows, markerColor,
   panelPadding, reachablePlace, readyOnly, readySummary, summaryText,
 } from "@/lib/mapSearch";
 import { fetchOverpass } from "@/lib/overpassBrowser";
+import { nextDelay, startBurst, withSecondary } from "@/lib/pollPlan";
 import { canRetryInBrowser, jobLine, runSearch } from "@/lib/mapJobs";
 import {
-  EMPTY_FILTER, POLL_MS, applyFilter, campaignPick, clusterPoints, clusterSize, facets, filterSummary, hasFilter, newIds, signalLabel,
+  EMPTY_FILTER, applyFilter, campaignPick, clusterPoints, clusterSize, facets, filterSummary, hasFilter, newIds, signalLabel,
 } from "@/lib/mapCluster";
 import { EmptyBlock, ErrorBlock, LoadingBlock } from "@/components/outreach/States";
 import PlacePopup from "@/components/outreach/PlacePopup";
 import AddedCard from "@/components/outreach/AddedCard";
+import DraftJobsStrip from "@/components/outreach/DraftJobsStrip";
 import CityBox, { lookup } from "@/components/outreach/CityBox";
 import { centroids, fold, zoomFor } from "@/lib/cityComplete";
 
@@ -39,7 +41,7 @@ const clusterIcon = (n) => {
 const minePin = (p, fresh) =>
   L.divIcon({
     className: "map-pin",
-    html: `<span style="--c:${STATUS_COLOR[p.review_status]}" class="map-pin-square${fresh ? " is-new" : ""}"></span>`,
+    html: `<span style="--c:${STATUS_COLOR[p.review_status]}" class="map-pin-square${fresh ? " is-new" : ""}${p.priority === "hot" ? " is-hot" : ""}"></span>`,
     iconSize: [22, 22], iconAnchor: [11, 11], popupAnchor: [0, -10],
   });
 
@@ -144,6 +146,9 @@ function MapView({ canImport }) {
   // my leads per town, counted by the server (null until loaded); the last answer is shown at once, then replaced
   const [cityStats, setCityStats] = useState(() => { const hit = swr.read("map:cities"); return hit ? hit.data : null; });
   const [mine, setMine] = useState(() => { const hit = swr.read("map:prospects"); return hit ? hit.data : []; });
+  // every source id already held (qualified or not): the search hides those places instead of offering them again
+  const [knownList, setKnownList] = useState(() => { const hit = swr.read("map:known"); return hit ? hit.data : []; });
+  const burstUntil = useRef(0); // refresh every ~2 s until then (a search, an addition…), every ~10 s otherwise
   const [showMine, setShowMine] = useState(true);
   // A search result is a place, not a lead yet (no score): it is drawn only with a published phone AND e-mail, unless asked.
   const [showAllFound, setShowAllFound] = useState(() => readPref("map.allfound", false));
@@ -216,13 +221,32 @@ function MapView({ canImport }) {
 
   const goTo = useCallback((town) => map.current.flyTo([town.lat, town.lon], zoomFor(town.population), { duration: 1.2 }), []);
 
-  // Near real time without a WebSocket (none on the free plan): poll while the tab is visible, keep what is shown if a poll fails.
+  // Near real time without a WebSocket (none on the free plan): ask again every ~10 s, every ~2 s for two minutes after an action,
+  // never while the tab is hidden (it refreshes the moment it is shown), slower when the server fails. A newer request cancels
+  // the one still in flight, so an old answer never overwrites a new one. The last answer stays on screen if a poll fails.
   useEffect(() => {
     let alive = true;
-    const pull = () => {
-      // the counts of the town search ride on the same poll; a failure keeps the last counts rather than showing zeros
-      mapApi.cities().then((rows) => { swr.write("map:cities", rows); if (alive) setCityStats(rows); }).catch(() => {});
-      return mapApi.prospects().then((rows) => {
+    let timer = null;
+    let controller = null;
+    let tick = 0;
+    let failures = 0;
+    const schedule = () => {
+      if (!alive) return;
+      timer = setTimeout(run, nextDelay({ now: Date.now(), burstUntil: burstUntil.current, hidden: document.hidden, failures }));
+    };
+    async function run() {
+      timer = null;
+      if (document.hidden) { schedule(); return; }
+      if (controller) controller.abort();
+      controller = new AbortController();
+      const { signal } = controller;
+      if (withSecondary(tick++)) {
+        // the town counts and the known ids change slowly: they ride on every third refresh, a failure keeps the last ones
+        mapApi.cities({ signal }).then((rows) => { swr.write("map:cities", rows); if (alive) setCityStats(rows); }).catch(() => {});
+        mapApi.known({ signal }).then((ids) => { swr.write("map:known", ids); if (alive) setKnownList(ids); }).catch(() => {});
+      }
+      try {
+        const rows = await mapApi.prospects({ signal });
         if (!alive) return;
         setFresh(newIds(previous.current, rows));
         previous.current = rows;
@@ -230,15 +254,23 @@ function MapView({ canImport }) {
         setMine(rows);
         setUpdatedAt(new Date());
         setStale(false);
-      }).catch(() => { if (alive) setStale(true); });
-    };
-    pullRef.current = pull;
-    pull();
-    const id = setInterval(() => { if (!document.hidden) pull(); }, POLL_MS);
-    return () => { alive = false; clearInterval(id); };
+        failures = 0;
+      } catch (e) {
+        if (e && (e.name === "CanceledError" || e.code === "ERR_CANCELED")) return; // replaced by a newer request: it schedules the next
+        failures += 1;
+        if (alive) setStale(true);
+      }
+      schedule();
+    }
+    const refresh = () => { if (timer) clearTimeout(timer); run(); };
+    pullRef.current = () => { burstUntil.current = startBurst(Date.now(), burstUntil.current); tick = 0; refresh(); };
+    const onVisible = () => { if (!document.hidden) refresh(); };
+    document.addEventListener("visibilitychange", onVisible);
+    run();
+    return () => { alive = false; if (timer) clearTimeout(timer); if (controller) controller.abort(); document.removeEventListener("visibilitychange", onVisible); };
   }, []);
 
-  const ready = useMemo(() => readyOnly(mine), [mine]); // the only leads drawn on the map: hot, with a phone and an e-mail
+  const ready = useMemo(() => readyOnly(mine), [mine]); // the only prospects drawn: the server's qualified ones (e-mail, phone, address, position)
   const shown = useMemo(() => applyFilter(ready, filter), [ready, filter]);
   const options = useMemo(() => facets(ready), [ready]);
 
@@ -252,7 +284,7 @@ function MapView({ canImport }) {
         L.marker([p.lat, p.lon], { icon: minePin(p, fresh.has(p.id)), title: p.name }).bindPopup(minePopup(p), { className: "map-popup" }).addTo(mineLayer.current);
         return;
       }
-      const marker = L.marker([c.lat, c.lon], { icon: clusterIcon(c.count), title: `${c.count} hot leads` });
+      const marker = L.marker([c.lat, c.lon], { icon: clusterIcon(c.count), title: `${c.count} qualified prospects` });
       marker.on("click", () => {
         setGroup(c.members);
         setPanelOpen(true);
@@ -285,7 +317,7 @@ function MapView({ canImport }) {
   const list = group ? [...group].sort(byHeat) : [...shown].sort(byHeat).slice(0, 30); // hottest first
   const pickInfo = campaignPick(ready, picked);
 
-  const known = useMemo(() => knownIds(mine), [mine]);
+  const known = useMemo(() => new Set(knownList), [knownList]);
   const positions = useMemo(() => centroids(mine), [mine]); // where my prospects of each town are: a town of my leads is reachable at once
 
   // "Open on the map" from a suggested zone (?city=Lyon): fly there once, from my own prospects of that town when I have some,
@@ -348,6 +380,7 @@ function MapView({ canImport }) {
   }, []);
 
   const search = useCallback(async () => {
+    burstUntil.current = startBurst(Date.now(), burstUntil.current);
     setBusy(true);
     setError(null);
     setJob(null);
@@ -445,8 +478,9 @@ function MapView({ canImport }) {
           </div>
           <label className="flex items-center gap-2 text-xs" data-testid="map-mine-toggle">
             <input type="checkbox" checked={showMine} onChange={(e) => setShowMine(e.target.checked)} />
-            <span><b>Hot leads</b> (squares) — {readySummary(mine)}</span>
+            <span><b>Qualified prospects</b> (squares) — {readySummary(mine)}</span>
           </label>
+          <DraftJobsStrip />
           {mine.length > 0 && showMine && (
             <div className="space-y-2" data-testid="map-filters">
               <div className="grid grid-cols-2 gap-2">
@@ -469,7 +503,7 @@ function MapView({ canImport }) {
                 {hasFilter(filter) && <button className="underline" onClick={() => { setFilter(EMPTY_FILTER); setGroup(null); }} data-testid="filter-clear">Clear</button>}
               </div>
               <p className="text-[11px] text-soft" data-testid="map-updated" aria-live="polite">
-                {stale ? "Update failed: showing the last data. " : ""}{updatedAt ? `Updated ${updatedAt.toLocaleTimeString()} · refreshes every ${POLL_MS / 1000} s` : "Loading…"}
+                {stale ? "Update failed: showing the last data. " : ""}{updatedAt ? `Updated ${updatedAt.toLocaleTimeString()} · live, every 2 to 10 s` : "Loading…"}
               </p>
             </div>
           )}
@@ -511,7 +545,7 @@ function MapView({ canImport }) {
               {mine.length > 0 && showMine && (
                 <section className="p-4 border-b border-border max-h-[50%] overflow-y-auto" data-testid="map-mine-list">
                   <div className="flex items-center justify-between gap-2">
-                    <h2 className="font-display text-lg font-bold">{group ? `Cluster · ${group.length} hot leads` : "Hot leads"}</h2>
+                    <h2 className="font-display text-lg font-bold">{group ? `Cluster · ${group.length} qualified prospects` : "Qualified prospects"}</h2>
                     {group && <button className="underline text-xs" onClick={() => setGroup(null)} data-testid="cluster-close">All</button>}
                   </div>
                   {list.length === 0 && <p className="text-sm text-soft mt-1" data-testid="mine-none">{ready.length === 0 ? "No hot lead with a phone and an e-mail yet." : "No hot lead matches the filters."}</p>}
@@ -587,7 +621,7 @@ function MapView({ canImport }) {
             {panelOpen ? "Hide results" : result ? `Results (${found.length})` : "Results"}
           </button>
           <p className="absolute z-[400] bottom-1 left-40 text-[10px] text-foreground/80 bg-void-surface/85 px-2 rounded-full pointer-events-none hidden lg:block">
-            Square: hot leads with a phone and an e-mail (blue to review, green approved) · round: places found by the search with a published phone and e-mail (green e-mail, amber phone/site, grey name) · click a pin to add it to the CRM · double-click to select several · H: hide panels
+            Square: qualified prospects, with e-mail, phone and address (blue to review, green approved; a ring marks an observed intent) · round: places found by the search with a published phone and e-mail (green e-mail, amber phone/site, grey name) · click a pin to add it to the CRM · double-click to select several · H: hide panels
           </p>
         </>
       )}

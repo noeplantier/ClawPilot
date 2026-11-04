@@ -10,6 +10,8 @@ import requests
 
 os.environ.setdefault("DATABASE_URL", os.environ.get("DATABASE_URL", ""))
 
+from prospect_fixtures import insert_rows, row  # noqa: E402
+
 from db.models import Lead  # noqa: E402
 from repositories import suppression_repo  # noqa: E402
 from tasks._bridge import run_async  # noqa: E402
@@ -58,41 +60,42 @@ def _insert(account, rows, suppress=()):
     run_async(go)
 
 
-def test_the_best_zones_and_leads_are_the_hot_reachable_ones_and_only_those():
+def test_the_best_zones_and_leads_are_the_qualified_ones_and_only_those():
     h, me, uid = _org()
     account = uuid.UUID(me["org_id"])
-    _insert(
+    suppressed = row("Supprimé", "Rennes", website="https://supprime.fr")
+    insert_rows(
         account,
         [
-            {"full_name": "Lyon A", "city": "Lyon", **_full(1, uid)},
-            {"full_name": "Lyon B", "city": "Lyon", **_full(2, uid)},
-            {"full_name": "Lyon C", "city": "lyon ", **_full(3, uid)},
-            {"full_name": "Lyon sans site", "city": "Lyon", **_full(4, uid, website=None)},
-            {"full_name": "Rennes A", "city": "Rennes", **_full(5, uid)},
-            {"full_name": "Rennes B", "city": "Rennes", **_full(6, uid)},
-            {"full_name": "Rennes rejeté", "city": "Rennes", "review_status": "rejected", **_full(7, uid)},
-            {"full_name": "Brest mail seul", "city": "Brest", "email": f"b.{uid}@brest.example", "company": "B"},
-            {"full_name": "Brest tel seul", "city": "Brest", "phone": "+33 2 98 00 00 01", "company": "B2"},
-            {"full_name": "Supprimé", "city": "Rennes", **_full(8, uid)},
+            row("Lyon A", "Lyon", website="https://lyon-a.fr"),
+            row("Lyon B", "Lyon", website="https://lyon-b.fr"),
+            row("Lyon C", "lyon ", website="https://lyon-c.fr"),
+            row("Lyon sans site", "Lyon"),
+            row("Rennes A", "Rennes", website="https://rennes-a.fr"),
+            row("Rennes B", "Rennes", website="https://rennes-b.fr"),
+            row("Rennes rejeté", "Rennes", review_status="rejected", website="https://rennes-r.fr"),
+            row("Brest sans tel", "Brest", phone=None),
+            row("Brest sans adresse", "Brest", address=None),
+            suppressed,
         ],
-        suppress=[f"8.{uid}@full.example"],
+        suppress_emails=[suppressed["lead"]["email"]],
     )
     out = requests.get(f"{API}/suggestions/focus", headers=h)
     assert out.status_code == 200, out.text
     body = out.json()
 
     zones = {z["key"]: z for z in body["zones"]}
-    assert [z["key"] for z in body["zones"]][:2] == ["lyon", "rennes"]  # most ready hot leads first
-    assert (zones["lyon"]["ready"], zones["lyon"]["site"], zones["lyon"]["hot"]) == (4, 3, 4)
-    assert "brest" not in zones  # a town with hot-or-not leads nobody can both call and e-mail is not suggested
-    # a suppressed lead still counts in its town's figures (they describe the data) but is never suggested to contact
+    assert [z["key"] for z in body["zones"]][:2] == ["lyon", "rennes"]  # most qualified prospects first
+    assert (zones["lyon"]["ready"], zones["lyon"]["site"]) == (4, 3)  # the one without a website counts as well
+    assert zones["rennes"]["ready"] == 2  # the suppressed prospect is no longer counted ready while never suggested
+    assert "brest" not in zones  # a town where nobody has both a phone and an address is not suggested
 
     names = [lead["name"] for lead in body["leads"]]
-    assert set(names[:5]) == {"Lyon A", "Lyon B", "Lyon C", "Rennes A", "Rennes B"}  # a website ranks a lead first ...
-    assert names[5] == "Lyon sans site" and len(names) == 6  # ... then the one without; nobody else qualifies
-    assert not {"Supprimé", "Rennes rejeté", "Brest mail seul", "Brest tel seul"} & set(names)
+    assert set(names[:5]) == {"Lyon A", "Lyon B", "Lyon C", "Rennes A", "Rennes B"}
+    assert names[5] == "Lyon sans site" and len(names) == 6  # a lower heat (no website), still suggested; nobody else
+    assert not {"Supprimé", "Rennes rejeté", "Brest sans tel", "Brest sans adresse"} & set(names)
     for lead in body["leads"]:
-        assert lead["phone"] and lead["email"] and lead["heat"]["tier"] == "hot" and lead["kind"] == "lead"
+        assert lead["phone"] and lead["email"] and lead["kind"] == "prospect" and lead["priority"] == "qualified"
     assert next(x for x in body["leads"] if x["name"] == "Lyon sans site")["website"] is None  # unknown stays unknown
 
 
@@ -100,7 +103,7 @@ def test_the_limits_are_honoured_and_an_organisation_with_nothing_ready_gets_emp
     h, me, uid = _org()
     account = uuid.UUID(me["org_id"])
     assert requests.get(f"{API}/suggestions/focus", headers=h).json()["zones"] == []
-    _insert(account, [{"full_name": f"L{n}", "city": f"Ville{n}", **_full(n, uid)} for n in range(1, 5)])
+    insert_rows(account, [row(f"L{n}", f"Ville{n}", website=f"https://l{n}.fr") for n in range(1, 5)])
     out = requests.get(f"{API}/suggestions/focus", headers=h, params={"zones": 2, "leads": 3}).json()
     assert (len(out["zones"]), len(out["leads"])) == (2, 3)
     assert requests.get(f"{API}/suggestions/focus", headers=h, params={"zones": 0}).status_code == 422
@@ -109,7 +112,7 @@ def test_the_limits_are_honoured_and_an_organisation_with_nothing_ready_gets_emp
 def test_each_organisation_sees_only_its_own_suggestions_and_the_route_needs_a_sign_in():
     h1, me1, uid1 = _org()
     h2, _, _ = _org()
-    _insert(uuid.UUID(me1["org_id"]), [{"full_name": "Mine", "city": "Brest", **_full(9, uid1)}])
+    insert_rows(uuid.UUID(me1["org_id"]), [row("Mine", "Brest", website="https://mine.fr")])
     assert requests.get(f"{API}/suggestions/focus", headers=h1).json()["leads"][0]["name"] == "Mine"
     assert requests.get(f"{API}/suggestions/focus", headers=h2).json()["leads"] == []
     assert requests.get(f"{API}/suggestions/focus").status_code in (401, 403)

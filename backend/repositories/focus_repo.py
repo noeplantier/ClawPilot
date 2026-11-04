@@ -3,36 +3,40 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
+from typing import Optional
 
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import Lead
-from repositories import heat_sql, suppression_repo
+from repositories import eligibility_sql, heat_sql, suppression_repo
 from services.outreach_os import heat as heat_rules
 from services.outreach_os.normalize import normalize_domain, normalize_email, normalize_phone
 
 
-async def best_leads(session: AsyncSession, account_id: uuid.UUID, limit: int = 8) -> list[dict]:
-    """Hot leads with a phone and an e-mail, a website first, then the hottest. A rejected prospect is not a lead and a
-    suppressed identity is never suggested; candidates are over-fetched so that filter cannot leave a short list."""
+async def best_leads(
+    session: AsyncSession, account_id: uuid.UUID, limit: int = 8, now: Optional[datetime] = None
+) -> list[dict]:
+    """The qualified prospects to work first (common eligibility policy: e-mail, phone, address, fresh source, fit),
+    hot ones (observed, sourced intent) before the others, then the hottest by heat. A website only breaks a tie.
+    A rejected prospect is not a lead and a suppressed identity is never suggested; candidates are over-fetched so
+    that filter cannot leave a short list."""
     latest = heat_sql.latest_scores()
+    src = eligibility_sql.latest_source(account_id)
     score = heat_sql.ranked_score(latest)
     heat = heat_sql.heat_sql(score)
+    is_hot = eligibility_sql.hot(src, now)
     rows = await session.execute(
-        select(Lead, heat.label("heat"))
+        select(Lead, heat.label("heat"), is_hot.label("is_hot"))
         .outerjoin(latest, latest.c.lead_id == Lead.id)
-        .where(
-            Lead.account_id == account_id,
-            Lead.deleted_at.is_(None),
-            or_(Lead.review_status.is_(None), Lead.review_status != "rejected"),
-            heat_sql.map_ready_sql(score),
-        )
-        .order_by(heat_sql.known(Lead.website).desc(), heat.desc(), Lead.created_at.desc(), Lead.id)
+        .join(src, src.c.lead_id == Lead.id)
+        .where(Lead.account_id == account_id, Lead.deleted_at.is_(None), eligibility_sql.qualified(src, now))
+        .order_by(is_hot.desc(), heat.desc(), heat_sql.known(Lead.website).desc(), Lead.created_at.desc(), Lead.id)
         .limit(limit * 5)
     )
     out: list[dict] = []
-    for lead, value in rows.all():
+    for lead, value, hot_flag in rows.all():
         if await suppression_repo.is_suppressed(
             session,
             account_id,
@@ -50,7 +54,12 @@ async def best_leads(session: AsyncSession, account_id: uuid.UUID, limit: int = 
                 "city": lead.city if heat_rules.is_known(lead.city) else None,
                 "kind": "prospect" if lead.review_status is not None else "lead",
                 "review_status": lead.review_status,
-                "heat": {"value": int(value), "tier": "hot", "info_pct": heat_rules.info_pct(len(known))},
+                "heat": {
+                    "value": int(value),
+                    "tier": heat_rules.tier_of(int(value)),
+                    "info_pct": heat_rules.info_pct(len(known)),
+                },
+                "priority": "hot" if hot_flag else "qualified",
                 "phone": lead.phone,
                 "email": lead.email,
                 "website": lead.website if heat_rules.is_known(lead.website) else None,

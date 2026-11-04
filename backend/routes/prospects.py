@@ -25,6 +25,8 @@ from models import (
     DismissIn,
     DismissOut,
     DraftEditIn,
+    DraftJobOut,
+    DraftJobSummary,
     DraftOut,
     HeatOut,
     OutreachSettingsOut,
@@ -41,17 +43,22 @@ from models import (
     SourceOut,
     SuppressionIn,
     SuppressionOut,
+    ToEnrichItem,
+    ToEnrichPage,
 )
 from repositories import (
     audit_repo,
     consent_repo,
+    draft_job_repo,
     draft_repo,
     outbound_repo,
     prospect_repo,
     suppression_repo,
     usage_repo,
 )
-from services import feature_flags
+from services import ai_svc, draft_runner, feature_flags
+from services.live_cache import TokenCache
+from services.outreach_os import ai_draft
 from services.outreach_os import drafts as drafts_svc
 from services.outreach_os import email_footer
 from services.outreach_os import heat as heat_rules
@@ -61,6 +68,7 @@ from services.outreach_os.normalize import normalize_domain, normalize_email, no
 from services.outreach_os.scoring import ScoreConfig
 from services.outreach_os.sources import DEMO_SOURCE_NAME, FixtureDirectoryAdapter, FixtureSiteFetcher
 from services.outreach_os.unsubscribe import make_token
+from services.rate_limit import AttemptLimiter
 
 router = APIRouter(prefix="/prospects", tags=["prospects"])
 decider = require_roles("owner", "admin")  # who may validate, reject, erase or reconfigure
@@ -322,6 +330,84 @@ async def queue_counts(
     """The queues of the review page: how many prospects are hot, warm and cold, how many are TOP, and how many are
     empty (no e-mail, phone or website): counted, never estimated."""
     return QueueCountsOut(**await prospect_repo.tier_counts(session, _account(user), review_status, hide_empty))
+
+
+_draft_run_limiter = AttemptLimiter(6, 60.0)
+_queue_pages = TokenCache()  # recomputed only when the data behind the decision changed
+
+
+def _job_out(job) -> DraftJobOut:  # type: ignore[no-untyped-def]
+    return DraftJobOut(
+        id=str(job.id),
+        lead_id=str(job.lead_id),
+        status=job.status,
+        site_state=job.site_state,
+        language=job.language,
+        attempts=job.attempts,
+        error_code=job.error_code,
+        error=job.error,
+        draft_id=str(job.draft_id) if job.draft_id else None,
+        updated_at=job.updated_at,
+    )
+
+
+@router.get("/draft-jobs/summary", response_model=DraftJobSummary)
+async def draft_jobs_summary(user: dict = Depends(get_current_user), session: AsyncSession = Depends(get_db_session)):
+    """Prospects by the state of their automatic draft: queued, generating, ready, failed, unavailable, offer needed."""
+    account_id = _account(user)
+    return DraftJobSummary(
+        counts=await draft_job_repo.summary(session, account_id),
+        offer_configured=ai_draft.valid_offer(await draft_job_repo.offer_of(session, account_id)) is not None,
+        ai_active=ai_svc.config() is not None,
+    )
+
+
+@router.post("/draft-jobs/run", response_model=DraftJobSummary, status_code=202)
+async def run_draft_jobs(user: dict = Depends(decider), session: AsyncSession = Depends(get_db_session)):
+    """Start (or resume, after a provider limit or a configured offer) the preparation of the pending drafts. It runs in
+    the background and answers at once; it never sends anything and never touches a prospect's visibility."""
+    account_id = _account(user)
+    wait = _draft_run_limiter.retry_after(str(account_id))
+    if wait:
+        raise HTTPException(
+            status_code=429, detail="Too many requests: wait a minute", headers={"Retry-After": str(wait)}
+        )
+    _draft_run_limiter.record(str(account_id))
+    draft_runner.kick(account_id)
+    return await draft_jobs_summary(user=user, session=session)
+
+
+@router.get("/{lead_id}/draft-job", response_model=Optional[DraftJobOut])
+async def lead_draft_job(
+    lead_id: str, user: dict = Depends(get_current_user), session: AsyncSession = Depends(get_db_session)
+):
+    """The state of this prospect's automatic draft; null when none was ever prepared for it."""
+    lead = await _require_prospect(session, user, lead_id)
+    job = await draft_job_repo.latest_for_lead(session, _account(user), lead.id)
+    return _job_out(job) if job else None
+
+
+@router.get("/to-enrich", response_model=ToEnrichPage)
+async def to_enrich(
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """The "to enrich" queue: prospects the common eligibility policy does not qualify yet, each with what is missing
+    (e-mail, phone, address, position, source, fit…). Kept, never contactable by default; server pagination."""
+    account_id = _account(user)
+    token = await prospect_repo.change_token(session, account_id)
+    key = (account_id, limit, offset)
+    page = _queue_pages.get(key, token)
+    if page is None:
+        items, total = await prospect_repo.list_to_enrich(session, account_id, limit=limit, offset=offset)
+        page = _queue_pages.put(
+            key,
+            token,
+            ToEnrichPage(items=[ToEnrichItem(**item) for item in items], total=total, limit=limit, offset=offset),
+        )
+    return page
 
 
 @router.get("/{lead_id}", response_model=ProspectDetail)

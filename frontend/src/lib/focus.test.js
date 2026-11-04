@@ -1,8 +1,8 @@
 import { EMPTY_FOCUS, leadLine, leadLink, mapLink, zoneLine } from "@/lib/focus";
 
 test("a zone is described with the counts the server returned, singular or plural", () => {
-  expect(zoneLine({ ready: 4, site: 3 })).toBe("4 hot leads with a phone and an e-mail, 3 with a website");
-  expect(zoneLine({ ready: 1, site: 0 })).toBe("1 hot lead with a phone and an e-mail"); // no website: nothing is said about one
+  expect(zoneLine({ ready: 4, site: 3 })).toBe("4 qualified prospects with e-mail, phone and address, 3 with a website");
+  expect(zoneLine({ ready: 1, site: 0 })).toBe("1 qualified prospect with e-mail, phone and address"); // no website: nothing is said about one
 });
 
 test("a zone opens the map on its town, whatever its spelling", () => {
@@ -18,5 +18,5 @@ test("a prospect opens its review page and a CRM lead the CRM; the line says wha
 });
 
 test("an empty answer says why and what to do, never a made-up suggestion", () => {
-  expect(EMPTY_FOCUS).toContain("phone and an e-mail");
+  expect(EMPTY_FOCUS).toContain("an e-mail, a phone and an address");
 });
