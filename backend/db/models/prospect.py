@@ -30,6 +30,7 @@ from db.base import Base, CreatedAtMixin, TimestampMixin, UUIDPKMixin
 
 SIGNAL_STATES = ("unknown", "detected", "not_detected")
 DRAFT_STATUSES = ("draft", "approved", "rejected")
+DRAFT_JOB_STATUSES = ("queued", "generating", "ready", "failed", "unavailable", "offer_required")
 SUPPRESSION_KINDS = ("email", "phone", "domain")
 SUPPRESSION_REASONS = ("opt_out", "erasure", "bounce", "manual")
 USAGE_KINDS = ("discovery_run", "signals_analyzed", "drafts_generated", "messages_dispatched")
@@ -189,6 +190,42 @@ class MessageDraft(Base, UUIDPKMixin, TimestampMixin):
     edited_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )  # a human changed the text
+
+
+class DraftJob(Base, UUIDPKMixin, TimestampMixin):
+    """The preparation of one automatic AI draft: queued -> generating -> ready / failed / unavailable.
+
+    Independent of the prospect's visibility and of every batch: a failure here never hides a prospect or stops
+    anything else. One row per idempotency key (account + prospect + channel + offer + language + template + data), so
+    a refresh or a re-run never prepares the same draft twice. `offer_required` = eligible, but no offer is configured.
+    A job never sends; the draft it links is a proposal in the usual review flow."""
+
+    __tablename__ = "draft_jobs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('queued','generating','ready','failed','unavailable','offer_required')", name="status"
+        ),
+        CheckConstraint("channel IN ('email')", name="channel"),
+        Index("uq_draft_jobs_account_idempotency", "account_id", "idempotency_key", unique=True),
+        Index("ix_draft_jobs_account_status", "account_id", "status", text("updated_at DESC")),
+        Index("ix_draft_jobs_lead_created", "lead_id", text("created_at DESC")),
+    )
+
+    account_id: Mapped[uuid.UUID] = _account_fk()
+    lead_id: Mapped[uuid.UUID] = _lead_fk()
+    channel: Mapped[str] = mapped_column(String, nullable=False, server_default="email")
+    status: Mapped[str] = mapped_column(String, nullable=False, server_default="queued")
+    idempotency_key: Mapped[str] = mapped_column(String, nullable=False)
+    language: Mapped[str] = mapped_column(String, nullable=False, server_default="fr")
+    site_state: Mapped[str] = mapped_column(String, nullable=False, server_default="unknown")
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    error_code: Mapped[str | None] = mapped_column(String, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)  # a sentence for the person, never a stack or a key
+    draft_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("message_drafts.id", ondelete="SET NULL"), nullable=True
+    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class SuppressionEntry(Base, UUIDPKMixin, CreatedAtMixin):

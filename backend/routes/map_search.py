@@ -10,11 +10,13 @@ so origin, legal basis, suppression list and audit apply. Needs FEATURE_EXTERNAL
 
 from __future__ import annotations
 
+import hashlib
 import json
 import time
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.session import get_db_session
@@ -51,9 +53,28 @@ MAX_PARSED_ELEMENTS = 1000
 
 
 @router.get("/prospects", response_model=list[MapProspectOut])
-async def my_prospects(user: dict = Depends(get_current_user), session: AsyncSession = Depends(get_db_session)):
-    """The organisation's own prospects that have a position (imported from the map or from a file with lat/lon)."""
-    return await prospect_repo.list_positions(session, uuid.UUID(user["org_id"]))
+async def my_prospects(
+    request: Request,
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """What the commercial map draws: the organisation's prospects the common eligibility policy qualifies (e-mail,
+    phone, address and position on a fresh, non-demo source, and a fit score). Decided in SQL, before the limit.
+
+    The answer carries an ETag: a page that polls sends it back and gets an empty 304 while nothing changed."""
+    rows = await prospect_repo.list_positions(session, uuid.UUID(user["org_id"]))
+    body = json.dumps(jsonable_encoder(rows), sort_keys=True, separators=(",", ":"))
+    etag = '"' + hashlib.sha256(body.encode()).hexdigest()[:24] + '"'
+    headers = {"ETag": etag, "Cache-Control": "private, no-cache"}
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers=headers)
+    return Response(content=body, media_type="application/json", headers=headers)
+
+
+@router.get("/known", response_model=list[str])
+async def known_places(user: dict = Depends(get_current_user), session: AsyncSession = Depends(get_db_session)):
+    """Source ids of every prospect already held (qualified or not): the search hides them, never re-offers them."""
+    return await prospect_repo.known_external_ids(session, uuid.UUID(user["org_id"]))
 
 
 @router.get("/cities", response_model=list[CityHeatOut])

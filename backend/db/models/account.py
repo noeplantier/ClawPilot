@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 
 from sqlalchemy import CheckConstraint, ForeignKey, String
-from sqlalchemy.dialects.postgresql import CITEXT, UUID
+from sqlalchemy.dialects.postgresql import CITEXT, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db.base import Base, TimestampMixin, UUIDPKMixin
@@ -20,6 +20,9 @@ class Account(Base, UUIDPKMixin, TimestampMixin):
 
     name: Mapped[str] = mapped_column(String, nullable=False)
     plan: Mapped[str] = mapped_column(String, nullable=False, server_default="pro")
+    # The offer the organisation sells ({name, pitch, cta, language}); None until the owner writes it. No automatic
+    # draft is prepared without one, and none is ever invented.
+    offer: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     users: Mapped[list["User"]] = relationship(back_populates="account", cascade="all, delete-orphan")
 

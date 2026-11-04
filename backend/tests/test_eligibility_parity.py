@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import not_, select
 
 from db.models import Account, ConsentCurrent, Contact, Lead, ProspectSignal, ProspectSource, SuppressionEntry
 from repositories import eligibility_sql, suppression_repo
@@ -255,6 +255,18 @@ def _run_all():
             .scalars()
             .all()
         )
+        negated = (
+            (
+                await session.execute(
+                    select(Lead.id)
+                    .outerjoin(latest, latest.c.lead_id == Lead.id)
+                    .where(*where, not_(eligibility_sql.qualified(latest, NOW)))
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert set(qualified) | set(negated) == {lead_id} and not set(qualified) & set(negated), (name, "NULL leak")
         return lead_id, await _python_decision(session, account.id, lead_id), set(qualified), set(hot)
 
     async def go(session):

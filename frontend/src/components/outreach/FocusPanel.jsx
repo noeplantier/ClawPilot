@@ -16,7 +16,7 @@ export default function FocusPanel() {
         <div>
           <div className="mono-accent inline-flex items-center gap-2"><Compass size={14} weight="fill" /> // live.focus</div>
           <h2 className="font-display text-xl font-bold">Where to prospect next</h2>
-          <p className="text-xs text-muted-foreground">Hot leads with a phone and an e-mail, website first. <Link to="/app/campaigns" className="underline">Suggested campaigns</Link></p>
+          <p className="text-xs text-muted-foreground">Qualified prospects (e-mail, phone, address), the hottest first; “hot” only with an observed intent. <Link to="/app/campaigns" className="underline">Suggested campaigns</Link></p>
         </div>
         <p className="text-xs inline-flex items-center gap-2" role="status" aria-live="polite" data-testid="focus-live">
           <span className="pos-live-dot" aria-hidden="true" />

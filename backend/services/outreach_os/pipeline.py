@@ -221,6 +221,7 @@ async def _ingest(
     )
     if await prospect_repo.append_score(session, account_id, lead.id, version, compute_score(results, config)):
         summary.scores_recorded += 1
+    await prospect_repo.score_fit(session, lead)  # the fit the map policy reads: inline, so no worker is awaited
 
 
 async def rescore_all(session: AsyncSession, account_id: uuid.UUID, version: ScoreVersion, config: ScoreConfig) -> int:

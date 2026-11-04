@@ -41,6 +41,8 @@ from models import (
     SourceOut,
     SuppressionIn,
     SuppressionOut,
+    ToEnrichItem,
+    ToEnrichPage,
 )
 from repositories import (
     audit_repo,
@@ -322,6 +324,19 @@ async def queue_counts(
     """The queues of the review page: how many prospects are hot, warm and cold, how many are TOP, and how many are
     empty (no e-mail, phone or website): counted, never estimated."""
     return QueueCountsOut(**await prospect_repo.tier_counts(session, _account(user), review_status, hide_empty))
+
+
+@router.get("/to-enrich", response_model=ToEnrichPage)
+async def to_enrich(
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """The "to enrich" queue: prospects the common eligibility policy does not qualify yet, each with what is missing
+    (e-mail, phone, address, position, source, fit…). Kept, never contactable by default; server pagination."""
+    items, total = await prospect_repo.list_to_enrich(session, _account(user), limit=limit, offset=offset)
+    return ToEnrichPage(items=[ToEnrichItem(**item) for item in items], total=total, limit=limit, offset=offset)
 
 
 @router.get("/{lead_id}", response_model=ProspectDetail)

@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from sqlalchemy import Float, String, Subquery, and_, case, cast, exists, func, literal, not_, or_, select
+from sqlalchemy import Float, String, Subquery, and_, case, cast, exists, false, func, literal, not_, or_, select
 from sqlalchemy.sql.elements import ColumnElement
 
 from db.models import ConsentCurrent, ConsentRecord, Contact, Lead, ProspectSignal, ProspectSource, SuppressionEntry
@@ -47,6 +47,7 @@ def latest_source(account_id: uuid.UUID) -> Subquery:
         select(
             ProspectSource.lead_id.label("lead_id"),
             ProspectSource.id.label("source_id"),
+            ProspectSource.external_id.label("external_id"),
             ProspectSource.fetched_at.label("fetched_at"),
             _typed(fields, "address", "string").label("address"),
             cast(_typed(fields, "lat", "number"), Float).label("lat"),
@@ -153,8 +154,16 @@ def confirmed_demo() -> ColumnElement[bool]:
     return or_(source, seed)
 
 
+def _strict(expression: ColumnElement[bool]) -> ColumnElement[bool]:
+    """TRUE or FALSE, never NULL: a missing value (no position, no e-mail…) must read as "no", so that its negation
+    is "yes" and the prospect lands in the queue instead of vanishing from both lists."""
+    return func.coalesce(expression, false())
+
+
 def excluded() -> ColumnElement[bool]:
-    return or_(func.coalesce(Lead.review_status, "") == "rejected", suppressed(), opted_out(), confirmed_demo())
+    return _strict(
+        or_(func.coalesce(Lead.review_status, "") == "rejected", suppressed(), opted_out(), confirmed_demo())
+    )
 
 
 def qualified(src: Subquery, now: Optional[datetime] = None) -> ColumnElement[bool]:
@@ -162,21 +171,23 @@ def qualified(src: Subquery, now: Optional[datetime] = None) -> ColumnElement[bo
     now = _now(now)
     rule = policy.rules()
     address = func.btrim(src.c.address)
-    return and_(
-        heat_sql.known(Lead.full_name) == 1,
-        email_ok(),
-        phone_e164().is_not(None),
-        src.c.source_id.is_not(None),
-        src.c.fetched_at >= now - timedelta(days=rule.source_days),
-        heat_sql.known(src.c.address) == 1,
-        func.length(address) >= policy.MIN_ADDRESS_CHARS,
-        src.c.lat.between(-90, 90),
-        src.c.lon.between(-180, 180),
-        not_(and_(src.c.lat == 0, src.c.lon == 0)),
-        Lead.fit_score.is_not(None),
-        Lead.fit_score >= rule.min_fit,
-        Lead.qualification_scored_at >= now - timedelta(days=rule.fit_days),
-        not_(excluded()),
+    return _strict(
+        and_(
+            heat_sql.known(Lead.full_name) == 1,
+            email_ok(),
+            phone_e164().is_not(None),
+            src.c.source_id.is_not(None),
+            src.c.fetched_at >= now - timedelta(days=rule.source_days),
+            heat_sql.known(src.c.address) == 1,
+            func.length(address) >= policy.MIN_ADDRESS_CHARS,
+            src.c.lat.between(-90, 90),
+            src.c.lon.between(-180, 180),
+            not_(and_(src.c.lat == 0, src.c.lon == 0)),
+            Lead.fit_score.is_not(None),
+            Lead.fit_score >= rule.min_fit,
+            Lead.qualification_scored_at >= now - timedelta(days=rule.fit_days),
+            not_(excluded()),
+        )
     )
 
 
@@ -199,4 +210,4 @@ def hot(src: Subquery, now: Optional[datetime] = None) -> ColumnElement[bool]:
             not_(is_demo_source()),
         )
     )
-    return and_(qualified(src, now), intent)
+    return _strict(and_(qualified(src, now), intent))

@@ -12,6 +12,8 @@ import requests
 
 os.environ.setdefault("DATABASE_URL", os.environ.get("DATABASE_URL", ""))
 
+from prospect_fixtures import insert_rows, row  # noqa: E402
+
 from db.models import Lead  # noqa: E402
 from services.outreach_os import cities
 from services.outreach_os import heat as heat_rules  # noqa: E402
@@ -85,16 +87,19 @@ def test_leads_are_counted_per_town_by_heat_tier_whatever_the_spelling():
             {"full_name": "Scored", "city": "Nantes", "email": "s@s.example", "score": 90},
         ],
     )
+    insert_rows(account, [row("Q1", "Lyon", website="https://q1-lyon.fr"), row("Q2", "Lyon")])  # qualified prospects
     out = _asked(h)
+    # tiers count every lead; `ready` counts only what the common policy qualifies (CRM leads have no source, address
+    # or position): the two prospects, one with a website and one without, and the website never decides
     assert out["lyon"] == {
         "city": "Lyon",
         "key": "lyon",
-        "hot": 2,
+        "hot": 4,
         "warm": 0,
         "cold": 1,
-        "total": 3,
+        "total": 5,
         "ready": 2,
-        "site": 2,
+        "site": 1,
     }
     assert (out["saint etienne"]["hot"], out["saint etienne"]["total"]) == (1, 2)
     # a CRM score of 0 means "not scored"; a real one lifts the lead: (90 + 25 + 1) // 2 = 58 is warm, never hot
@@ -118,8 +123,8 @@ def test_a_town_without_a_value_a_rejected_prospect_or_a_deleted_lead_is_not_cou
             {"full_name": "Approved", "city": "Rouen", "review_status": "approved", **_full(7)},
         ],
     )
-    assert _asked(h) == {
-        "rouen": {"city": "Rouen", "key": "rouen", "hot": 2, "warm": 0, "cold": 0, "total": 2, "ready": 2, "site": 2}
+    assert _asked(h) == {  # no source, address or position on these CRM rows: counted by tier, none of them "ready"
+        "rouen": {"city": "Rouen", "key": "rouen", "hot": 2, "warm": 0, "cold": 0, "total": 2, "ready": 0, "site": 0}
     }
 
 
@@ -130,16 +135,12 @@ def test_the_figures_of_a_discovery_run_equal_the_heat_shown_on_every_prospect()
     assert len(items) > 3
     details = {i["id"]: requests.get(f"{API}/prospects/{i['id']}", headers=h).json() for i in items}
 
-    def row(i):
-        d = details[i["id"]]
-        ready = (
-            i["heat"]["tier"] == "hot"
-            and heat_rules.is_known(d["contact_phone"])
-            and heat_rules.is_known(d["contact_email"])
-        )
-        return (i["city"], i["heat"]["tier"], 1, int(ready), int(ready and heat_rules.is_known(d["website"])))
+    def per_prospect(i):
+        # fixture directories are demo provenance: the common policy never qualifies them, so none is "ready"
+        return (i["city"], i["heat"]["tier"], 1, 0, 0)
 
-    expected = cities.merge(row(i) for i in items if i["city"] and heat_rules.is_known(i["city"]))
+    assert details  # every prospect has its detail: the tiers below are the ones the page shows
+    expected = cities.merge(per_prospect(i) for i in items if i["city"] and heat_rules.is_known(i["city"]))
     got = requests.get(f"{API}/map/cities", headers=h).json()
     assert got == expected and got  # the same towns, tiers, ready leads and order: counted from the same rule
     assert sum(c["total"] for c in got) <= len(items)

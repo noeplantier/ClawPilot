@@ -42,26 +42,27 @@ export const markerColor = (p) => (p.email ? "#15803D" : p.phone || p.website ? 
 export const STATUS_COLOR = { pending: "#2563EB", approved: "#15803D", rejected: "#991B1B" };
 export const STATUS_LABEL = { pending: "to review", approved: "approved", rejected: "rejected" };
 
-// Source ids already imported: the search must not offer them a second time.
-export const knownIds = (mine) => new Set(mine.map((p) => p.external_id).filter(Boolean));
-
-// The map shows only the leads the server marked `map_ready`: hot, with a phone and an e-mail really known. The page never
-// recomputes that; the other prospects stay in the data so a place already imported is not offered a second time.
+// The map draws only the prospects the server qualified (`map_ready`: e-mail, phone, address and position on a fresh source,
+// a fit score; a website is never required). The page never recomputes that: the server decides before any limit.
 export const readyOnly = (mine) => mine.filter((p) => p.map_ready === true);
+
+// "Hot" means an observed, sourced commercial intent and nothing else; a qualified prospect without one is not hot.
+export const isHot = (p) => p.priority === "hot";
 
 // A place found by the search is drawn only when it published BOTH a phone and an e-mail: nothing else can be reached
 // by a person. A missing value is unknown, never a default; the places left out are counted, not hidden silently.
 export const reachablePlace = (p) => Boolean(p && p.phone && p.email);
 
 export function readySummary(mine) {
-  if (mine.length === 0) return "No prospect with a position yet.";
   const ready = readyOnly(mine);
-  const plural = (n) => (n === 1 ? "" : "s");
   if (ready.length === 0) {
-    return `No hot lead with a phone and an e-mail yet (${mine.length} prospect${plural(mine.length)} with a position, not hot or missing a phone or an e-mail).`;
+    return "No qualified prospect on the map yet: the incomplete ones wait in Leads, to enrich.";
   }
+  const plural = (n) => (n === 1 ? "" : "s");
+  const hot = ready.filter(isHot).length;
   const sites = ready.filter((p) => p.has_website).length;
-  return `${ready.length} hot lead${plural(ready.length)} with a phone and an e-mail, ${sites} with a website.`;
+  const intent = hot > 0 ? `${hot} hot (observed intent)` : "none hot: no commercial intent observed";
+  return `${ready.length} qualified prospect${plural(ready.length)} with e-mail, phone and address, ${sites} with a website, ${intent}.`;
 }
 
 // Room to keep free around the map for the floating panels, as Leaflet's [x, y] auto-pan paddings: a popup never opens under

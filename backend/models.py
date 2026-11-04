@@ -923,13 +923,41 @@ class MapProspectOut(BaseModel):
     signals: List[str] = Field(default_factory=list)  # keys detected now; a dismissed signal does not count
     created_at: Optional[datetime] = None
     heat: Optional[dict] = None  # {value, tier, info_pct}: the hottest prospects are listed first on the map
-    # The map shows only `map_ready` leads: hot, with a phone and an e-mail really known (the server decides).
-    map_ready: bool = False
+    # The map draws only prospects the common eligibility policy qualifies (the server decides, before the limit):
+    # e-mail, phone, address and position on a fresh source, a fit score. A website or WhatsApp is never required.
+    address: Optional[str] = None
+    eligible: bool = True
+    map_ready: bool = False  # kept for older clients: same meaning as `eligible`
+    priority: Literal["qualified", "hot"] = "qualified"  # "hot" only with an observed, sourced commercial intent
+    priority_label: Optional[str] = None
+    fit_score: Optional[int] = None
     has_phone: bool = False
     has_website: bool = False
     phone: Optional[str] = None
     email: Optional[str] = None
     website: Optional[str] = None
+
+
+class ToEnrichItem(BaseModel):
+    """A discovery prospect kept in the "to enrich" queue: not contactable by default, with what is missing."""
+
+    id: str
+    name: str
+    city: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    website: Optional[str] = None
+    review_status: Optional[str] = None
+    fit_score: Optional[int] = None
+    missing_fields: List[str] = Field(default_factory=list)  # eligibility.MISSING_FIELDS codes
+    created_at: Optional[datetime] = None
+
+
+class ToEnrichPage(BaseModel):
+    items: List[ToEnrichItem]
+    total: int
+    limit: int
+    offset: int
 
 
 class CityHeatOut(BaseModel):
@@ -941,12 +969,12 @@ class CityHeatOut(BaseModel):
     warm: int
     cold: int
     total: int
-    ready: int = 0  # hot leads with a phone and an e-mail really known
+    ready: int = 0  # qualified by the common eligibility policy (what the map draws)
     site: int = 0  # of those, with a website too
 
 
 class LeadSuggestionOut(BaseModel):
-    """A lead worth a person's time today: hot, with a phone and an e-mail really known."""
+    """A lead worth a person's time today: qualified by the common eligibility policy (e-mail, phone, address)."""
 
     id: str
     name: str
@@ -955,6 +983,7 @@ class LeadSuggestionOut(BaseModel):
     kind: Literal["prospect", "lead"]  # a discovery prospect (reviewed by a human) or a CRM lead
     review_status: Optional[str] = None  # None for a CRM lead
     heat: dict  # {value, tier, info_pct}
+    priority: Literal["qualified", "hot"] = "qualified"  # "hot" only with an observed, sourced commercial intent
     phone: str
     email: str
     website: Optional[str] = None

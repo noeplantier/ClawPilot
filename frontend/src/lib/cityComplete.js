@@ -135,7 +135,7 @@ export function suggest(query, { remote = [], remoteFor = "", stats = null, posi
   return out.sort((a, b) => a.cls - b.cls || hot(b) - hot(a) || a.order - b.order).slice(0, limit);
 }
 
-// The towns shown before anything is typed: where the hot leads are, reachable at once when my prospects there have a position.
+// The towns shown before anything is typed: where the qualified prospects are, reachable at once when my prospects there have a position.
 export function hottest(stats, limit = 6, positions = new Map()) {
   return (stats || [])
     .filter((s) => s.total > 0)

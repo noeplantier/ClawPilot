@@ -103,7 +103,7 @@ test("the dashboard suggests where to prospect and who to contact first, from th
   await show(FULL, "owner", FOCUS);
   const zone = byId("focus-zone");
   expect(zone.textContent).toContain("Lyon");
-  expect(zone.textContent).toContain("4 hot leads with a phone and an e-mail, 3 with a website");
+  expect(zone.textContent).toContain("4 qualified prospects with e-mail, phone and address, 3 with a website");
   expect(zone.getAttribute("href")).toBe("/app/map?city=Lyon");
   const lead = byId("focus-lead");
   expect(lead.textContent).toContain("Chez Marcel");
@@ -114,7 +114,7 @@ test("the dashboard suggests where to prospect and who to contact first, from th
 
 test("with nothing qualifying, the focus panel says why instead of inventing a suggestion", async () => {
   await show(FULL);
-  expect(byId("focus-empty").textContent).toContain("phone and an e-mail");
+  expect(byId("focus-empty").textContent).toContain("an e-mail, a phone and an address");
   expect(byId("focus-zone")).toBeNull();
   expect(byId("focus-lead")).toBeNull();
 });
