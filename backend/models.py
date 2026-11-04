@@ -973,6 +973,28 @@ class DraftJobSummary(BaseModel):
     ai_active: bool  # the provider is configured; false = jobs wait as "unavailable" and resume when it is
 
 
+class DraftListItem(BaseModel):
+    """One draft in the Outreach list: where it stands (the review itself is on the prospect's sheet)."""
+
+    id: str
+    lead_id: str
+    lead_name: str
+    city: Optional[str] = None
+    subject: str
+    status: Literal["draft", "approved", "rejected"]
+    auto: bool  # prepared by the automatic flow (AI), as opposed to written by a person
+    edited: bool  # a person changed the text
+    dry_run: bool
+    created_at: datetime
+
+
+class DraftListPage(BaseModel):
+    items: List[DraftListItem]
+    total: int
+    limit: int
+    offset: int
+
+
 class ToEnrichItem(BaseModel):
     """A discovery prospect kept in the "to enrich" queue: not contactable by default, with what is missing."""
 

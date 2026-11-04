@@ -6,11 +6,11 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.models import MessageDraft
+from db.models import Lead, MessageDraft
 
 
 async def create_idempotent(
@@ -51,6 +51,29 @@ async def list_for_lead(session: AsyncSession, account_id: uuid.UUID, lead_id: u
         .order_by(MessageDraft.created_at.desc())
     )
     return list(result.scalars())
+
+
+async def list_for_account(
+    session: AsyncSession, account_id: uuid.UUID, *, status: Optional[str], limit: int, offset: int
+) -> tuple[list[tuple[MessageDraft, str, Optional[str]]], int]:
+    """The organisation's drafts, newest first, with the prospect's name and city: (page, total). Server pagination."""
+    where = [MessageDraft.account_id == account_id, Lead.account_id == account_id, Lead.deleted_at.is_(None)]
+    if status:
+        where.append(MessageDraft.status == status)
+    total = (
+        await session.execute(
+            select(func.count()).select_from(MessageDraft).join(Lead, Lead.id == MessageDraft.lead_id).where(*where)
+        )
+    ).scalar_one()
+    rows = await session.execute(
+        select(MessageDraft, Lead.full_name, Lead.city)
+        .join(Lead, Lead.id == MessageDraft.lead_id)
+        .where(*where)
+        .order_by(MessageDraft.created_at.desc(), MessageDraft.id)
+        .limit(limit)
+        .offset(offset)
+    )
+    return [(d, name, city) for d, name, city in rows.all()], int(total)
 
 
 async def review(

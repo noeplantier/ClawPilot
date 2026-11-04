@@ -336,3 +336,35 @@ def test_the_endpoints_save_the_offer_and_say_honestly_when_the_ai_is_off():
     run = requests.post(f"{API}/prospects/draft-jobs/run", headers=h)
     assert run.status_code == 202
     assert requests.get(f"{API}/prospects/draft-jobs/summary").status_code in (401, 403)
+
+
+def test_the_outreach_list_shows_the_drafts_of_this_organisation_only_and_flags_the_automatic_ones():
+    uid = uuid.uuid4().hex[:8]
+    reg = requests.post(
+        f"{API}/auth/register",
+        json={
+            "email": f"dl_{uid}@test.example",
+            "password": uuid.uuid4().hex,
+            "full_name": "D",
+            "organization_name": f"DL {uid}",
+        },
+    )
+    h = {"Authorization": f"Bearer {reg.json()['access_token']}"}
+    mine = uuid.UUID(requests.get(f"{API}/auth/me", headers=h).json()["user"]["org_id"])
+    other = _account()
+    _offer(mine)
+    _offer(other)
+    insert_rows(mine, [row("Ma table"), row("Mon bar")])
+    insert_rows(other, [row("Pas à moi")])
+    prepare(mine, provider([]))
+    prepare(other, provider([]))
+    page = requests.get(f"{API}/prospects/drafts", headers=h).json()
+    assert page["total"] == 2 and {i["lead_name"] for i in page["items"]} == {"Ma table", "Mon bar"}
+    for item in page["items"]:
+        assert (
+            item["auto"] is True and item["edited"] is False and item["status"] == "draft" and item["dry_run"] is True
+        )
+    assert requests.get(f"{API}/prospects/drafts", headers=h, params={"status": "approved"}).json()["total"] == 0
+    assert requests.get(f"{API}/prospects/drafts", headers=h, params={"limit": 1}).json()["items"].__len__() == 1
+    assert requests.get(f"{API}/prospects/drafts", headers=h, params={"status": "sent"}).status_code == 422
+    assert requests.get(f"{API}/prospects/drafts").status_code in (401, 403)

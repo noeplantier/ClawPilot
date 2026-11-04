@@ -25,6 +25,8 @@ const Sending = lazy(pages.sending);
 const ProspectImport = lazy(pages.prospectImport);
 const ToEnrich = lazy(pages.toEnrich);
 const Offer = lazy(pages.offer);
+const Batches = lazy(pages.batches);
+const Drafts = lazy(pages.drafts);
 const Legal = lazy(() => import("@/pages/legal/Legal"));
 const Privacy = lazy(() => import("@/pages/legal/Privacy"));
 const Terms = lazy(() => import("@/pages/legal/Terms"));
@@ -76,6 +78,8 @@ function App() {
               <Route path="analytics" element={<Analytics />} />
               <Route path="settings" element={<Settings />} />
               <Route path="settings/offer" element={<Offer />} />
+              <Route path="batches" element={<Batches />} />
+              <Route path="drafts" element={<Drafts />} />
             </Route>
             <Route path="*" element={<Navigate to="/app/dashboard" replace />} />
           </Routes>

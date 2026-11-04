@@ -52,7 +52,9 @@ test("the Plantiers mark is the real logo of the site and is used by the shell a
   expect(fs.existsSync(path.join(SRC, "assets", "logo-mark.png"))).toBe(true);
   const logo = read(path.join(SRC, "components", "Logo.jsx"));
   expect(logo).toMatch(/assets\/logo-mark\.png/);
-  for (const f of ["components/Layout.jsx", "pages/Login.jsx", "pages/Register.jsx"]) expect(read(path.join(SRC, f))).toMatch(/Logo/);
+  for (const f of ["components/Layout.jsx", "components/AuthShell.jsx"]) expect(read(path.join(SRC, f))).toMatch(/Logo/);
+  // the sign-in pages carry the mark through the one frame they share
+  for (const f of ["pages/Login.jsx", "pages/Register.jsx"]) expect(read(path.join(SRC, f))).toMatch(/AuthShell/);
   const publicDir = path.join(SRC, "..", "public");
   for (const f of ["favicon-32.png", "icon-192.png", "icon-512.png", "apple-touch-icon.png", "og-image.jpg"]) {
     expect(fs.existsSync(path.join(publicDir, f))).toBe(true);

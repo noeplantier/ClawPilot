@@ -34,8 +34,8 @@ test("a returning visitor sees the app and the last data at once, even while the
   await page.unroute("**/api/**");
 
   // another screen: warmed up and cached, it opens without a blank state
-  await page.getByTestId("nav-group-outreach").click();
-  await page.getByTestId("nav-campaigns").click();
+  await page.getByTestId("nav-outreach").click();
+  await page.getByTestId("tab-campaigns").click();
   await expect(page).toHaveURL(/\/app\/campaigns/);
   await expect(page.getByRole("heading", { name: "Campaigns", exact: true })).toBeVisible();
 });
@@ -252,8 +252,8 @@ test("the map shows real places from the search, marks what is published and nev
 
 test("sources: discover from the world demo, see explained signals, page, add to the review queue; live sources say why they are off", async ({ page }) => {
   await register(page);
-  await page.getByTestId("nav-group-prospecting").click();
-  await page.getByTestId("nav-sources").click();
+  await page.getByTestId("nav-prospecting").click();
+  await page.getByTestId("tab-sources").click();
   await expect(page.getByTestId("sources-page")).toBeVisible();
   // The server runs with the flags off: live providers are shown but disabled, with the reason.
   await expect(page.getByTestId("source-openstreetmap-off")).toContainText("FEATURE_EXTERNAL_SOURCES");
@@ -416,8 +416,8 @@ test("the system page reports the real database and migrations, and probes OpenS
   await register(page);
   await page.route("**/api/system/health/overpass", (route) =>
     route.fulfill({ json: { ok: false, servers: [{ host: "overpass-api.de", ok: false, error: "OSError: Network is unreachable", ms: 3 }] } }));
-  await page.getByTestId("nav-group-control").click();
-  await page.getByTestId("nav-system-health").click();
+  await page.getByTestId("nav-control").click();
+  await page.getByTestId("tab-system").click();
   await expect(page.getByTestId("system-page")).toBeVisible();
   await expect(page.getByTestId("health-database")).toHaveAttribute("data-ok", "true");
   await expect(page.getByTestId("health-migrations")).toHaveAttribute("data-ok", "true");
@@ -439,8 +439,7 @@ test("the sidebar folds and remembers it; the map has one real basemap and every
   await expect(page.getByTestId("sidebar")).toHaveAttribute("data-folded", "true");
   await page.reload();
   await expect(page.getByTestId("sidebar")).toHaveAttribute("data-folded", "true"); // remembered
-  await page.getByTestId("nav-group-prospecting").click();
-  await page.getByTestId("nav-map-search").click();
+  await page.getByTestId("nav-prospecting").click(); // the map is the first tab of Prospection
 
   await expect(page.getByTestId("map")).toBeVisible();
   await expect(page.getByTestId("map-base-dark")).toHaveCount(0); // no light / dark variants
