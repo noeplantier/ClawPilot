@@ -71,6 +71,7 @@ export const offerApi = {
 
 export const prospectsApi = {
   // The "to enrich" queue: prospects not qualified yet, with what is missing (server pagination).
+  drafts: (params) => api.get("/prospects/drafts", { params }).then((r) => r.data),
   toEnrich: (params) => api.get("/prospects/to-enrich", { params }).then((r) => r.data),
   list: (params) => api.get("/prospects", { params }).then((r) => r.data),
   // `hideEmpty`: leave out the leads with no e-mail, phone or website (the answer still says how many there are: `empty`).

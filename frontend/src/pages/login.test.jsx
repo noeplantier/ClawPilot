@@ -1,4 +1,3 @@
-/* global MouseEvent */
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
@@ -58,10 +57,12 @@ describe("Login page", () => {
   test("renders centered card layout with brand, inputs, and accessible labels", async () => {
     await renderLogin();
 
-    // Check main container and centered card
-    const main = container.querySelector("main");
+    // The card sits in the middle of the free height (the page scrolls when it is short); it is the same frame as Register
+    const main = container.querySelector('[data-testid="auth-main"]');
     expect(main).not.toBeNull();
-    expect(main.className).toContain("my-auto");
+    expect(main.className).toContain("items-center");
+    expect(main.className).toContain("justify-center");
+    expect(container.querySelector('[data-testid="login-page"]').className).toContain("min-h-[100dvh]");
 
     // Brand and headings
     const logo = container.querySelector('[data-testid="brand-logo"]');
@@ -94,6 +95,20 @@ describe("Login page", () => {
 
     const registerLink = container.querySelector('[data-testid="goto-register-link"]');
     expect(registerLink).not.toBeNull();
+  });
+
+  test("prints no server status of its own: nothing here can be true or false about the server", async () => {
+    await renderLogin();
+    const text = container.textContent;
+    for (const claim of ["ONLINE", "v2.4", "verified", "operational", "healthy", "uptime"]) expect(text).not.toContain(claim);
+    expect(text).toContain("Nothing is sent without a person");
+  });
+
+  test("the fields are what a password manager looks for", async () => {
+    await renderLogin();
+    expect(container.querySelector("#email-input").getAttribute("name")).toBe("username");
+    expect(container.querySelector("#password-input").getAttribute("name")).toBe("password");
+    expect(container.querySelector("form").querySelectorAll("input")).toHaveLength(2);
   });
 
   const setInputValue = (input, value) => {

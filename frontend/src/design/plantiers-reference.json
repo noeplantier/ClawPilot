@@ -1,0 +1,18 @@
+{
+  "_source": "noeplantier/plantiers (the source of plantiers.com), read-only, commit 10dcb5dee614743b4ff23fb3c8497abaa65176c5: src/lib/tokens.ts, tailwind.config.js, src/index.css, src/components/ui/Button.tsx. Values copied, nothing imported.",
+  "void": { "DEFAULT": "#07060B", "elevated": "#0C0A14", "surface": "#120F1E" },
+  "brand": { "300": "#B79BFF", "400": "#9B74FA", "500": "#7C3AED", "600": "#6D28D9" },
+  "leaf": { "400": "#4ADE80", "500": "#22C55E" },
+  "glow": { "brand": "0 0 32px rgba(124, 58, 237, 0.35)", "brandSoft": "0 0 60px rgba(124, 58, 237, 0.18)" },
+  "textOpacity": { "primary": 0.95, "secondary": 0.72, "tertiary": 0.58 },
+  "fonts": { "sans": "Inter", "mono": "JetBrains Mono" },
+  "focus": "ring-2 ring-brand-400 ring-offset-2 ring-offset-void",
+  "button": {
+    "radius": "rounded-xl",
+    "primary": "bg-brand-500, inset 0 1px 0 rgba(255,255,255,0.35), 0 8px 24px -6px rgba(124,58,237,0.6); hover: -translate-y-0.5, bg-brand-400, 0 14px 40px -8px rgba(124,58,237,0.85); active: scale .97",
+    "secondary": "bg-white/[0.04] border-white/[0.1] hover:bg-white/[0.08] hover:border-white/20",
+    "primaryShadow": "inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 8px 24px -6px rgba(124, 58, 237, 0.6)",
+    "primaryHoverShadow": "inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 0 0 1px rgba(211, 194, 255, 0.5), 0 14px 40px -8px rgba(124, 58, 237, 0.85)"
+  },
+  "motion": "transform and opacity only; every loop is skipped under prefers-reduced-motion"
+}

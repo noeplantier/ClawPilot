@@ -10,7 +10,7 @@ import hashlib
 import os
 import uuid
 from datetime import date
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
 from sqlalchemy import select
@@ -27,6 +27,8 @@ from models import (
     DraftEditIn,
     DraftJobOut,
     DraftJobSummary,
+    DraftListItem,
+    DraftListPage,
     DraftOut,
     HeatOut,
     OutreachSettingsOut,
@@ -385,6 +387,35 @@ async def lead_draft_job(
     lead = await _require_prospect(session, user, lead_id)
     job = await draft_job_repo.latest_for_lead(session, _account(user), lead.id)
     return _job_out(job) if job else None
+
+
+@router.get("/drafts", response_model=DraftListPage)
+async def list_drafts(
+    status: Optional[Literal["draft", "approved", "rejected"]] = None,
+    limit: int = Query(25, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Every draft of the organisation, newest first (the AI ones included), to review. Reviewing, editing and approving
+    happen on the prospect's sheet; nothing here sends anything."""
+    rows, total = await draft_repo.list_for_account(session, _account(user), status=status, limit=limit, offset=offset)
+    items = [
+        DraftListItem(
+            id=str(d.id),
+            lead_id=str(d.lead_id),
+            lead_name=name,
+            city=city,
+            subject=d.subject,
+            status=d.status,
+            auto=d.created_by_user_id is None and d.template_version.startswith("ai-"),
+            edited=d.edited_at is not None,
+            dry_run=d.dry_run,
+            created_at=d.created_at,
+        )
+        for d, name, city in rows
+    ]
+    return DraftListPage(items=items, total=total, limit=limit, offset=offset)
 
 
 @router.get("/to-enrich", response_model=ToEnrichPage)

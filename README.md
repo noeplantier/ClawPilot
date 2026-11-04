@@ -167,7 +167,7 @@ observation never counts against a prospect. See the screens below.
 
 ### Screens
 
-Sign in, then open **Prospects**, **Review queue** or **Sending** in the sidebar (`frontend/`, React in JavaScript).
+Sign in: the sidebar has six entries (Vue d’ensemble, Prospection, Leads, Batches, Outreach, Pilotage); the screens of each are the tabs at the top of its content (`frontend/`, React in JavaScript).
 
 | Screen | Route | What it shows |
 |---|---|---|
