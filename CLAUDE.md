@@ -25,7 +25,7 @@ pour l'installation et `docs/cloud-sessions.md` pour la feuille de route en cour
 - Tâches Celery : wrappers synchrones autour des repos async via `tasks/_bridge.run_async`. Toute nouvelle
   tâche doit être déclarée dans `include=[...]` de `celery_app.py` (pas d'autodiscover). Offre gratuite sans service worker :
   `EMBEDDED_WORKER=1` fait lancer par `start.sh` le worker + beat dans le conteneur de l'API (`embedded_worker.sh`, désactivé par
-  défaut, refuse sans broker) ; ne jamais le cumuler avec un vrai `clawpilot-beat` (deux beats = chaque tâche part deux fois).
+  défaut, refuse sans broker) ; ne jamais le cumuler avec un vrai service beat du Blueprint (deux beats = chaque tâche part deux fois).
 - Tout changement de schéma = migration Alembic. `alembic check` doit rester vert.
   - Alembic **ne détecte pas** les changements de contrainte CHECK : écrire la migration à la main.
   - Les contraintes sont nommées avec un nom **court** (`"kind"`) : la convention de nommage ajoute le préfixe
