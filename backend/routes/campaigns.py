@@ -233,6 +233,15 @@ async def delete_campaign(
     return {"ok": True}
 
 
+def _refuse_individual(campaign) -> None:  # type: ignore[no-untyped-def]
+    """An individual campaign (one approved draft per recipient) has its own flow: the step engine never runs it."""
+    if campaign.kind == "individual":
+        raise HTTPException(
+            status_code=409,
+            detail="This campaign is individual: use Outreach > Campagne individuelle (selection, review, planning)",
+        )
+
+
 @router.post("/{campaign_id}/assign-leads", response_model=Campaign)
 async def assign_leads(
     campaign_id: str,
@@ -244,6 +253,7 @@ async def assign_leads(
     existing = await campaign_repo.get_campaign(session, account_id, campaign_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Not found")
+    _refuse_individual(existing)
 
     # Validate lead ids belong to org (leads live in Postgres — see repositories/lead_repo.py)
     found = await lead_repo.get_leads_by_ids(session, account_id, payload.lead_ids)
@@ -388,6 +398,7 @@ async def run_step(
     if not c:
         raise HTTPException(status_code=404, detail="Not found")
 
+    _refuse_individual(c)
     steps = sorted(c.steps, key=lambda s: s.step_index)
     if step_index < 0 or step_index >= len(steps):
         raise HTTPException(status_code=400, detail=f"Step index {step_index} out of range (0..{len(steps)-1})")
@@ -425,6 +436,7 @@ async def launch_campaign(
     c = await campaign_repo.get_campaign(session, account_id, campaign_id)
     if not c:
         raise HTTPException(status_code=404, detail="Not found")
+    _refuse_individual(c)
     steps = sorted(c.steps, key=lambda s: s.step_index)
     if not steps:
         raise HTTPException(status_code=400, detail="This campaign has no steps")
@@ -450,6 +462,9 @@ async def schedule_campaign(
     session: AsyncSession = Depends(get_db_session),
 ):
     """Enqueue every step × every assigned lead with cumulative delay_hours."""
+    existing = await campaign_repo.get_campaign(session, uuid.UUID(user["org_id"]), campaign_id)
+    if existing is not None:
+        _refuse_individual(existing)
     res = await scheduler.enqueue_campaign(session, campaign_id, user["org_id"])
     if res.get("error"):
         raise HTTPException(status_code=400, detail=res["error"])

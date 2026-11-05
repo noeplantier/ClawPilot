@@ -54,9 +54,10 @@ export const SECTIONS = [
     label: "Outreach",
     to: "/app/drafts",
     icon: "PaperPlaneTilt",
-    blurb: "Brouillons IA, campagnes et séquences, boîte de réception, canaux.",
+    blurb: "Brouillons IA, campagne individuelle, séquences, boîte de réception, canaux.",
     tabs: [
       { to: "/app/drafts", label: "Brouillons IA", testId: "tab-drafts" },
+      { to: "/app/launch", label: "Campagne individuelle", testId: "tab-launch" },
       { to: "/app/campaigns", label: "Campagnes et séquences", testId: "tab-campaigns" },
       { to: "/app/messages", label: "Boîte de réception", testId: "tab-messages" },
       { to: "/app/sending", label: "Canaux", testId: "tab-sending" },

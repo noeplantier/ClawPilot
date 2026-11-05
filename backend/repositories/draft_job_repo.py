@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Collection, Optional
 
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -31,10 +31,16 @@ async def set_offer(session: AsyncSession, account_id: uuid.UUID, offer: Optiona
 
 
 async def candidates(
-    session: AsyncSession, account_id: uuid.UUID, offer: str, limit: int, now: Optional[datetime] = None
+    session: AsyncSession,
+    account_id: uuid.UUID,
+    offer: str,
+    limit: int,
+    now: Optional[datetime] = None,
+    only: Optional[Collection[uuid.UUID]] = None,
 ) -> list[uuid.UUID]:
     """Qualified prospects that have no job for this offer yet, or changed since their last job. Hot ones first.
-    Whether the *data* really changed is decided by the idempotency key (the same key never prepares a second draft)."""
+    Whether the *data* really changed is decided by the idempotency key (the same key never prepares a second draft).
+    `only` restricts the search to those prospects (the recipients of one campaign)."""
     src = eligibility_sql.latest_source(account_id)
     latest = (
         select(
@@ -46,6 +52,7 @@ async def candidates(
         .subquery("latest_job")
     )
     scores = heat_sql.latest_scores()
+    scope = [Lead.id.in_(list(only))] if only is not None else []
     rows = await session.execute(
         select(Lead.id)
         .join(src, src.c.lead_id == Lead.id)
@@ -57,6 +64,7 @@ async def candidates(
             IN_DISCOVERY,
             eligibility_sql.qualified(src, now),
             or_(latest.c.lead_id.is_(None), latest.c.offer_hash != offer, Lead.updated_at > latest.c.at),
+            *scope,
         )
         .order_by(
             eligibility_sql.hot(src, now).desc(),
@@ -104,8 +112,15 @@ async def create(
     return (await session.execute(stmt)).scalar_one_or_none() is not None
 
 
-async def due(session: AsyncSession, account_id: uuid.UUID, limit: int, now: datetime) -> list[uuid.UUID]:
-    """Jobs to run now: queued ones, failed/unavailable ones whose wait is over, and ones a restart left generating."""
+async def due(
+    session: AsyncSession,
+    account_id: uuid.UUID,
+    limit: int,
+    now: datetime,
+    only: Optional[Collection[uuid.UUID]] = None,
+) -> list[uuid.UUID]:
+    """Jobs to run now: queued ones, failed/unavailable ones whose wait is over, and ones a restart left generating.
+    `only` restricts them to the jobs of those prospects."""
     retry = [
         (DraftJob.status == status)
         & (DraftJob.updated_at <= now - timedelta(seconds=wait))
@@ -117,7 +132,11 @@ async def due(session: AsyncSession, account_id: uuid.UUID, limit: int, now: dat
     )
     rows = await session.execute(
         select(DraftJob.id)
-        .where(DraftJob.account_id == account_id, or_(DraftJob.status == "queued", stale, *retry))
+        .where(
+            DraftJob.account_id == account_id,
+            or_(DraftJob.status == "queued", stale, *retry),
+            *([DraftJob.lead_id.in_(list(only))] if only is not None else []),
+        )
         .order_by(DraftJob.created_at, DraftJob.id)
         .limit(limit)
     )

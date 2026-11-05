@@ -3,7 +3,7 @@ autogenerate and for `Base.metadata.create_all()` in tests."""
 
 from db.models.account import Account, User
 from db.models.agent import Agent
-from db.models.campaign import Campaign, CampaignLead, CampaignStep, SendPolicy
+from db.models.campaign import Campaign, CampaignDispatch, CampaignLead, CampaignStep, SendPolicy
 from db.models.consent import ConsentCurrent, ConsentRecord
 from db.models.job_run import JobRun
 from db.models.lead import Contact, Lead, LeadScore, LeadSource
@@ -43,6 +43,7 @@ __all__ = [
     "User",
     "Agent",
     "Campaign",
+    "CampaignDispatch",
     "CampaignLead",
     "CampaignStep",
     "SendPolicy",

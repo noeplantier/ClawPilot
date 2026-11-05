@@ -39,7 +39,7 @@ test("every section opens its first screen and its tabs reach the others; the ol
     ["nav-prospecting", /\/app\/map$/, ["tab-map", "tab-sources", "tab-import"]],
     ["nav-leads", /\/app\/leads$/, ["tab-crm", "tab-pipeline", "tab-prospects", "tab-review", "tab-to-enrich"]],
     ["nav-batches", /\/app\/batches$/, ["tab-batches"]],
-    ["nav-outreach", /\/app\/drafts$/, ["tab-drafts", "tab-campaigns", "tab-messages", "tab-sending"]],
+    ["nav-outreach", /\/app\/drafts$/, ["tab-drafts", "tab-launch", "tab-campaigns", "tab-messages", "tab-sending"]],
     ["nav-control", /\/app\/settings$/, ["tab-offer", "tab-settings", "tab-agents", "tab-system"]],
     ["nav-overview", /\/app\/dashboard$/, ["tab-dashboard", "tab-analytics"]],
   ];
@@ -52,7 +52,7 @@ test("every section opens its first screen and its tabs reach the others; the ol
   await page.getByTestId("tab-pipeline").click();
   await expect(page).toHaveURL(/\/app\/leads\?view=kanban$/);
   await expect(page.getByTestId("tab-pipeline")).toHaveAttribute("aria-current", "page");
-  for (const route of ["/app/campaigns", "/app/messages", "/app/sending", "/app/agents", "/app/analytics", "/app/system", "/app/sources", "/app/prospects", "/app/prospects/review", "/app/prospects/import", "/app/prospects/to-enrich", "/app/settings/offer"]) {
+  for (const route of ["/app/campaigns", "/app/messages", "/app/sending", "/app/agents", "/app/analytics", "/app/system", "/app/sources", "/app/prospects", "/app/prospects/review", "/app/prospects/import", "/app/prospects/to-enrich", "/app/settings/offer", "/app/launch"]) {
     await page.goto(route);
     await expect(page.getByTestId("section-bar")).toBeVisible(); // a direct route lands inside its section, with its tabs
   }

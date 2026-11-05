@@ -224,6 +224,18 @@ curl -s -X POST localhost:8000/api/outbound/<message_id>/simulate -H "$H" -H 'co
 Endpoints (`/api/outbound`): `dispatch`, list, detail (with events), `simulate` (dry-run only), `limits` (GET/PUT), `status`,
 `test-send`.
 
+### Individual campaign (100 personalised e-mails)
+
+**Outreach › Campagne individuelle** (`/app/launch`, API `/api/launches`) prepares a campaign where every recipient gets his own message:
+up to 100 distinct establishments (duplicates, suppressed, bounced, replied, other-campaign and unauthorised contacts excluded, each with
+its reason), one AI draft per recipient from the existing draft flow, a review (evidence used, channel authorisation, blockers: unresolved
+variables, unsourced facts), then **Planifier les messages approuvés**. Nothing is sent while preparing: each planned message goes through
+the common dispatch with every gate checked again at its own send time (kill switch, pause, limits, send window, suppression, reply,
+sandbox, allowlist), is never retried after an unclear provider result, and is tracked honestly (planned / accepted by SMTP / failed /
+reply / opt-out; never "delivered"). With a Hostinger SMTP, a scraped contact without opt-in is **not** authorised to receive a campaign:
+an available quota is not an authorisation. A worker and the Beat must run (`EMBEDDED_WORKER=1` on a free plan). Full flow, gates and
+exact UI actions: [`docs/campaign-launch.md`](docs/campaign-launch.md).
+
 ### Tests
 
 `cd backend && pytest tests/` (server running, see `.github/workflows/ci.yml`); `cd frontend && npm test -- --watchAll=false`;

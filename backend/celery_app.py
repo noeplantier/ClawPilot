@@ -36,6 +36,7 @@ celery_app = Celery(
         "tasks.prospecting_tasks",
         "tasks.qualification_tasks",
         "tasks.health_tasks",
+        "tasks.campaign_tasks",
     ],
 )
 
@@ -55,6 +56,7 @@ celery_app.conf.update(
         "tasks.prospecting_tasks.*": {"queue": "automation"},
         "tasks.qualification_tasks.*": {"queue": "automation"},
         "tasks.health_tasks.*": {"queue": "automation"},
+        "tasks.campaign_tasks.*": {"queue": "sends"},
     },
     beat_schedule={
         # Safety net for apply_async(eta=...) sends that got lost (e.g. a
@@ -74,6 +76,12 @@ celery_app.conf.update(
             "task": "tasks.qualification_tasks.score_enriched_leads",
             "schedule": crontab(hour=3, minute=30),
             "options": {"queue": "automation"},
+        },
+        # The planned messages of the individual campaigns: each is checked again at the moment it would leave.
+        "send-due-campaign-messages": {
+            "task": "tasks.campaign_tasks.process_due_dispatches",
+            "schedule": 60.0,
+            "options": {"queue": "sends"},
         },
         "celery-beat-health-heartbeat": {
             "task": "tasks.health_tasks.record_beat_heartbeat",

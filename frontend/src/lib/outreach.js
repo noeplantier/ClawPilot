@@ -64,6 +64,22 @@ export const draftJobsApi = {
   forLead: (id) => api.get(`/prospects/${id}/draft-job`).then((r) => r.data),
 };
 
+export const launchApi = {
+  // Campagnes individuelles : un brouillon relu par destinataire, planifié puis envoyé un à un. Rien ne part d'ici.
+  provider: () => api.get("/launches/provider").then((r) => r.data),
+  list: () => api.get("/launches").then((r) => r.data),
+  create: (body) => api.post("/launches", body).then((r) => r.data),
+  topUp: (id, size) => api.post(`/launches/${id}/top-up`, { size }).then((r) => r.data),
+  overview: (id) => api.get(`/launches/${id}`).then((r) => r.data),
+  generateDrafts: (id) => api.post(`/launches/${id}/drafts`).then((r) => r.data),
+  review: (id, params) => api.get(`/launches/${id}/review`, { params }).then((r) => r.data),
+  reviewDrafts: (id, draftIds, decision) => api.post(`/launches/${id}/review-drafts`, { draft_ids: draftIds, decision }).then((r) => r.data),
+  plan: (id) => api.get(`/launches/${id}/plan`).then((r) => r.data),
+  schedule: (id, expectedCount) => api.post(`/launches/${id}/schedule`, { expected_count: expectedCount }).then((r) => r.data),
+  cancel: (id) => api.post(`/launches/${id}/cancel`).then((r) => r.data),
+  tracking: (id, params) => api.get(`/launches/${id}/tracking`, { params }).then((r) => r.data),
+};
+
 export const offerApi = {
   get: () => api.get("/settings/offer").then((r) => r.data),
   put: (body) => api.put("/settings/offer", body).then((r) => r.data),
