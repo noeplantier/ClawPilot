@@ -16,18 +16,30 @@ from sqlalchemy import (
     Text,
     text,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, CITEXT, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db.base import Base, SoftDeleteMixin, TimestampMixin, UUIDPKMixin
 
 CAMPAIGN_STATUSES = ("draft", "running", "paused", "completed")
+# One planned message of an individual campaign. `scheduled` waits for its time; `sending` is the marker taken just
+# before the send ledger is written (a row stuck there is reconciled, never blindly retried); `accepted` = the channel
+# adapter took the message (what happened next lives in `outbound_messages`: reply, bounce, opposition); `unknown` = the
+# outcome could not be established and is never retried; `skipped` = a gate stopped it (reason in `last_reason`);
+# `cancelled` = a person did.
+DISPATCH_STATUSES = ("scheduled", "sending", "accepted", "failed", "unknown", "skipped", "cancelled")
 CHANNELS = ("email", "whatsapp")
+
+
+CAMPAIGN_KINDS = ("sequence", "individual")
 
 
 class Campaign(Base, UUIDPKMixin, TimestampMixin, SoftDeleteMixin):
     __tablename__ = "campaigns"
-    __table_args__ = (CheckConstraint("status IN ('draft','running','paused','completed')", name="status"),)
+    __table_args__ = (
+        CheckConstraint("status IN ('draft','running','paused','completed')", name="status"),
+        CheckConstraint("kind IN ('sequence','individual')", name="kind"),
+    )
 
     account_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False, index=True
@@ -35,6 +47,9 @@ class Campaign(Base, UUIDPKMixin, TimestampMixin, SoftDeleteMixin):
     name: Mapped[str] = mapped_column(String, nullable=False)
     goal: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String, nullable=False, server_default="draft")
+    # "sequence" = steps (templates) run by the campaign engine; "individual" = one approved, personalised draft per
+    # recipient, planned in campaign_dispatches and sent one by one (no steps, never run by the sequence engine).
+    kind: Mapped[str] = mapped_column(String, nullable=False, server_default="sequence")
     channels: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=False, server_default=text("'{email}'"))
     agent_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("agents.id", ondelete="SET NULL"), nullable=True
@@ -117,3 +132,54 @@ class SendPolicy(Base, UUIDPKMixin, TimestampMixin):
     max_per_day: Mapped[int] = mapped_column(Integer, nullable=False, server_default="20")
     min_delay_seconds: Mapped[int] = mapped_column(Integer, nullable=False, server_default="60")
     sending_paused: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+
+
+class CampaignDispatch(Base, UUIDPKMixin, TimestampMixin):
+    """The plan of one message: one prepared, approved draft for one recipient, at the earliest time it may leave.
+
+    Created by "Planifier les messages approuvés"; consumed by the scheduled task that sends each one through the same
+    dispatch as every other path (services/campaign_launch.py). Nothing is sent by writing this row."""
+
+    __tablename__ = "campaign_dispatches"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('scheduled','sending','accepted','failed','unknown','skipped','cancelled')", name="status"
+        ),
+        Index("uq_campaign_dispatches_campaign_lead", "campaign_id", "lead_id", unique=True),
+        # a prospect has at most one message planned or in flight, whatever the campaign
+        Index(
+            "uq_campaign_dispatches_active_lead",
+            "account_id",
+            "lead_id",
+            unique=True,
+            postgresql_where=text("status IN ('scheduled','sending')"),
+        ),
+        Index("ix_campaign_dispatches_due", "status", "planned_at"),
+        Index("ix_campaign_dispatches_account_campaign", "account_id", "campaign_id", "status"),
+    )
+
+    account_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False
+    )
+    campaign_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("campaigns.id", ondelete="CASCADE"), nullable=False
+    )
+    lead_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("leads.id", ondelete="CASCADE"), nullable=False
+    )
+    draft_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("message_drafts.id", ondelete="SET NULL"), nullable=True
+    )
+    message_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("outbound_messages.id", ondelete="SET NULL"), nullable=True
+    )
+    # the address at planning time: a change of address stops the send
+    to_email: Mapped[str] = mapped_column(CITEXT, nullable=False)
+    status: Mapped[str] = mapped_column(String, nullable=False, server_default="scheduled")
+    planned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    last_reason: Mapped[str | None] = mapped_column(String, nullable=True)
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )

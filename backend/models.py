@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
-from typing import Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
@@ -1161,3 +1161,152 @@ class SuggestionCreateOut(BaseModel):
     assigned: int
     left_out: int
     note: str
+
+
+# ---------------------------------------------------------------- individual campaigns ("launches")
+class LaunchCreateIn(BaseModel):
+    name: str = Field(default="Campagne individuelle", min_length=2, max_length=120)
+    size: int = Field(default=100, ge=1, le=100)
+
+
+class LaunchTopUpIn(BaseModel):
+    size: int = Field(default=100, ge=1, le=100)
+
+
+class LaunchScheduleIn(BaseModel):
+    expected_count: int = Field(
+        ge=0, le=100
+    )  # the number the person was shown: refused if it is no longer the real one
+
+
+class LaunchReviewIn(BaseModel):
+    draft_ids: List[str] = Field(min_length=1, max_length=100)
+    decision: Literal["approve", "reject"]
+
+
+class LaunchProviderOut(BaseModel):
+    id: str
+    label: str
+    host: Optional[str] = None
+    cold_outreach: Literal["opt_in_required", "unverified", "not_configured"]
+    restriction: str
+
+
+class LaunchGatesOut(BaseModel):
+    """What stands between a planned message and the network, right now. Names and numbers only: never a secret."""
+
+    provider: LaunchProviderOut
+    dry_run: bool
+    live: bool
+    kill_switch: bool
+    paused: bool
+    sandbox: bool
+    allowlist_size: int
+    sender_configured: bool
+    smtp_complete: bool
+    max_per_day: int
+    max_per_hour: int
+    min_delay_seconds: int
+    window_start_hour: int
+    window_end_hour: int
+    timezone: str
+    timezone_source: Literal["lead_country", "account_default"] = "lead_country"  # whose zone the window is read in
+    sent_today: int
+    sent_last_hour: int
+    next_allowed_at: Optional[datetime] = None
+    scheduler: Dict[str, Any] = Field(
+        default_factory=dict
+    )  # worker and beat seen or not: the plan only runs if they run
+
+
+class LaunchExcludedOut(BaseModel):
+    lead_id: str
+    name: str
+    city: Optional[str] = None
+    email: Optional[str] = None
+    code: str
+    label: str
+
+
+class LaunchOut(BaseModel):
+    id: str
+    name: str
+    status: str
+    created_at: datetime
+    recipients: int
+    planned: int = 0
+    sent: int = 0
+
+
+class LaunchCreatedOut(BaseModel):
+    launch: LaunchOut
+    requested: int
+    selected: int
+    scanned: int
+    not_approved: int  # prospects still waiting for a person's validation (not listed: they are not candidates)
+    excluded: List[LaunchExcludedOut]
+
+
+class LaunchOverviewOut(BaseModel):
+    launch: LaunchOut
+    stages: Dict[str, int]  # excluded | no_draft | to_review | rejected | blocked | ready | planned | launched
+    exclusions: Dict[str, int]
+    exclusion_labels: Dict[str, str]
+    dispatch: Dict[str, int]
+    draft_jobs: Dict[str, int]  # the automatic draft of the recipients still missing, by state
+    gates: LaunchGatesOut
+
+
+class LaunchRowOut(BaseModel):
+    lead_id: str
+    name: str
+    city: Optional[str] = None
+    email: Optional[str] = None
+    stage: str
+    exclusion: Optional[Dict[str, str]] = None
+    draft: Optional[Dict[str, Any]] = None
+    draft_job: Optional[Dict[str, Any]] = None
+    evidence: Dict[str, Any]
+    authorization: Dict[str, Any]
+    problems: List[Dict[str, Any]]
+    dispatch: Optional[Dict[str, Any]] = None
+
+
+class LaunchReviewPageOut(BaseModel):
+    total: int
+    items: List[LaunchRowOut]
+
+
+class LaunchPlanOut(BaseModel):
+    selected: int
+    sendable: int
+    stages: Dict[str, int]
+    exclusions: Dict[str, int]
+    exclusion_labels: Dict[str, str]
+    schedule: Dict[str, Any]
+    blockers: List[Dict[str, str]]
+    warnings: List[Dict[str, str]]
+    gates: LaunchGatesOut
+    generated_at: datetime
+    scheduled: Optional[int] = None  # set by POST /schedule: how many were planned
+
+
+class LaunchTrackingRowOut(BaseModel):
+    lead_id: str
+    name: str
+    city: Optional[str] = None
+    email: str
+    state: str
+    label: str
+    reason: Optional[str] = None
+    planned_at: datetime
+    dispatched_at: Optional[datetime] = None
+    adapter: Optional[str] = None
+    dry_run: Optional[bool] = None
+
+
+class LaunchTrackingOut(BaseModel):
+    counts: Dict[str, int]
+    labels: Dict[str, str]
+    total: int
+    items: List[LaunchTrackingRowOut]

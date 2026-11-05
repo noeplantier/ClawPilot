@@ -17,7 +17,7 @@ import os
 import time
 import uuid
 from datetime import date, datetime, timezone
-from typing import Any, Awaitable, Callable, Optional
+from typing import Any, Awaitable, Callable, Collection, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -36,6 +36,7 @@ logger = logging.getLogger(__name__)
 
 CANDIDATES = 40  # prospects looked at per sweep
 BATCH_BUDGET = 10  # drafts prepared per sweep (the provider's free limit is not ours to spend)
+CAMPAIGN_BATCH_BUDGET = 25  # a sweep started for the recipients of one campaign: a person asked for these drafts
 CONCURRENCY = 2  # drafts in flight at once
 _running: set[uuid.UUID] = set()
 _background: set[asyncio.Task[None]] = set()
@@ -100,14 +101,18 @@ def _key(account_id: uuid.UUID, lead_id: uuid.UUID, offer: str, language: str, d
 
 
 async def record_jobs(
-    session_factory: async_sessionmaker[AsyncSession], account_id: uuid.UUID, now: datetime
+    session_factory: async_sessionmaker[AsyncSession],
+    account_id: uuid.UUID,
+    now: datetime,
+    only: Optional[Collection[uuid.UUID]] = None,
 ) -> dict[str, int]:
-    """Step 1: one job per eligible prospect whose draft is not already prepared (same key: nothing is redone)."""
+    """Step 1: one job per eligible prospect whose draft is not already prepared (same key: nothing is redone).
+    `only` restricts it to those prospects (the recipients of one campaign)."""
     created = {"queued": 0, "offer_required": 0}
     async with session_factory() as session:
         offer = ai_draft.valid_offer(await draft_job_repo.offer_of(session, account_id))
         offer_key = ai_draft.offer_hash(offer)
-        for lead_id in await draft_job_repo.candidates(session, account_id, offer_key, CANDIDATES, now):
+        for lead_id in await draft_job_repo.candidates(session, account_id, offer_key, CANDIDATES, now, only):
             lead = await session.get(Lead, lead_id)
             if lead is None:
                 continue
@@ -246,15 +251,18 @@ async def prepare(
     session_factory: async_sessionmaker[AsyncSession] = AsyncSessionLocal,
     generator: Optional[Generator] = None,
     now: Callable[[], datetime] = utcnow,
+    only: Optional[Collection[uuid.UUID]] = None,
+    budget: int = BATCH_BUDGET,
 ) -> dict[str, int]:
-    """One sweep: record the jobs, then prepare up to BATCH_BUDGET of them, CONCURRENCY at a time. Never raises."""
+    """One sweep: record the jobs, then prepare up to `budget` of them, CONCURRENCY at a time. Never raises.
+    `only` restricts the sweep to those prospects (the recipients of one campaign)."""
     started = time.monotonic()
     run = generator or ai_svc.complete
     out = {"queued": 0, "offer_required": 0, "ready": 0, "failed": 0, "unavailable": 0, "skipped": 0}
     try:
-        out.update(await record_jobs(session_factory, account_id, now()))
+        out.update(await record_jobs(session_factory, account_id, now(), only))
         async with session_factory() as session:
-            ids = await draft_job_repo.due(session, account_id, BATCH_BUDGET, now())
+            ids = await draft_job_repo.due(session, account_id, budget, now(), only)
         gate = asyncio.Semaphore(CONCURRENCY)
         limited = asyncio.Event()
 
@@ -279,19 +287,20 @@ async def prepare(
     return out
 
 
-def kick(account_id: uuid.UUID) -> None:
+def kick(account_id: uuid.UUID, *, only: Optional[Collection[uuid.UUID]] = None, budget: int = BATCH_BUDGET) -> bool:
     """Start a sweep for this organisation in the background (one at a time per organisation). Call after the data is
-    committed. Nothing waits for it."""
+    committed. Nothing waits for it. False when a sweep is already running (nothing was started)."""
     if account_id in _running:
-        return
+        return False
     _running.add(account_id)
 
     async def go() -> None:
         try:
-            await prepare(account_id)
+            await prepare(account_id, only=only, budget=budget)
         finally:
             _running.discard(account_id)
 
     task = asyncio.get_running_loop().create_task(go())
     _background.add(task)
     task.add_done_callback(_background.discard)
+    return True

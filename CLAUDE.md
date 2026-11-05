@@ -55,6 +55,11 @@ pour l'installation et `docs/cloud-sessions.md` pour la feuille de route en cour
   (`OUTREACH_SANDBOX`, `OUTREACH_LIVE_ALLOWLIST`) est actif par défaut, et la ligne `sending` est validée **avant** l'appel du
   fournisseur (au plus une fois ; issue inconnue = jamais de renvoi automatique). Voir `docs/go-live-email.md`. Un refus
   est journalisé **avant** de lever l'`HTTPException` (`get_db_session` annule la transaction sur erreur).
+- Campagne individuelle (`services/campaign_launch.py`, `routes/launches.py`, table `campaign_dispatches`, écran `/app/launch`) : un brouillon relu par
+  destinataire, planifié puis envoyé un par un par `dispatch_draft` (jamais un second moteur d'envoi), toutes les portes revérifiées au moment de
+  chaque envoi (`process_due`), jamais de renvoi après un résultat ambigu, jamais « livré » sans preuve. `provider_policy.py` : sous Hostinger
+  seul un opt-in explicite (ou une base « consentement » déclarée) autorise une campagne ; un quota disponible ne vaut pas autorisation. Les routes
+  de séquence refusent une campagne `individual`. Voir `docs/campaign-launch.md`.
 - Journal d'événements : horodater avec `clock_timestamp()`, pas `now()`, quand plusieurs lignes d'une même transaction
   doivent garder leur ordre.
 - Pas de scraping contraire aux CGU des plateformes ni à `robots.txt`. Pas d'envoi de masse non consenti.
