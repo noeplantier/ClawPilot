@@ -160,7 +160,7 @@ def build_messages(
 
 
 def parse_answer(raw: str) -> dict[str, Optional[str]]:
-    """{"subject", "body"} from the model's text: JSON (even in a fence or prose), else the text itself as the body."""
+    """{"subject", "body", "whatsapp"} from the model's text: JSON (even in a fence or prose), else the text itself as the body."""
     text = (raw or "").strip()
     match = re.search(r"\{[\s\S]*\}", text)
     if match:
@@ -168,13 +168,15 @@ def parse_answer(raw: str) -> dict[str, Optional[str]]:
             data = json.loads(match.group(0))
             if isinstance(data, dict) and isinstance(data.get("body"), str) and data["body"].strip():
                 subject = data.get("subject")
+                whatsapp = data.get("whatsapp")
                 return {
                     "subject": subject.strip() if isinstance(subject, str) and subject.strip() else None,
                     "body": data["body"].strip(),
+                    "whatsapp": whatsapp.strip() if isinstance(whatsapp, str) and whatsapp.strip() else None,
                 }
         except ValueError:
             pass
-    return {"subject": None, "body": text}
+    return {"subject": None, "body": text, "whatsapp": None}
 
 
 def _generate_sync(cfg: AIConfig, messages: list[dict[str, str]]) -> str:
@@ -235,7 +237,8 @@ async def generate_message(
     """A message from the provider, or `AIUnavailable` saying why (not configured, rejected, limit, unreachable)."""
     answer = await complete(build_messages(recipient_name, product, language, tone, channel, goal, company))
     return {
-        "subject": answer["subject"] if channel == "email" else None,
-        "body": answer["body"] or "",
+        "subject": answer.get("subject") if channel == "email" else None,
+        "body": answer.get("body") or "",
+        "whatsapp": answer.get("whatsapp"),
         "language": language,
     }

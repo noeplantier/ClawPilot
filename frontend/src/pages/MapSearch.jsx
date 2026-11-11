@@ -12,7 +12,7 @@ import * as swr from "@/lib/swr";
 import { describeApiError } from "@/lib/outreachFormat";
 import { isTypingTarget, readPref, writePref } from "@/lib/uiPrefs";
 import {
-  CATEGORY_LABELS, IMPORT_ORIGIN, MAX_SITES_CHECKED, STATUS_COLOR, STATUS_LABEL, areaTooLarge, importRows, markerColor,
+  CATEGORY_LABELS, IMPORT_ORIGIN, MAX_SITES_CHECKED, STATUS_COLOR, STATUS_LABEL, areaTooLarge, classifyProspect, importRows, markerColor,
   panelPadding, reachablePlace, readyOnly, readySummary, summaryText,
 } from "@/lib/mapSearch";
 import { fetchOverpass } from "@/lib/overpassBrowser";
@@ -40,23 +40,27 @@ const clusterIcon = (n) => {
   return L.divIcon({ className: "map-pin", html: `<span class="map-cluster" style="width:${size}px;height:${size}px">${n}</span>`, iconSize: [size, size], iconAnchor: [size / 2, size / 2] });
 };
 
-const minePin = (p, fresh) =>
-  L.divIcon({
+const minePin = (p, fresh) => {
+  const cls = classifyProspect(p);
+  return L.divIcon({
     className: "map-pin",
-    html: `<span style="--c:${STATUS_COLOR[p.review_status]}" class="map-pin-square${fresh ? " is-new" : ""}${p.priority === "hot" ? " is-hot" : ""}"></span>`,
+    html: `<span style="--c:${cls.color};--glow:${cls.glow}" class="map-pin-square${fresh ? " is-new" : ""}${cls.tier === "HOT" ? " is-hot" : ""}" title="${cls.label}: ${p.name}"></span>`,
     iconSize: [22, 22], iconAnchor: [11, 11], popupAnchor: [0, -10],
   });
+};
 
 function minePopup(p) {
-  const esc = (v) => String(v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const esc = (v) => String(v || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const cls = classifyProspect(p);
   const site = p.website && /^https?:\/\//i.test(p.website)
-    ? `<div><a href="${esc(p.website)}" target="_blank" rel="noopener noreferrer">${esc(p.website.replace(/^https?:\/\//i, ""))}</a></div>`
+    ? `<div><a href="${esc(p.website)}" target="_blank" rel="noopener noreferrer" class="text-brand-lilac hover:underline">${esc(p.website.replace(/^https?:\/\//i, ""))}</a></div>`
     : "";
   const heat = p.heat ? `<b>${p.heat.tier} ${p.heat.value}</b> · ` : "";
   return `<strong>${esc(p.name)}</strong><div>${p.city ? esc(p.city) : "<i>city not set</i>"}</div>` +
-    `<div>${heat}${STATUS_LABEL[p.review_status]}</div>` +
+    `<div class="flex items-center gap-1.5 my-1"><span style="background:${cls.bg};color:${cls.color};border:1px solid ${cls.border}" class="text-[10px] px-1.5 py-0.5 rounded-full font-mono font-bold">${cls.label}</span> · ${heat}${STATUS_LABEL[p.review_status]}</div>` +
     `<div><a href="tel:${esc(p.phone || "")}">${esc(p.phone || "")}</a></div><div><a href="mailto:${esc(p.email || "")}">${esc(p.email || "")}</a></div>${site}` +
-    `<div><a href="/app/prospects/${esc(p.id)}">Open the prospect</a>${p.review_status === "approved" ? ` · <a href="/app/leads">in your CRM</a>` : ""}</div>`;
+    `<div class="text-[11px] text-brand-lilac font-medium mt-1">${esc(cls.opportunity.name)}</div>` +
+    `<div class="pt-1"><a href="/app/prospects/${esc(p.id)}">Open the prospect</a>${p.review_status === "approved" ? ` · <a href="/app/leads">in your CRM</a>` : ""} · <a href="/app/launch">Launch</a></div>`;
 }
 
 const pin = (p, active) =>
@@ -568,16 +572,24 @@ function MapView({ canImport }) {
                   </div>
                   {list.length === 0 && <p className="text-sm text-soft mt-1" data-testid="mine-none">{ready.length === 0 ? "No hot lead with a phone and an e-mail yet." : "No hot lead matches the filters."}</p>}
                   <ul className="divide-y divide-border">
-                    {list.map((p) => (
-                      <li key={p.id} className="py-1.5 flex gap-2 items-start text-sm" data-testid="mine-row">
-                        <input type="checkbox" checked={picked.has(p.id)} onChange={() => togglePick(p.id)} aria-label={`Select ${p.name}`} className="mt-1" />
-                        <button className="text-left min-w-0 flex-1" onClick={() => map.current.flyTo([p.lat, p.lon], 17, { duration: 1 })}>
-                          <span className="font-medium block truncate">{p.name}</span>
-                          <span className="block text-xs text-soft truncate">{p.heat ? `${p.heat.tier} ${p.heat.value} · ` : ""}{STATUS_LABEL[p.review_status]} · {p.score === null || p.score === undefined ? "not scored" : `score ${p.score}`}{p.city ? ` · ${p.city}` : ""}</span>
-                        </button>
-                        <Link to={`/app/prospects/${p.id}`} className="text-xs underline shrink-0">open</Link>
-                      </li>
-                    ))}
+                    {list.map((p) => {
+                      const cls = classifyProspect(p);
+                      return (
+                        <li key={p.id} className="py-2 flex gap-2 items-start text-sm hover:bg-white/[0.02] px-1 rounded-lg transition" data-testid="mine-row">
+                          <input type="checkbox" checked={picked.has(p.id)} onChange={() => togglePick(p.id)} aria-label={`Select ${p.name}`} className="mt-1" />
+                          <button className="text-left min-w-0 flex-1" onClick={() => map.current.flyTo([p.lat, p.lon], 17, { duration: 1 })}>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-semibold block truncate">{p.name}</span>
+                              <span style={{ color: cls.color }} className="text-[9px] font-mono font-bold px-1 rounded border border-current">
+                                {cls.label}
+                              </span>
+                            </div>
+                            <span className="block text-xs text-soft truncate mt-0.5">{p.heat ? `${p.heat.tier} ${p.heat.value} · ` : ""}{STATUS_LABEL[p.review_status]} · {p.score === null || p.score === undefined ? "not scored" : `score ${p.score}`}{p.city ? ` · ${p.city}` : ""}</span>
+                          </button>
+                          <Link to={`/app/prospects/${p.id}`} className="text-xs text-brand-lilac hover:underline shrink-0 pt-0.5">open</Link>
+                        </li>
+                      );
+                    })}
                   </ul>
                   {!group && shown.length > list.length && <p className="text-xs text-soft mt-1">Showing the first {list.length} of {shown.length}: click a cluster or filter to narrow.</p>}
                   <button className="btn-ink w-full justify-center mt-2" disabled={starting || pickInfo.ids.length === 0} onClick={startCampaign} data-testid="start-campaign">
