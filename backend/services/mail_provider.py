@@ -57,17 +57,40 @@ def provider_for(channel: str) -> Optional[str]:
 def send_email(
     to_email: str, subject: str, body: str, from_email: str | None = None, headers: dict[str, str] | None = None
 ) -> dict:
-    """Returns {status, provider_id, error}; `status` is "sent" or "failed"."""
+    """Returns {status, provider_id, error, provider, ambiguous}; `status` is "sent" or "failed".
+
+    `provider` names who carried (or refused) the message, so a record never claims SendGrid for an SMTP send.
+    `ambiguous` is True when the server may already have accepted the message (the connection dropped while sending):
+    such a message is reported as failed but must never be sent again blindly."""
     if feature_flags.kill_switch():
-        return {"status": "failed", "provider_id": None, "error": "sending halted by the kill switch"}
+        return {
+            "status": "failed",
+            "provider_id": None,
+            "error": "sending halted by the kill switch",
+            "provider": None,
+            "ambiguous": False,
+        }
     provider = email_provider()
     if provider == "sink":
-        return {"status": "sent", "provider_id": f"sink:{uuid.uuid4().hex[:12]}", "error": None}
+        return {
+            "status": "sent",
+            "provider_id": f"sink:{uuid.uuid4().hex[:12]}",
+            "error": None,
+            "provider": "sink",
+            "ambiguous": False,
+        }
     if provider == "smtp":
-        return _send_smtp(to_email, subject, body, headers or {})
+        return {**_send_smtp(to_email, subject, body, headers or {}), "provider": "smtp"}
     if provider == "sendgrid":
-        return sendgrid_svc.send_email(to_email, subject, body, from_email=from_email, headers=headers)
-    return {"status": "failed", "provider_id": None, "error": NOT_CONFIGURED["email"]}
+        result = sendgrid_svc.send_email(to_email, subject, body, from_email=from_email, headers=headers)
+        return {**result, "provider": "sendgrid", "ambiguous": False}
+    return {
+        "status": "failed",
+        "provider_id": None,
+        "error": NOT_CONFIGURED["email"],
+        "provider": None,
+        "ambiguous": False,
+    }
 
 
 def _send_smtp(to_email: str, subject: str, body: str, headers: dict[str, str]) -> dict:
@@ -78,6 +101,7 @@ def _send_smtp(to_email: str, subject: str, body: str, headers: dict[str, str]) 
             "status": "failed",
             "provider_id": None,
             "error": "Sender identity (OUTREACH_SENDER_*) or SMTP settings are incomplete: nothing was sent",
+            "ambiguous": False,
         }
     message = channels.ChannelMessage(
         to=to_email,
@@ -90,10 +114,11 @@ def _send_smtp(to_email: str, subject: str, body: str, headers: dict[str, str]) 
     )
     result = adapter.send(message)
     if result.status == "sent":
-        return {"status": "sent", "provider_id": result.provider_id, "error": None}
-    # "unknown" (connection lost after the message was handed over) is reported as a failure that is never retried here
+        return {"status": "sent", "provider_id": result.provider_id, "error": None, "ambiguous": False}
+    # "unknown" (connection lost after the message was handed over) is reported as a failure, flagged ambiguous: the
+    # server may have accepted it, so no path may send it again by itself
     error = result.error or "the SMTP server did not accept the message"
-    return {"status": "failed", "provider_id": None, "error": error}
+    return {"status": "failed", "provider_id": None, "error": error, "ambiguous": result.status == "unknown"}
 
 
 def send_whatsapp(to_number: str, body: str) -> dict:

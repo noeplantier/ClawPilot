@@ -42,6 +42,7 @@ from services import draft_runner, feature_flags, send_gate, sendgrid_svc, smtp_
 from services.outreach_os import ai_draft, campaign_plan, channels, dispatch, drafts, eligibility
 from services.outreach_os import heat as heat_rules
 from services.outreach_os import provider_policy
+from services.outreach_os import sandbox as sandbox_rules
 from services.outreach_os.normalize import normalize_domain, normalize_email, normalize_phone
 from services.outreach_os.types import SignalState
 from services.timezones import resolve_timezone
@@ -569,14 +570,9 @@ async def preview(
                 "label": "Envoi réel désactivé (dry-run) : les messages seront simulés, rien ne partira",
             }
         )
-    if g["live"] and g["sandbox"]:
-        warnings.append(
-            {
-                "code": "sandbox",
-                "label": f"Bac à sable actif : seuls les {g['allowlist_size']} destinataire(s) de "
-                "OUTREACH_LIVE_ALLOWLIST recevront un message",
-            }
-        )
+    scope_code, scope_label = sandbox_rules.scope(live=g["live"], sandbox_on=g["sandbox"], entries=g["allowlist_size"])
+    if g["live"]:  # who would really receive: said whether the sandbox restricts them or not
+        warnings.append({"code": scope_code, "label": scope_label})
     if g["provider"].cold_outreach != provider_policy.OPT_IN_REQUIRED:
         warnings.append({"code": "provider_terms", "label": g["provider"].restriction})
     summary = campaign_plan.schedule_summary(slots, policy.timezone)

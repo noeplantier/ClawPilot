@@ -113,7 +113,7 @@ def test_the_smtp_path_sends_through_the_adapter_and_reports_a_refusal_as_a_fail
     adapter = FakeAdapter()
     monkeypatch.setattr(smtp_svc, "adapter_from_env", lambda extra_allowed=(): adapter)
     ok = mail_provider.send_email("founder@plantiers.com", "Test", "Body", headers={"List-Unsubscribe": "<mailto:x>"})
-    assert ok == {"status": "sent", "provider_id": "<id@x>", "error": None}
+    assert ok == {"status": "sent", "provider_id": "<id@x>", "error": None, "provider": "smtp", "ambiguous": False}
     assert adapter.seen[0].to == "founder@plantiers.com" and adapter.seen[0].sender_email == "founder@plantiers.com"
     refused = FakeAdapter("failed", "the sandbox refuses this recipient")
     monkeypatch.setattr(smtp_svc, "adapter_from_env", lambda extra_allowed=(): refused)
@@ -121,7 +121,10 @@ def test_the_smtp_path_sends_through_the_adapter_and_reports_a_refusal_as_a_fail
     assert out["status"] == "failed" and "sandbox" in out["error"]
     unknown = FakeAdapter("unknown", "connection lost while sending: outcome unknown")
     monkeypatch.setattr(smtp_svc, "adapter_from_env", lambda extra_allowed=(): unknown)
-    assert mail_provider.send_email("founder@plantiers.com", "T", "B")["status"] == "failed"  # never claimed as sent
+    lost = mail_provider.send_email("founder@plantiers.com", "T", "B")
+    assert (
+        lost["status"] == "failed" and lost["ambiguous"] is True
+    )  # never claimed as sent, never to be sent again blindly
 
 
 def test_whatsapp_in_the_sandbox_only_reaches_the_listed_numbers(monkeypatch):

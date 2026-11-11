@@ -331,6 +331,13 @@ def _sending_mode(f: Facts) -> dict[str, Any]:
         ("SEND_KILL_SWITCH", "ON" if f.kill_switch else "off"),
         ("OUTREACH_SANDBOX", f"on ({f.allowlist_size} e-mail, {f.phones_size} phone allowed)" if f.sandbox else "off"),
     ]
+    if not f.sandbox and f.live_sending and f.allowlist_size:
+        facts.append(
+            (
+                "OUTREACH_LIVE_ALLOWLIST",
+                f"{f.allowlist_size} entries, INACTIVE: the sandbox is off, nobody is restricted",
+            )
+        )
     env = (
         "FEATURE_LIVE_SENDING",
         "SEND_KILL_SWITCH",
@@ -388,8 +395,9 @@ def _sending_mode(f: Facts) -> dict[str, Any]:
             env=env,
             facts=facts,
         )
+    inert = " The allowlist is NOT applied while the sandbox is off." if f.allowlist_size else ""
     return _item(
-        "sending_mode", "Sending mode", "sending", "ready", "LIVE · REAL E-MAIL", summary, env=env, facts=facts
+        "sending_mode", "Sending mode", "sending", "ready", "LIVE · REAL E-MAIL", summary + inert, env=env, facts=facts
     )
 
 

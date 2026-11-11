@@ -17,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 
 from celery_app import celery_app
 from repositories import campaign_repo, consent_repo, lead_repo, outreach_repo, send_policy_repo
-from services import legacy_email, send_gate
+from services import legacy_email, mail_provider, send_gate
 from services.mail_provider import send_email
 from services.templating import render as _render
 from services.timezones import resolve_timezone
@@ -98,6 +98,13 @@ async def _send_email_impl(
             return {"status": "failed", "reason": blocked.code}
         raise task.retry(**_retry_args(blocked))
 
+    # At most once: a record that says the message left, may have left, or is still in flight stops any new attempt of
+    # this step to this address (a Celery retry, a re-dispatched task). Only a definitive refusal lets it start again.
+    if outreach_repo.attempt_blocks_resend(
+        await outreach_repo.latest_email_attempt(session, account_id, campaign_step_id=step.id, to_email=lead["email"])
+    ):
+        return {"status": "skipped", "reason": "already_attempted"}
+
     subject = _render(step.subject or "", lead)
     try:
         prepared = await legacy_email.prepare(
@@ -111,10 +118,11 @@ async def _send_email_impl(
     except legacy_email.EmailNotCompliant as exc:
         return {"status": "failed", "reason": exc.code}
     body = prepared.body
-    result = send_email(lead["email"], subject, body, headers=prepared.headers)
-
     contact_id = uuid.UUID(lead["contact_id"]) if lead.get("contact_id") else None
-    await outreach_repo.create_email_send(
+    # The in-flight marker is committed BEFORE anything can leave: if the process dies, or a database error after the
+    # provider call makes Celery retry the task, the retry finds it and does not send a second time. It is ONE row,
+    # completed after the call (a second row would count twice against the daily and hourly caps).
+    record = await outreach_repo.create_email_send(
         session,
         account_id,
         campaign_id=campaign.id,
@@ -123,10 +131,17 @@ async def _send_email_impl(
         to_email=lead["email"],
         subject=subject,
         body=body,
-        status=result["status"],
-        provider_message_id=result.get("provider_id"),
-        error=result.get("error"),
+        status="queued",
+        provider=mail_provider.email_provider() or "none",
     )
+    await session.commit()
+    result = send_email(lead["email"], subject, body, headers=prepared.headers)
+
+    record.status = result["status"]
+    record.provider = result.get("provider") or record.provider
+    record.provider_message_id = result.get("provider_id")
+    record.error = result.get("error")
+    await session.flush()
     await outreach_repo.record_outreach_event(
         session,
         account_id,
