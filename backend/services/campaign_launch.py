@@ -38,7 +38,7 @@ from repositories import (
     send_policy_repo,
     suppression_repo,
 )
-from services import draft_runner, feature_flags, send_gate, sendgrid_svc, smtp_svc
+from services import draft_runner, feature_flags, journey_gate, send_gate, sendgrid_svc, smtp_svc
 from services.outreach_os import ai_draft, campaign_plan, channels, dispatch, drafts, eligibility
 from services.outreach_os import heat as heat_rules
 from services.outreach_os import provider_policy
@@ -230,6 +230,7 @@ async def select_recipients(
     now: datetime,
     campaign_id: Optional[uuid.UUID] = None,
     keep: Sequence[uuid.UUID] = (),
+    zone: Optional[dict[str, Any]] = None,
 ) -> Selection:
     """Up to `size` DISTINCT establishments, best first (observed intent, then heat), each with a valid e-mail and the
     right to receive a campaign through the active provider. `keep` are the recipients a campaign already holds (a
@@ -244,7 +245,7 @@ async def select_recipients(
         existing = await session.get(Lead, lead_id)
         if existing is not None:
             _remember(existing, seen_emails, seen_keys)
-    rows = await launch_repo.pool(session, account_id, now, SELECTION_SCAN)
+    rows = await launch_repo.pool(session, account_id, now, SELECTION_SCAN, zone)
     result.scanned = len(rows)
     facts = await _facts(session, account_id, campaign_id, [row[0] for row in rows])
     wanted = size - len(kept)
@@ -265,10 +266,18 @@ async def select_recipients(
 
 
 async def create_launch(
-    session: AsyncSession, account_id: uuid.UUID, user_id: Optional[uuid.UUID], *, name: str, size: int, now: datetime
+    session: AsyncSession,
+    account_id: uuid.UUID,
+    user_id: Optional[uuid.UUID],
+    *,
+    name: str,
+    size: int,
+    now: datetime,
+    zone: Optional[dict[str, Any]] = None,
 ) -> tuple[Campaign, Selection]:
-    """A campaign of individual messages with its recipients. Status stays `draft`: nothing is planned or sent."""
-    selection = await select_recipients(session, account_id, size=size, now=now)
+    """A campaign of individual messages with its recipients. Status stays `draft`: nothing is planned or sent.
+    With a `zone`, only prospects positioned inside that perimeter are candidates."""
+    selection = await select_recipients(session, account_id, size=size, now=now, zone=zone)
     campaign = await campaign_repo.create_campaign(
         session,
         account_id,
@@ -277,6 +286,7 @@ async def create_launch(
             "goal": "Campagne individuelle : un brouillon personnalisé par destinataire",
             "status": "draft",
             "kind": "individual",
+            "zone": zone,
             "channels": ["email"],
             "lead_ids": [str(lead.id) for lead in selection.picked],
         },
@@ -304,7 +314,9 @@ async def top_up(
 ) -> Selection:
     """Complete the selection up to `size` recipients with new distinct establishments (those already held are kept)."""
     held = await launch_repo.selection_of(session, account_id, campaign.id)
-    selection = await select_recipients(session, account_id, size=size, now=now, campaign_id=campaign.id, keep=held)
+    selection = await select_recipients(
+        session, account_id, size=size, now=now, campaign_id=campaign.id, keep=held, zone=campaign.zone
+    )
     if selection.picked:
         await campaign_repo.assign_leads(
             session, account_id, str(campaign.id), [str(lead.id) for lead in selection.picked]
@@ -761,6 +773,13 @@ async def _send_one(
     draft = await draft_repo.get(session, account_id, str(row.draft_id)) if row.draft_id else None
     if draft is None or draft.status != "approved":
         return Outcome("skipped", "draft_not_approved")
+    if campaign.zone is not None:  # a campaign with a zone sends only what its approval still covers, right now
+        refusal = await journey_gate.check(session, campaign, now, draft.template_version, row.id)
+        if refusal is not None:
+            code, retry_at = refusal
+            if campaign_plan.refusal_kind(code) == "wait":
+                return Outcome("waiting", code if retry_at is None else f"{code}@{_utc(retry_at).isoformat()}")
+            return Outcome("skipped", code)
 
     ids = [lead.id]
     email = normalize_email(lead.email) or ""

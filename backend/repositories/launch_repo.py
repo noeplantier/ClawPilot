@@ -35,7 +35,9 @@ def _flag(expression: Any) -> Any:
     return func.coalesce(expression, false())
 
 
-def _flagged(account_id: uuid.UUID, now: Optional[datetime]):  # type: ignore[no-untyped-def]
+def _flagged(  # type: ignore[no-untyped-def]
+    account_id: uuid.UUID, now: Optional[datetime], zone: Optional[dict[str, Any]] = None
+):
     """Prospect + the four facts the selection needs, computed by the same SQL as the map (one policy, one decision)."""
     src = eligibility_sql.latest_source(account_id)
     scores = heat_sql.latest_scores()
@@ -51,6 +53,11 @@ def _flagged(account_id: uuid.UUID, now: Optional[datetime]):  # type: ignore[no
         .outerjoin(scores, scores.c.lead_id == Lead.id)
         .where(Lead.account_id == account_id, ACTIVE, IN_DISCOVERY)
     )
+    if zone is not None:  # only prospects positioned inside the perimeter (a prospect with no position is outside)
+        stmt = stmt.where(
+            src.c.lat.between(float(zone["south"]), float(zone["north"])),
+            src.c.lon.between(float(zone["west"]), float(zone["east"])),
+        )
     rank = (
         eligibility_sql.hot(src, now).desc(),
         heat_sql.heat_sql(scores.c.score).desc(),
@@ -60,9 +67,11 @@ def _flagged(account_id: uuid.UUID, now: Optional[datetime]):  # type: ignore[no
     return stmt, rank
 
 
-async def pool(session: AsyncSession, account_id: uuid.UUID, now: datetime, limit: int) -> list[Any]:
-    """Approved prospects, best first: rows of (lead, qualified, suppressed, opted_out, demo)."""
-    stmt, rank = _flagged(account_id, now)
+async def pool(
+    session: AsyncSession, account_id: uuid.UUID, now: datetime, limit: int, zone: Optional[dict[str, Any]] = None
+) -> list[Any]:
+    """Approved prospects, best first: rows of (lead, qualified, suppressed, opted_out, demo). `zone` = a perimeter."""
+    stmt, rank = _flagged(account_id, now, zone)
     rows = await session.execute(stmt.where(Lead.review_status == "approved").order_by(*rank).limit(limit))
     return list(rows.all())
 

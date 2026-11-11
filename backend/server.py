@@ -19,6 +19,7 @@ from routes.auth import router as auth_router
 from routes.campaigns import router as campaigns_router
 from routes.dashboard import router as dashboard_router
 from routes.jobs import router as jobs_router
+from routes.journeys import router as journeys_router
 from routes.launches import router as launches_router
 from routes.leads import router as leads_router
 from routes.map_search import router as map_router
@@ -76,6 +77,7 @@ api_router.include_router(sources_router)
 api_router.include_router(dashboard_router)
 api_router.include_router(outbound_router)
 api_router.include_router(launches_router)
+api_router.include_router(journeys_router)
 api_router.include_router(unsubscribe_router)
 api_router.include_router(prospecting_router)
 api_router.include_router(suggestions_router)

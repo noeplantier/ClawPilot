@@ -1310,3 +1310,45 @@ class LaunchTrackingOut(BaseModel):
     labels: Dict[str, str]
     total: int
     items: List[LaunchTrackingRowOut]
+
+
+# ---------------------------------------------------------------- journey: zone -> draft -> approval
+class JourneyZoneIn(BaseModel):
+    """The perimeter drawn on the map: a box and the category. The server refuses an oversized or inverted one."""
+
+    south: float = Field(ge=-90, le=90)
+    west: float = Field(ge=-180, le=180)
+    north: float = Field(ge=-90, le=90)
+    east: float = Field(ge=-180, le=180)
+    category: str = Field(min_length=1, max_length=40)
+    label: Optional[str] = Field(default=None, max_length=80)
+
+
+class JourneyCreateIn(BaseModel):
+    name: str = Field(default="Campagne par zone", min_length=2, max_length=120)
+    zone: JourneyZoneIn
+    size: int = Field(default=100, ge=1, le=100)
+
+
+class JourneyTemplateIn(BaseModel):
+    subject: str = Field(min_length=1, max_length=200)
+    body: str = Field(min_length=1, max_length=6000)
+
+
+class JourneyApproveIn(BaseModel):
+    content_hash: str = Field(min_length=4, max_length=64)  # the template the person read
+    expected_count: int = Field(ge=0, le=100)  # the number of messages the person was shown
+
+
+class JourneyRevokeIn(BaseModel):
+    reason: Optional[str] = Field(default=None, max_length=200)
+
+
+class JourneyOut(BaseModel):
+    """A flexible, server-computed document (summary, progress, readiness): the screen reads what it needs."""
+
+    data: Dict[str, Any]
+
+
+class JourneyListOut(BaseModel):
+    items: List[Dict[str, Any]]
