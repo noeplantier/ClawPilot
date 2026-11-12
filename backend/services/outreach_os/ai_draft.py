@@ -50,21 +50,45 @@ LANGUAGE_NAMES = {
 }
 
 COUNTRY_LANGUAGES = {
-    "FR": "fr", "BE": "fr", "CH": "fr", "MC": "fr", "SN": "fr", "CI": "fr",
-    "US": "en", "GB": "en", "AU": "en", "CA": "en", "NZ": "en", "IE": "en", "SG": "en",
+    "FR": "fr",
+    "BE": "fr",
+    "CH": "fr",
+    "MC": "fr",
+    "SN": "fr",
+    "CI": "fr",
+    "US": "en",
+    "GB": "en",
+    "AU": "en",
+    "CA": "en",
+    "NZ": "en",
+    "IE": "en",
+    "SG": "en",
     "ID": "id",
-    "ES": "es", "MX": "es", "AR": "es", "CO": "es", "CL": "es", "PE": "es",
-    "DE": "de", "AT": "de",
-    "PT": "pt", "BR": "pt",
+    "ES": "es",
+    "MX": "es",
+    "AR": "es",
+    "CO": "es",
+    "CL": "es",
+    "PE": "es",
+    "DE": "de",
+    "AT": "de",
+    "PT": "pt",
+    "BR": "pt",
     "IT": "it",
     "NL": "nl",
-    "AE": "ar", "SA": "ar", "EG": "ar", "MA": "ar", "QA": "ar",
+    "AE": "ar",
+    "SA": "ar",
+    "EG": "ar",
+    "MA": "ar",
+    "QA": "ar",
 }
+
 
 def detect_language(country: Optional[str], default: str = "en") -> str:
     if not country:
         return default
     return COUNTRY_LANGUAGES.get(country.strip().upper(), default)
+
 
 OPPORTUNITY_A = "opportunity_a"  # No website -> creation / landing page
 OPPORTUNITY_B = "opportunity_b"  # Outdated website -> redesign / UX/UI / mobile
@@ -92,6 +116,7 @@ OPPORTUNITY_DETAILS = {
     },
 }
 
+
 def match_opportunity(*, website: Optional[str], detected: Mapping[str, str]) -> str:
     """Classify the primary commercial opportunity using available evidence."""
     if not website or not website.strip() or "no_website" in detected:
@@ -99,6 +124,8 @@ def match_opportunity(*, website: Optional[str], detected: Mapping[str, str]) ->
     if "legacy_tech" in detected or "website_unreachable" in detected:
         return OPPORTUNITY_B
     return OPPORTUNITY_C
+
+
 BENEFITS = {  # what a web page does for this kind of activity (chosen from the activity actually recorded)
     "restaurants": "présenter la carte et permettre de réserver",
     "bakeries": "présenter les produits et les horaires",

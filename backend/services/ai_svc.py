@@ -160,7 +160,8 @@ def build_messages(
 
 
 def parse_answer(raw: str) -> dict[str, Optional[str]]:
-    """{"subject", "body", "whatsapp"} from the model's text: JSON (even in a fence or prose), else the text itself as the body."""
+    """{"subject", "body", "whatsapp"} from the model's text: JSON (even in a fence or prose), else the text itself as
+    the body."""
     text = (raw or "").strip()
     match = re.search(r"\{[\s\S]*\}", text)
     if match:

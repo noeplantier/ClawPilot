@@ -66,18 +66,18 @@ export function ActivityChart({ series }) {
           </g>
         ))}
         {/* Sends area */}
-        <polygon points={g.area("sent")} fill="#818CF8" fillOpacity="0.15" />
+        <polygon points={g.area("sent")} fill="var(--chart-sent)" fillOpacity="0.15" />
         {/* Replies area */}
         <polygon points={g.area("replied")} fill="#7C3AED" fillOpacity="0.25" />
         {/* Acquisitions line (if present) */}
         {series.some((p) => p.acquired > 0) && (
           <polyline points={g.line("acquired")} fill="none" stroke="#4ADE80" strokeWidth="2" strokeDasharray="4 2" />
         )}
-        <polyline points={g.line("sent")} fill="none" stroke="#818CF8" strokeWidth="2" />
+        <polyline points={g.line("sent")} fill="none" stroke="var(--chart-sent)" strokeWidth="2" />
         <polyline points={g.line("replied")} fill="none" stroke="#7C3AED" strokeWidth="2.5" />
         {series.map((p, i) => (
           <g key={p.date || i}>
-            <circle cx={g.x(i)} cy={g.y(p.sent)} r="3" fill="#818CF8">
+            <circle cx={g.x(i)} cy={g.y(p.sent)} r="3" fill="var(--chart-sent)">
               <title>{`${shortDay(p.date)}: ${p.sent} sent, ${p.replied} replies${p.acquired ? `, ${p.acquired} acquired` : ""}`}</title>
             </circle>
             {i % Math.max(1, Math.floor(series.length / 7)) === 0 && (
@@ -90,7 +90,7 @@ export function ActivityChart({ series }) {
       </svg>
       <div className="flex flex-wrap items-center justify-between gap-3 text-xs mt-2 pt-2 border-t border-white/5">
         <div className="mono-accent flex gap-4">
-          <span className="text-[#818CF8] inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#818CF8]" /> Sent</span>
+          <span className="text-[color:var(--chart-sent)] inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[color:var(--chart-sent)]" /> Sent</span>
           <span className="text-brand-lilac inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-brand-500" /> Replies</span>
           {series.some((p) => p.acquired > 0) && (
             <span className="text-leaf-400 inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-leaf-400" /> New Leads</span>

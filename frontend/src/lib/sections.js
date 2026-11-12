@@ -1,39 +1,9 @@
-// Navigation groups and sections of Plantiers OutreachOS. Pure: no React, no network.
-
-export const NAV_GROUPS = [
-  {
-    id: "main",
-    label: "MAIN",
-    items: [
-      { id: "dashboard", to: "/app/dashboard", label: "Dashboard", icon: "SquaresFour", testId: "nav-dashboard", legacyIds: ["nav-overview"] },
-      { id: "map", to: "/app/map", label: "Live Prospect Map", icon: "MapTrifold", testId: "nav-map", legacyIds: ["nav-prospecting"], liveDot: true },
-      { id: "leads", to: "/app/leads", label: "Leads", icon: "Users", testId: "nav-leads", matchPrefixes: ["/app/leads", "/app/prospects", "/app/sources"] },
-      { id: "campaigns", to: "/app/launch", label: "Campaigns", icon: "PaperPlaneTilt", testId: "nav-campaigns", legacyIds: ["nav-outreach"], matchPrefixes: ["/app/campaigns", "/app/launch", "/app/messages", "/app/sending"] },
-      { id: "analytics", to: "/app/analytics", label: "Analytics", icon: "TrendUp", testId: "nav-analytics" },
-    ],
-  },
-  {
-    id: "intelligence",
-    label: "INTELLIGENCE",
-    items: [
-      { id: "drafts", to: "/app/drafts", label: "AI Draft Generator", icon: "Sparkle", testId: "nav-drafts", legacyIds: ["nav-batches"], matchPrefixes: ["/app/drafts", "/app/batches"] },
-      { id: "agents", to: "/app/agents", label: "Automations", icon: "Cpu", testId: "nav-agents" },
-      { id: "qualification", to: "/app/prospects/review", label: "Lead Qualification", icon: "ShieldCheck", testId: "nav-qualification", matchPrefixes: ["/app/prospects/review", "/app/prospects/to-enrich"], countKey: "pending_review" },
-    ],
-  },
-  {
-    id: "configuration",
-    label: "CONFIGURATION",
-    items: [
-      { id: "offer", to: "/app/settings/offer", label: "Offer & Services", icon: "Briefcase", testId: "nav-offer" },
-      { id: "integrations", to: "/app/settings?tab=integrations", label: "Integrations", icon: "PlugsConnected", testId: "nav-integrations" },
-      { id: "settings", to: "/app/settings", label: "Settings", icon: "Gear", testId: "nav-settings", legacyIds: ["nav-control"] },
-      { id: "system", to: "/app/system", label: "System Health", icon: "Heartbeat", testId: "nav-system", statusDot: true },
-    ],
-  },
-];
-
-// Preserved SECTIONS array for backward compatibility
+// The six main sections of the application, and the screens each one holds. Pure: no React, no network.
+//
+// The sidebar shows exactly these six entries. The one you are in lists its screens right under it (there is no top bar any
+// more): navigation inside a section, not a seventh, eighth… entry. The go-to palette (Ctrl+K) lists every screen of every
+// section too. Every screen that exists belongs to one section; the tests check that none is left out, and every old path
+// keeps working.
 export const SECTIONS = [
   {
     id: "overview",
@@ -85,9 +55,10 @@ export const SECTIONS = [
     label: "Outreach",
     to: "/app/drafts",
     icon: "PaperPlaneTilt",
-    blurb: "Brouillons IA, campagne individuelle, séquences, boîte de réception, canaux.",
+    blurb: "Brouillons IA, campagne par zone, campagne individuelle, séquences, boîte de réception, canaux.",
     tabs: [
       { to: "/app/drafts", label: "Brouillons IA", testId: "tab-drafts" },
+      { to: "/app/journey", label: "Campagne par zone", testId: "tab-journey" },
       { to: "/app/launch", label: "Campagne individuelle", testId: "tab-launch" },
       { to: "/app/campaigns", label: "Campagnes et séquences", testId: "tab-campaigns" },
       { to: "/app/messages", label: "Boîte de réception", testId: "tab-messages" },
@@ -99,11 +70,12 @@ export const SECTIONS = [
     label: "Pilotage",
     to: "/app/settings",
     icon: "Gear",
-    blurb: "Offre, intégrations, automatisations, santé et réglages.",
+    blurb: "Offre, intégrations, automatisations, mode max, santé et réglages.",
     tabs: [
       { to: "/app/settings/offer", label: "Offre", testId: "tab-offer" },
       { to: "/app/settings", label: "Intégrations et réglages", testId: "tab-settings" },
       { to: "/app/agents", label: "Automatisations", testId: "tab-agents" },
+      { to: "/app/automation-max", label: "Automatisation max", testId: "tab-automation-max" },
       { to: "/app/system", label: "Santé", testId: "tab-system" },
     ],
   },
@@ -111,6 +83,8 @@ export const SECTIONS = [
 
 export const pathOf = (to) => String(to || "").split("?")[0].replace(/\/$/, "") || "/";
 
+// The section a path belongs to. The longest matching tab wins (/app/prospects/review is "À vérifier", not "Prospects"),
+// so a nested path never lands in the wrong section; null for a path outside the app.
 export function sectionOf(pathname) {
   const path = pathOf(pathname);
   let best = null;
@@ -127,6 +101,7 @@ export function sectionOf(pathname) {
   return best;
 }
 
+// The tab that is current. /app/leads is "CRM" unless ?view=kanban asks for the pipeline; a prospect's sheet keeps "Prospects".
 export function activeTab(section, pathname, search = "") {
   if (!section) return null;
   const path = pathOf(pathname);
@@ -137,8 +112,8 @@ export function activeTab(section, pathname, search = "") {
     const [tabPath, query] = tab.to.split("?");
     const p = pathOf(tabPath);
     if (!(path === p || path.startsWith(`${p}/`))) continue;
-    if (query && !(path === p && kanban)) continue;
-    if (!query && path === p && p === "/app/leads" && kanban) continue;
+    if (query && !(path === p && kanban)) continue; // a tab with a query matches only that query
+    if (!query && path === p && p === "/app/leads" && kanban) continue; // the CRM tab yields to the pipeline
     if (p.length > bestLength) {
       best = tab;
       bestLength = p.length;
@@ -147,44 +122,3 @@ export function activeTab(section, pathname, search = "") {
   return best;
 }
 
-// Find the active nav item across NAV_GROUPS
-export function activeNavItem(pathname, search = "") {
-  const path = pathOf(pathname);
-  const searchParams = new URLSearchParams(search);
-  const tabParam = searchParams.get("tab");
-
-  let best = null;
-  let bestScore = -1;
-
-  for (const group of NAV_GROUPS) {
-    for (const item of group.items) {
-      const [itemPath, query] = item.to.split("?");
-      const p = pathOf(itemPath);
-
-      // Exact match with query param takes top priority (e.g., integrations tab)
-      if (query && tabParam && query.includes(`tab=${tabParam}`) && path === p) {
-        return item;
-      }
-
-      // Exact path match
-      if (path === p) {
-        if (!query) return item;
-      }
-
-      // Check configured matchPrefixes
-      if (item.matchPrefixes) {
-        for (const prefix of item.matchPrefixes) {
-          const pref = pathOf(prefix);
-          if ((path === pref || path.startsWith(`${pref}/`)) && pref.length > bestScore) {
-            best = item;
-            bestScore = pref.length;
-          }
-        }
-      } else if (path.startsWith(`${p}/`) && p !== "/app" && p.length > bestScore) {
-        best = item;
-        bestScore = p.length;
-      }
-    }
-  }
-  return best;
-}

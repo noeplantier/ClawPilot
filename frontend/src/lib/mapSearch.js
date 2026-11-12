@@ -47,7 +47,9 @@ export const STATUS_LABEL = { pending: "to review", approved: "approved", reject
 export const readyOnly = (mine) => (mine || []).filter((p) => p.map_ready === true);
 
 // "Hot" means an observed, sourced commercial intent and nothing else; a qualified prospect without one is not hot.
-export const isHot = (p) => Boolean(p && (p.priority === "hot" || (p.heat && p.heat.tier === "hot")));
+// "Hot" is an observed, sourced commercial intent decided by the server (`priority`), never a score: a high heat or fit
+// score alone leaves a prospect "qualified" (docs/eligibility.md).
+export const isHot = (p) => Boolean(p && p.priority === "hot");
 
 // A place found by the search is drawn only when it published BOTH a phone and an e-mail: nothing else can be reached
 // by a person. A missing value is unknown, never a default; the places left out are counted, not hidden silently.
@@ -67,10 +69,36 @@ export function readySummary(mine) {
 
 // Room to keep free around the map for the floating panels, as Leaflet's [x, y] auto-pan paddings: a popup never opens under
 // the search card (left) or the results drawer (right; at the bottom on a phone).
-export function panelPadding({ narrow, searchOpen, panelOpen, hidden }) {
+export function panelPadding({ narrow, open, hidden }) {
   if (hidden) return { topLeft: [20, 70], bottomRight: [20, 50] };
-  if (narrow) return { topLeft: [20, searchOpen ? 360 : 70], bottomRight: [20, panelOpen ? 280 : 50] };
-  return { topLeft: [searchOpen ? 440 : 20, 70], bottomRight: [panelOpen ? 400 : 20, 50] };
+  if (narrow) return { topLeft: [20, open ? 360 : 70], bottomRight: [20, 50] };
+  return { topLeft: [open ? 440 : 20, 70], bottomRight: [20, 50] };
+}
+
+// The perimeter a finished search really looked at: what the campaign takes as its zone. Null until a search succeeded.
+export function zoneOf(job) {
+  if (!job || job.status !== "succeeded") return null;
+  const { south, west, north, east, category } = job;
+  if ([south, west, north, east].some((v) => typeof v !== "number") || !category) return null;
+  return { south, west, north, east, category };
+}
+
+const KM_PER_DEGREE = 111.32;
+
+// "45.700–45.800° N · 4.780–4.900° E · ≈ 11 × 8 km · restaurants": numbers read from the search, nothing estimated beyond the size.
+export function zoneSummary(zone) {
+  if (!zone) return "";
+  const height = (zone.north - zone.south) * KM_PER_DEGREE;
+  const width = (zone.east - zone.west) * KM_PER_DEGREE * Math.cos((((zone.north + zone.south) / 2) * Math.PI) / 180);
+  const f = (v) => v.toFixed(3);
+  return `Périmètre recherché : ${f(zone.south)}–${f(zone.north)}° N · ${f(zone.west)}–${f(zone.east)}° E · ≈ ${Math.round(width)} × ${Math.round(height)} km · ${zone.category}`;
+}
+
+// The link to the campaign of this zone: the box and the category travel in the address, nothing is stored by the map.
+export function journeyLink(zone, label) {
+  const q = new URLSearchParams({ south: zone.south, west: zone.west, north: zone.north, east: zone.east, category: zone.category });
+  if (label) q.set("label", label);
+  return `/app/journey?${q.toString()}`;
 }
 
 // -------------------------------------------------------------
@@ -122,7 +150,7 @@ export function classifyProspect(p) {
   const hasPhone = Boolean(p.phone && String(p.phone).trim().length >= 4);
   const hasWebsite = Boolean(p.website && String(p.website).trim().length > 3);
   const score = typeof p.score === "number" ? p.score : (p.heat?.value ?? null);
-  const isHotLead = p.priority === "hot" || p.heat?.tier === "hot" || (score !== null && score >= 75);
+  const isHotLead = isHot(p); // the server's decision; a score never makes a prospect hot
 
   const reasons = [];
 
@@ -158,7 +186,7 @@ export function classifyProspect(p) {
 
   // Determine Tier
   if (isHotLead && hasEmail && hasPhone) {
-    if (p.priority === "hot" || p.heat?.tier === "hot") reasons.unshift("Observed commercial intent recorded");
+    reasons.unshift("Observed commercial intent recorded");
     if (score !== null) reasons.unshift(`High fit score (${score}/100)`);
     reasons.unshift("Dual verified contacts: business email and telephone");
     return {

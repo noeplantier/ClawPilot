@@ -1,4 +1,4 @@
-import { areaTooLarge, importRows, summarize, summaryText, markerColor, panelPadding, reachablePlace, isHot, readyOnly, readySummary } from "@/lib/mapSearch";
+import { areaTooLarge, importRows, summarize, summaryText, markerColor, panelPadding, reachablePlace, isHot, readyOnly, readySummary, zoneOf, zoneSummary, journeyLink, classifyProspect } from "@/lib/mapSearch";
 
 const A = { external_id: "node/1", name: "A", lat: 45.7, lon: 4.8, email: "a@a.fr", phone: "+33 1", website: "https://a.fr", source_url: "u" };
 const B = { external_id: "node/2", name: "B", lat: 45.7, lon: 4.8, email: null, phone: "+33 2", website: null, source_url: "u" };
@@ -46,21 +46,60 @@ test("only the prospects the server qualified are drawn, and the summary counts 
 });
 
 describe("panelPadding", () => {
-  it("keeps a popup clear of the search card on the left and the results drawer on the right", () => {
-    expect(panelPadding({ narrow: false, searchOpen: true, panelOpen: true, hidden: false })).toEqual({ topLeft: [440, 70], bottomRight: [400, 50] });
+  it("keeps a popup clear of the one Prospection panel on the left, and leaves the right of the map free", () => {
+    expect(panelPadding({ narrow: false, open: true, hidden: false })).toEqual({ topLeft: [440, 70], bottomRight: [20, 50] });
   });
-  it("frees the room of a panel that is minimised or closed, and of every panel when they are hidden", () => {
-    expect(panelPadding({ narrow: false, searchOpen: false, panelOpen: false, hidden: false })).toEqual({ topLeft: [20, 70], bottomRight: [20, 50] });
-    expect(panelPadding({ narrow: false, searchOpen: true, panelOpen: true, hidden: true })).toEqual({ topLeft: [20, 70], bottomRight: [20, 50] });
+  it("frees the room of the panel when it is minimised, and of every panel when they are hidden", () => {
+    expect(panelPadding({ narrow: false, open: false, hidden: false })).toEqual({ topLeft: [20, 70], bottomRight: [20, 50] });
+    expect(panelPadding({ narrow: false, open: true, hidden: true })).toEqual({ topLeft: [20, 70], bottomRight: [20, 50] });
   });
-  it("on a phone the panels are above and below the map, not beside it", () => {
-    expect(panelPadding({ narrow: true, searchOpen: true, panelOpen: true, hidden: false })).toEqual({ topLeft: [20, 360], bottomRight: [20, 280] });
+  it("on a phone the panel is above the map, not beside it", () => {
+    expect(panelPadding({ narrow: true, open: true, hidden: false })).toEqual({ topLeft: [20, 360], bottomRight: [20, 50] });
   });
 });
 
-test("a place found by the search is drawn only when it published both a phone and an e-mail", () => {
-  expect(reachablePlace({ phone: "+33 4 78 12 34 56", email: "contact@chez-marcel.example" })).toBe(true);
-  expect(reachablePlace({ phone: "+33 4 78 12 34 56", email: null })).toBe(false); // unknown is not a value
-  expect(reachablePlace({ phone: "", email: "a@b.example" })).toBe(false);
-  expect(reachablePlace(null)).toBe(false);
+const BOX = { status: "succeeded", south: 45.7, west: 4.78, north: 45.8, east: 4.9, category: "restaurant" };
+
+describe("the zone a search really looked at", () => {
+  it("is the box and the category of a succeeded search, and nothing before that", () => {
+    expect(zoneOf(BOX)).toEqual({ south: 45.7, west: 4.78, north: 45.8, east: 4.9, category: "restaurant" });
+    expect(zoneOf(null)).toBeNull();
+    expect(zoneOf({ ...BOX, status: "running" })).toBeNull();
+    expect(zoneOf({ ...BOX, status: "failed" })).toBeNull();
+    expect(zoneOf({ ...BOX, south: undefined })).toBeNull();
+    expect(zoneOf({ ...BOX, category: "" })).toBeNull();
+  });
+  it("is described with its real coordinates and size, never an estimate of how many places it holds", () => {
+    const text = zoneSummary(zoneOf(BOX));
+    expect(text).toContain("45.700–45.800° N");
+    expect(text).toContain("4.780–4.900° E");
+    expect(text).toContain("≈ 9 × 11 km");
+    expect(text).toContain("restaurant");
+    expect(text).not.toMatch(/\d+ (établissements|places|prospects)/);
+    expect(zoneSummary(null)).toBe("");
+  });
+  it("travels to the campaign in the address, the label only when there is one", () => {
+    const link = journeyLink(zoneOf(BOX));
+    expect(link.startsWith("/app/journey?")).toBe(true);
+    const q = new URLSearchParams(link.split("?")[1]);
+    expect([q.get("south"), q.get("west"), q.get("north"), q.get("east"), q.get("category")]).toEqual(["45.7", "4.78", "45.8", "4.9", "restaurant"]);
+    expect(q.has("label")).toBe(false);
+    expect(new URLSearchParams(journeyLink(zoneOf(BOX), "Lyon 6").split("?")[1]).get("label")).toBe("Lyon 6");
+  });
+});
+
+describe("hot is the server's observed intent, never a score", () => {
+  const base = { email: "a@b.example", phone: "+33 4 78 12 34 56", website: "https://x.example", review_status: "pending" };
+  it("a high score or a hot heat band alone leaves a prospect qualified", () => {
+    const scored = { ...base, priority: "qualified", score: 96, heat: { tier: "hot", value: 96 } };
+    expect(isHot(scored)).toBe(false);
+    expect(classifyProspect(scored).tier).not.toBe("HOT");
+    expect(readySummary([{ ...scored, map_ready: true, has_website: true }])).toContain("none hot");
+  });
+  it("the server's priority makes it hot, whatever the score", () => {
+    const intent = { ...base, priority: "hot", score: 10 };
+    expect(isHot(intent)).toBe(true);
+    expect(classifyProspect(intent).tier).toBe("HOT");
+    expect(isHot(null)).toBe(false);
+  });
 });

@@ -156,6 +156,7 @@ async def send_email_route(
         subject=payload.subject,
         body=prepared.body,
         status=result["status"],
+        provider=result.get("provider") or "none",
         provider_message_id=result.get("provider_id"),
         error=result.get("error"),
     )
@@ -291,6 +292,7 @@ async def batch_send_email(
             subject=subj,
             body=body,
             status=result["status"],
+            provider=result.get("provider") or "none",
             provider_message_id=result.get("provider_id"),
             error=result.get("error"),
         )

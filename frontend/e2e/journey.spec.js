@@ -447,17 +447,19 @@ test("the sidebar folds and remembers it; the map has one real basemap and every
 
   await page.getByTestId("map-search").click();
   await expect(page.getByTestId("map-results")).toBeVisible();
-  // minimise the search card to a pill: the search stays one click away
+  // ONE panel holds the zone, the search, the results and the way to the campaign: no second drawer, no second overlay
+  await expect(page.getByRole("complementary", { name: "Prospection" })).toHaveCount(1);
+  await expect(page.getByTestId("map-panel-toggle")).toHaveCount(0);
+  await expect(page.getByTestId("map-panel-close")).toHaveCount(0);
+  await expect(page.getByTestId("map-zone")).toContainText("Périmètre recherché");
+  await expect(page.getByTestId("map-to-campaign")).toHaveAttribute("href", /\/app\/journey\?south=/);
+  // minimise the panel to a pill: the search stays one click away
   await page.getByTestId("map-search-minimise").click();
   await expect(page.getByTestId("map-search-card")).toHaveCount(0);
   await expect(page.getByTestId("map-search-pill")).toBeVisible();
   await page.getByTestId("map-search-expand").click();
   await expect(page.getByTestId("map-search-card")).toBeVisible();
-  // close the results panel, then bring it back
-  await page.getByTestId("map-panel-close").click();
-  await expect(page.getByTestId("map-panel-toggle")).toHaveAttribute("aria-expanded", "false");
-  await page.getByTestId("map-panel-toggle").click();
-  await expect(page.getByTestId("map-panel-toggle")).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByTestId("map-results")).toBeVisible(); // the results come back with the panel, not separately
   // the whole map: every panel hidden with the button and with the H key
   await page.getByTestId("map-hide-panels").click();
   await expect(page.getByTestId("map-search-card")).toHaveCount(0);
@@ -552,6 +554,7 @@ test("the review queue is split into heat lanes counted by the server, hottest f
   await expect(page.getByTestId("queue-live")).toContainText("Live · updated");
   await expect(page.getByTestId("queue-known")).toContainText("Known:");
   // the first card is the hottest one
+  const hottest = await page.getByTestId("queue-name").innerText();
   const firstTier = await page.getByTestId("queue-card").getByTestId("heat-badge").getAttribute("data-tier");
   const order = ["hot", "warm", "cold"];
   for (const lane of order.slice(0, order.indexOf(firstTier))) expect(await n(lane)).toBe(0); // nothing hotter is waiting
@@ -562,6 +565,9 @@ test("the review queue is split into heat lanes counted by the server, hottest f
     await expect(page.getByTestId("queue-card").getByTestId("heat-badge")).toHaveAttribute("data-tier", lane);
   }
   await page.getByTestId("queue-lane-all").click();
+  // back to the whole queue: the card is the hottest prospect again. Waiting for it also keeps the next step from reading the
+  // "up next" list one render early (the card re-pins just after the lane changes).
+  await expect(page.getByTestId("queue-name")).toHaveText(hottest);
   if (all > 1) {
     await expect(page.getByTestId("queue-next")).toBeVisible();
     const next = page.getByTestId("queue-next-row").first();

@@ -979,3 +979,22 @@ def test_the_new_table_keeps_row_level_security_and_one_active_message_per_prosp
 
     with pytest.raises(IntegrityError):  # the partial unique index: a prospect has at most one active message
         run_async(second_active_message)
+
+
+def test_the_plan_says_when_the_allowlist_restricts_nobody(org, monkeypatch):
+    """The owner's snapshot: live sending on, sandbox off, two allowlist entries. Those two entries restrict nobody, and
+    the plan must say so instead of letting "2 allowed addresses" read as a limit."""
+    launch_id, _, _ = _ready_launch(org, 2)
+    monkeypatch.setenv("OUTREACH_SANDBOX", "false")
+    monkeypatch.setenv("OUTREACH_LIVE_ALLOWLIST", "founder@plantiers.example, @team.example")
+
+    async def go(session):
+        campaign = await campaign_repo.get_campaign(session, org["account_id"], launch_id)
+        plan, _, _ = await campaign_launch.preview(session, org["account_id"], campaign, _base())
+        return plan
+
+    warnings = {w["code"]: w["label"] for w in run_async(go)["warnings"]}
+    assert "allowlist_inactive" in warnings and "INACTIVE" in warnings["allowlist_inactive"]
+    assert "sandbox" not in warnings and "sandbox_allowlist" not in warnings
+    monkeypatch.setenv("OUTREACH_SANDBOX", "true")
+    assert "sandbox_allowlist" in {w["code"] for w in run_async(go)["warnings"]}

@@ -62,6 +62,37 @@ async def create_email_send(session: AsyncSession, account_id: uuid.UUID, **kwar
     return send
 
 
+AMBIGUOUS_MARK = "outcome unknown"  # the text a connection lost mid-send leaves in `email_sends.error`
+
+
+async def latest_email_attempt(
+    session: AsyncSession, account_id: uuid.UUID, *, campaign_step_id: uuid.UUID, to_email: str
+) -> Optional[EmailSend]:
+    """The most recent record of a campaign step sent to an address (the table is append-only: attempts pile up)."""
+    result = await session.execute(
+        select(EmailSend)
+        .where(
+            EmailSend.account_id == account_id,
+            EmailSend.campaign_step_id == campaign_step_id,
+            EmailSend.to_email == to_email,
+        )
+        .order_by(EmailSend.created_at.desc(), EmailSend.id.desc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
+def attempt_blocks_resend(attempt: Optional[EmailSend]) -> bool:
+    """May a send of this step to this address start again by itself? Never after a message that left, may have left
+    (a marker written before the provider call with no outcome after it, or a connection lost mid-send), or got an
+    answer. Only a definitive refusal, or no record at all, lets it go."""
+    if attempt is None:
+        return False
+    if attempt.status == "failed":
+        return AMBIGUOUS_MARK in (attempt.error or "")
+    return True
+
+
 async def find_email_sends_by_provider_ids(
     session: AsyncSession, provider_ids: list[str]
 ) -> list[tuple[EmailSend, Optional[uuid.UUID]]]:

@@ -48,14 +48,16 @@ async def prospect_kpis(session: AsyncSession, account_id: uuid.UUID) -> dict:
     ).scalar_one()
     emails_count = (
         await session.execute(
-            select(func.count(Lead.id))
-            .where(Lead.account_id == account_id, ACTIVE, IN_DISCOVERY, Lead.email.is_not(None), Lead.email != "")
+            select(func.count(Lead.id)).where(
+                Lead.account_id == account_id, ACTIVE, IN_DISCOVERY, Lead.email.is_not(None), Lead.email != ""
+            )
         )
     ).scalar_one()
     phones_count = (
         await session.execute(
-            select(func.count(Lead.id))
-            .where(Lead.account_id == account_id, ACTIVE, IN_DISCOVERY, Lead.phone.is_not(None), Lead.phone != "")
+            select(func.count(Lead.id)).where(
+                Lead.account_id == account_id, ACTIVE, IN_DISCOVERY, Lead.phone.is_not(None), Lead.phone != ""
+            )
         )
     ).scalar_one()
     approved_count = by_review.get("approved", 0)
@@ -154,12 +156,14 @@ async def daily_series(session: AsyncSession, account_id: uuid.UUID, days: int, 
     out = []
     for i in range(days):
         day = (start + timedelta(days=i)).date()
-        out.append({
-            "date": day.isoformat(),
-            "sent": int(sent.get(day, 0)),
-            "replied": int(replies.get(day, 0)),
-            "acquired": int(acquisitions.get(day, 0)),
-        })
+        out.append(
+            {
+                "date": day.isoformat(),
+                "sent": int(sent.get(day, 0)),
+                "replied": int(replies.get(day, 0)),
+                "acquired": int(acquisitions.get(day, 0)),
+            }
+        )
     return out
 
 

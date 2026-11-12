@@ -27,6 +27,7 @@ from services import (
     imap_svc,
     integration_checks,
     integrations_status,
+    mail_diagnostics,
     overpass_svc,
     sendgrid_svc,
     smtp_svc,
@@ -164,6 +165,51 @@ async def test_integration(
     else:
         result = await asyncio.to_thread(_checks()[item_id])  # blocking sockets: never on the event loop
     return IntegrationTestOut(id=item_id, checked_at=datetime.now(timezone.utc), **result)
+
+
+def _diagnostics_inputs():
+    """What the diagnosis reads: this server's own mailbox settings (a function, so tests can swap the whole run)."""
+    sender = SenderIdentity.from_env()
+    inputs: dict = {
+        "smtp_config": smtp_svc.SmtpConfig.from_env(),
+        "imap_config": imap_svc.ImapConfig.from_env(),
+        "sender_email": sender.reply_to if sender else None,
+    }
+    if feature_flags.test_sink():  # automated tests: no real DNS query, whatever the machine can reach
+
+        def _no_dns(name: str) -> list[str]:
+            raise mail_diagnostics.DnsError("disabled while OUTREACH_TEST_SINK is on")
+
+        inputs["txt"] = _no_dns
+    return inputs
+
+
+@router.post("/email/diagnostics")
+async def email_diagnostics(user: dict = Depends(decider), session: AsyncSession = Depends(get_db_session)):
+    """Technical diagnosis of the mailbox (names, ports, TLS, sign-in, read-only IMAP folder, SPF/DKIM/DMARC).
+
+    Nothing is sent. It signs in to the real mailbox, so it only runs when an owner or administrator asks for it here:
+    never on a schedule, never as a side effect of opening a page."""
+    key = str(uuid.UUID(user["org_id"]))
+    wait = _test_limiter.retry_after(key)
+    if wait:
+        raise HTTPException(
+            status_code=429, detail="Test limit reached: wait a minute", headers={"Retry-After": str(wait)}
+        )
+    _test_limiter.record(key)
+    try:
+        result = await asyncio.wait_for(asyncio.to_thread(lambda: mail_diagnostics.run(**_diagnostics_inputs())), 90)
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail="The diagnosis took too long: a server does not answer")
+    await audit_repo.log(
+        session,
+        uuid.UUID(user["org_id"]),
+        action="email.diagnostics",
+        resource_type="mailbox",
+        actor_user_id=uuid.UUID(user["id"]),
+        diff={"failed": result["failed"], "warnings": result["warnings"]},  # counts only: no host, no address
+    )
+    return result
 
 
 @router.get("/offer", response_model=OfferOut)

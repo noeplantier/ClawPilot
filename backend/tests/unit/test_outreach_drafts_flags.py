@@ -142,6 +142,7 @@ def test_flags_are_off_by_default_and_dry_run_is_on(monkeypatch):
         "external_sources": False,
         "prospect_import": False,
         "demo_data": False,
+        "automation_max": False,  # the bounded automatic mode is off unless an operator turns it on
         "dry_run": True,
         "kill_switch": False,
         "sandbox": True,

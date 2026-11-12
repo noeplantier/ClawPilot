@@ -21,6 +21,8 @@ export const pages = {
   batches: () => import("@/pages/Batches"),
   drafts: () => import("@/pages/Drafts"),
   launch: () => import("@/pages/Launch"),
+  journey: () => import("@/pages/Journey"),
+  automationMax: () => import("@/pages/AutomationMax"),
 };
 
 // The screen behind an in-app path (`/app/leads?view=kanban` -> leads); null for a path that has none.
@@ -29,6 +31,7 @@ const BY_PATH = {
   "/app/messages": "messages", "/app/analytics": "analytics", "/app/settings": "settings", "/app/prospects": "prospects",
   "/app/map": "map", "/app/sources": "sources", "/app/system": "system", "/app/prospects/review": "review",
   "/app/sending": "sending", "/app/prospects/import": "prospectImport", "/app/prospects/to-enrich": "toEnrich", "/app/settings/offer": "offer", "/app/batches": "batches", "/app/drafts": "drafts", "/app/launch": "launch",
+  "/app/journey": "journey", "/app/automation-max": "automationMax",
 };
 export const pageOf = (to) => BY_PATH[String(to || "").split("?")[0].replace(/\/$/, "")] || null;
 

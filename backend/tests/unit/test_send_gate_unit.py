@@ -214,13 +214,100 @@ def test_an_unblocked_task_reaches_the_provider_once(monkeypatch, impl, channel)
     async def ok(*a, **k):
         return None
 
-    for name in ("create_email_send", "create_whatsapp_send", "record_outreach_event"):
+    _wire_ledger(monkeypatch)
+    for name in ("create_whatsapp_send", "record_outreach_event"):
         monkeypatch.setattr(send_tasks.outreach_repo, name, ok)
     monkeypatch.setattr(send_tasks.campaign_repo, "increment_counters", ok)
 
-    result = asyncio.run(impl(None, _Task(), uuid.uuid4(), "c1", "s1", LEAD_ID))
+    result = asyncio.run(impl(_Session(), _Task(), uuid.uuid4(), "c1", "s1", LEAD_ID))
     assert result["status"] == "sent"
     assert calls == [channel]
+
+
+class _Session:
+    """Just enough of a session for the task: it commits the in-flight marker and flushes the outcome."""
+
+    def __init__(self, events=None):
+        self.events = events if events is not None else []
+
+    async def commit(self):
+        self.events.append("commit")
+
+    async def flush(self):
+        self.events.append("flush")
+
+
+def _wire_ledger(monkeypatch, latest=None, rows=None):
+    """The e-mail ledger without a database: `latest` is the previous attempt of this step to this address, `rows`
+    collects what the task writes."""
+    rows = rows if rows is not None else []
+
+    async def latest_attempt(*a, **k):
+        return latest
+
+    async def create(*a, **k):
+        row = SimpleNamespace(provider_message_id=None, error=None, **k)
+        rows.append(row)
+        return row
+
+    monkeypatch.setattr(send_tasks.outreach_repo, "latest_email_attempt", latest_attempt)
+    monkeypatch.setattr(send_tasks.outreach_repo, "create_email_send", create)
+    return rows
+
+
+def test_the_marker_is_committed_before_the_provider_is_called_and_completed_after(monkeypatch):
+    events: list[str] = []
+    _wire_impl(monkeypatch, None, events)
+    rows = _wire_ledger(monkeypatch)
+
+    async def ok(*a, **k):
+        return None
+
+    monkeypatch.setattr(send_tasks.outreach_repo, "record_outreach_event", ok)
+    monkeypatch.setattr(send_tasks.campaign_repo, "increment_counters", ok)
+    monkeypatch.setattr(
+        send_tasks,
+        "send_email",
+        lambda *a, **k: events.append("provider")
+        or {"status": "sent", "provider_id": "id-1", "error": None, "provider": "smtp", "ambiguous": False},
+    )
+    asyncio.run(send_tasks._send_email_impl(_Session(events), _Task(), uuid.uuid4(), "c1", "s1", LEAD_ID))
+    assert events.index("commit") < events.index("provider")  # visible to everyone before anything can leave
+    assert len(rows) == 1  # ONE row: a second would count twice against the daily and hourly caps
+    assert (rows[0].status, rows[0].provider, rows[0].provider_message_id) == ("sent", "smtp", "id-1")
+
+
+@pytest.mark.parametrize(
+    "previous",
+    [
+        SimpleNamespace(status="queued", error=None),  # the process died after the marker: nobody knows
+        SimpleNamespace(status="failed", error="connection lost while sending (OSError): outcome unknown"),
+        SimpleNamespace(status="sent", error=None),
+    ],
+)
+def test_a_retry_after_a_message_that_may_have_left_never_reaches_the_provider(monkeypatch, previous):
+    calls: list[str] = []
+    _wire_impl(monkeypatch, None, calls)
+    rows = _wire_ledger(monkeypatch, latest=previous)
+    result = asyncio.run(send_tasks._send_email_impl(_Session(), _Task(), uuid.uuid4(), "c1", "s1", LEAD_ID))
+    assert result == {"status": "skipped", "reason": "already_attempted"}
+    assert calls == [] and rows == []
+
+
+def test_a_definitive_refusal_does_not_stop_a_later_attempt(monkeypatch):
+    calls: list[str] = []
+    _wire_impl(monkeypatch, None, calls)
+    rows = _wire_ledger(
+        monkeypatch, latest=SimpleNamespace(status="failed", error="the server refused the recipient address")
+    )
+
+    async def ok(*a, **k):
+        return None
+
+    monkeypatch.setattr(send_tasks.outreach_repo, "record_outreach_event", ok)
+    monkeypatch.setattr(send_tasks.campaign_repo, "increment_counters", ok)
+    result = asyncio.run(send_tasks._send_email_impl(_Session(), _Task(), uuid.uuid4(), "c1", "s1", LEAD_ID))
+    assert result["status"] == "sent" and calls == ["email"] and len(rows) == 1
 
 
 @pytest.mark.parametrize(

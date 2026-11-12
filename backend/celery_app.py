@@ -37,6 +37,7 @@ celery_app = Celery(
         "tasks.qualification_tasks",
         "tasks.health_tasks",
         "tasks.campaign_tasks",
+        "tasks.mandate_tasks",
     ],
 )
 
@@ -57,6 +58,7 @@ celery_app.conf.update(
         "tasks.qualification_tasks.*": {"queue": "automation"},
         "tasks.health_tasks.*": {"queue": "automation"},
         "tasks.campaign_tasks.*": {"queue": "sends"},
+        "tasks.mandate_tasks.*": {"queue": "automation"},
     },
     beat_schedule={
         # Safety net for apply_async(eta=...) sends that got lost (e.g. a
@@ -82,6 +84,12 @@ celery_app.conf.update(
             "task": "tasks.campaign_tasks.process_due_dispatches",
             "schedule": 60.0,
             "options": {"queue": "sends"},
+        },
+        # The bounded automatic mode: visits the active mandates (a no-op unless FEATURE_AUTOMATION_MAX is on).
+        "run-automation-mandates": {
+            "task": "tasks.mandate_tasks.run_mandates",
+            "schedule": 300.0,
+            "options": {"queue": "automation"},
         },
         "celery-beat-health-heartbeat": {
             "task": "tasks.health_tasks.record_beat_heartbeat",

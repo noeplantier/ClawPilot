@@ -1313,3 +1313,77 @@ class LaunchTrackingOut(BaseModel):
     labels: Dict[str, str]
     total: int
     items: List[LaunchTrackingRowOut]
+
+
+# ---------------------------------------------------------------- journey: zone -> draft -> approval
+class JourneyZoneIn(BaseModel):
+    """The perimeter drawn on the map: a box and the category. The server refuses an oversized or inverted one."""
+
+    south: float = Field(ge=-90, le=90)
+    west: float = Field(ge=-180, le=180)
+    north: float = Field(ge=-90, le=90)
+    east: float = Field(ge=-180, le=180)
+    category: str = Field(min_length=1, max_length=40)
+    label: Optional[str] = Field(default=None, max_length=80)
+
+
+class JourneyCreateIn(BaseModel):
+    name: str = Field(default="Campagne par zone", min_length=2, max_length=120)
+    zone: JourneyZoneIn
+    size: int = Field(default=100, ge=1, le=100)
+
+
+class JourneyTemplateIn(BaseModel):
+    subject: str = Field(min_length=1, max_length=200)
+    body: str = Field(min_length=1, max_length=6000)
+
+
+class JourneyApproveIn(BaseModel):
+    content_hash: str = Field(min_length=4, max_length=64)  # the template the person read
+    expected_count: int = Field(ge=0, le=100)  # the number of messages the person was shown
+
+
+class JourneyRevokeIn(BaseModel):
+    reason: Optional[str] = Field(default=None, max_length=200)
+
+
+class JourneyOut(BaseModel):
+    """A flexible, server-computed document (summary, progress, readiness): the screen reads what it needs."""
+
+    data: Dict[str, Any]
+
+
+class JourneyListOut(BaseModel):
+    items: List[Dict[str, Any]]
+
+
+# ---------------------------------------------------------------- bounded automatic mode ("Automatisation max")
+class MandateStopRulesIn(BaseModel):
+    """The configurable stop rules (the others - kill switch, authentication error, replies not read, change of
+    template/zone/offer/sender/provider, expiry, total cap - are fixed and cannot be switched off)."""
+
+    max_bounce_rate: float = Field(default=0.05, gt=0, le=0.10)
+    max_opt_out_rate: float = Field(default=0.10, gt=0, le=0.20)
+    min_sample: int = Field(default=20, ge=5, le=200)
+
+
+class MandateCreateIn(BaseModel):
+    campaign_id: str
+    name: str = Field(default="Mandat d'automatisation", min_length=2, max_length=120)
+    daily_cap: int = Field(ge=1, le=100)
+    total_cap: int = Field(ge=1, le=100)
+    days: int = Field(ge=1, le=90)  # the expiry date: a mandate does not last forever
+    window_start_hour: int = Field(default=8, ge=0, le=23)
+    window_end_hour: int = Field(default=18, ge=1, le=24)
+    min_delay_seconds: int = Field(default=60, ge=30, le=3600)
+    search_every_hours: int = Field(default=24, ge=6, le=168)
+    ai_budget: int = Field(default=0, ge=0, le=1000)  # AI generations allowed: 0 = none, the template is controlled
+    stop_rules: MandateStopRulesIn = Field(default_factory=MandateStopRulesIn)
+
+
+class MandateActivateIn(BaseModel):
+    acknowledgements: List[str] = Field(default_factory=list, max_length=8)  # the four codes of the authorisation
+
+
+class MandateOut(BaseModel):
+    data: Dict[str, Any]

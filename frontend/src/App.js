@@ -28,6 +28,8 @@ const Offer = lazy(pages.offer);
 const Batches = lazy(pages.batches);
 const Drafts = lazy(pages.drafts);
 const Launch = lazy(pages.launch);
+const Journey = lazy(pages.journey);
+const AutomationMax = lazy(pages.automationMax);
 const Legal = lazy(() => import("@/pages/legal/Legal"));
 const Privacy = lazy(() => import("@/pages/legal/Privacy"));
 const Terms = lazy(() => import("@/pages/legal/Terms"));
@@ -82,6 +84,8 @@ function App() {
               <Route path="batches" element={<Batches />} />
               <Route path="drafts" element={<Drafts />} />
               <Route path="launch" element={<Launch />} />
+              <Route path="journey" element={<Journey />} />
+              <Route path="automation-max" element={<AutomationMax />} />
             </Route>
             <Route path="*" element={<Navigate to="/app/dashboard" replace />} />
           </Routes>

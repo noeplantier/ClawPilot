@@ -15,6 +15,7 @@
   --brand-violet-hover: #8B5CF6;
   --brand-lilac: #B79BFF; /* brand-300 */
   --brand-400: #9B74FA;
+  --chart-sent: #818CF8; /* the "sent" series of the dashboard chart and its legend: one place, not a class of its own */
   --brand-500: #7C3AED;
   --leaf: #4ADE80;
   --surface-dark: #120F1E;
@@ -436,6 +437,11 @@ select option { background: var(--void-surface); color: var(--text-primary); }
   .btn-primary, .btn-ghost, .btn-purple, .btn-ink { transition: none; }
   .btn-primary:hover, .btn-primary:active, .btn-ghost:active { transform: none; }
 }
+
+/* Sidebar: the width and the labels move together (one 200 ms ease, the aside's own transition); no loop, and none at all with reduced motion. */
+.shell-label { animation: shell-label-in 0.2s ease both; }
+@keyframes shell-label-in { from { opacity: 0; transform: translateX(-4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .shell-label { animation: none; } }
 
 /* Map search: a night map with a head-up display.
    The tiles stay the standard OpenStreetMap ones (one source, one attribution, no key): the night look is a filter on the tile

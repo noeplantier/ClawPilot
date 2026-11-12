@@ -59,6 +59,18 @@ SEND_REFUSALS: dict[str, tuple[str, str]] = {
     "sandbox_recipient": ("stop", "Bac à sable actif : destinataire absent de OUTREACH_LIVE_ALLOWLIST"),
     "not_compliant": ("stop", "Brouillon non conforme (identité, origine des données ou désinscription)"),
     "campaign_gone": ("stop", "Campagne supprimée"),
+    # a campaign with a zone sends only what its approval still covers (services/journey_gate.py)
+    "not_approved": ("stop", "Campagne non approuvée"),
+    "revoked": ("stop", "Approbation révoquée"),
+    "expired": ("stop", "Approbation expirée"),
+    "template_changed": ("stop", "Le modèle a changé depuis l'approbation : approuvez de nouveau"),
+    "zone_changed": ("stop", "La zone a changé depuis l'approbation : approuvez de nouveau"),
+    "offer_changed": ("stop", "L'offre a changé depuis l'approbation : approuvez de nouveau"),
+    "sender_changed": ("stop", "L'expéditeur a changé depuis l'approbation : approuvez de nouveau"),
+    "cap_total": ("stop", "Plafond total de l'approbation atteint"),
+    "cap_daily": ("wait", "Plafond quotidien de l'approbation atteint"),
+    "mandate_inactive": ("stop", "Le mandat d'automatisation n'est plus actif"),
+    "mandate_cap": ("stop", "Plafond du mandat atteint"),
 }
 
 

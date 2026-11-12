@@ -243,6 +243,7 @@ async def smtp_test_send(
         subject=TEST_SUBJECT,
         body=body,
         status="sent" if result.status == "sent" else "failed",
+        provider="smtp",
         provider_message_id=result.provider_id,
         error=result.error,
     )
