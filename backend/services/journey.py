@@ -555,6 +555,9 @@ async def approve(
     now: datetime,
     scheduler: Optional[dict[str, Any]] = None,
     mandate_id: Optional[uuid.UUID] = None,
+    daily_cap: Optional[int] = None,
+    total_cap: Optional[int] = None,
+    valid_until: Optional[datetime] = None,
 ) -> dict[str, Any]:
     """Approve the campaign as the person saw it, then write its drafts and its plan. Refused (nothing written) when
     something that blocks is not configured, when the template is not the one that was shown, or when the number of
@@ -591,11 +594,11 @@ async def approve(
             offer_hash=campaign_template.offer_hash(offer),
             sender_fp=journey_gate.sender_fp(),
             audience_count=len(aud.sendable),
-            daily_cap=policy.max_per_day,
-            total_cap=min(len(aud.sendable), MAX_VOLUME),
+            daily_cap=daily_cap if daily_cap is not None else policy.max_per_day,
+            total_cap=total_cap if total_cap is not None else min(len(aud.sendable), MAX_VOLUME),
             approved_by_user_id=user_id,
             mandate_id=mandate_id,
-            expires_at=now + timedelta(days=APPROVAL_VALID_DAYS),
+            expires_at=valid_until or now + timedelta(days=APPROVAL_VALID_DAYS),
         ),
     )
     # Messages planned under an earlier approval are planned again from the new drafts: an old plan never sends the

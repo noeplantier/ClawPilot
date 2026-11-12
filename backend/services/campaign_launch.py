@@ -774,7 +774,7 @@ async def _send_one(
     if draft is None or draft.status != "approved":
         return Outcome("skipped", "draft_not_approved")
     if campaign.zone is not None:  # a campaign with a zone sends only what its approval still covers, right now
-        refusal = await journey_gate.check(session, campaign, now, draft.template_version, row.id)
+        refusal = await journey_gate.check(session, campaign, now, draft.template_version, row.id, lead)
         if refusal is not None:
             code, retry_at = refusal
             if campaign_plan.refusal_kind(code) == "wait":
