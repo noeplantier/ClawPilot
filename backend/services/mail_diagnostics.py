@@ -237,12 +237,18 @@ def _tls_certificate(host: str, port: int, mode: str, timeout: float = 10.0) -> 
     try:
         client.ehlo()
         client.starttls(context=context)
-        return client.sock.getpeercert() if client.sock is not None else None  # type: ignore[union-attr]
+        return client.sock.getpeercert() if isinstance(client.sock, ssl.SSLSocket) else None
     finally:
         try:
             client.quit()
         except Exception:  # noqa: BLE001 (closing is best effort: nothing was sent)
             client.close()
+
+
+def _resolve(host: str) -> Any:
+    """The system resolver for one host name. `socket.getaddrinfo` needs a port too: passed bare as the hook it raised a
+    TypeError on the first real diagnosis, so the hook is this one-argument function."""
+    return socket.getaddrinfo(host, None)
 
 
 def _connection_steps(
@@ -256,7 +262,7 @@ def _connection_steps(
 ) -> list[dict[str, str]]:
     try:
         resolve(host)
-    except OSError as exc:
+    except (OSError, UnicodeError) as exc:  # UnicodeError: a host name that cannot be encoded (empty or overlong label)
         return [
             _step(
                 "dns",
@@ -311,7 +317,7 @@ def run(
     smtp_config: Optional[smtp_svc.SmtpConfig] = None,
     imap_config: Optional[imap_svc.ImapConfig] = None,
     sender_email: Optional[str] = None,
-    resolve: Callable[[str], Any] = socket.getaddrinfo,
+    resolve: Callable[[str], Any] = _resolve,
     tls: Callable[[str, int, str], Optional[dict[str, Any]]] = _tls_certificate,
     smtp_check: Callable[..., dict[str, Any]] = smtp_svc.check_connection,
     imap_check: Callable[..., dict[str, Any]] = imap_svc.check_connection,

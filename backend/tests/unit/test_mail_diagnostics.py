@@ -279,3 +279,63 @@ def test_a_resolver_is_read_from_resolv_conf(tmp_path):
     conf.write_text("# comment\nsearch example\nnameserver ::1\nnameserver 10.0.0.2\n")
     assert md.system_nameserver(str(conf)) == "10.0.0.2"  # the IPv4 one: the client speaks IPv4
     assert md.system_nameserver(str(tmp_path / "missing")) is None
+
+
+# ---------------------------------------------------------------- the default hooks (what the real button runs)
+def test_the_default_resolver_is_called_the_way_the_system_resolver_expects(monkeypatch):
+    """Every other test injects `resolve`; the button does not. `socket.getaddrinfo(host)` alone is a TypeError (it
+    needs a port), which made the very first real diagnosis fail before any check. No network: the system call is
+    replaced."""
+    seen = []
+
+    def getaddrinfo(host, port, *args, **kwargs):  # the real signature: host AND port are required
+        seen.append((host, port))
+        return [("addr",)]
+
+    monkeypatch.setattr(md.socket, "getaddrinfo", getaddrinfo)
+    hooks = Hooks(dns=GOOD_DNS)
+    result = md.run(
+        now=NOW,
+        smtp_config=_smtp(),
+        imap_config=_imap(),
+        sender_email="founder@plantiers.example",
+        tls=hooks.tls,  # `resolve` is NOT passed: the default is under test
+        smtp_check=hooks.smtp_check,
+        imap_check=hooks.imap_check,
+        txt=hooks.txt,
+    )
+    assert seen == [("smtp.mailhost.example", None), ("imap.mailhost.example", None)]
+    assert _by(result, "smtp", "dns")["status"] == md.PASSED and _by(result, "imap", "dns")["status"] == md.PASSED
+    assert result["ok"] is True
+
+
+def test_a_host_name_the_resolver_cannot_even_encode_is_a_finding_not_a_crash(monkeypatch):
+    def getaddrinfo(host, port, *args, **kwargs):
+        raise UnicodeError("label empty or too long")
+
+    monkeypatch.setattr(md.socket, "getaddrinfo", getaddrinfo)
+    hooks = Hooks()
+    result = md.run(
+        now=NOW, smtp_config=_smtp(host=".smtp.mailhost.example"), tls=hooks.tls, smtp_check=hooks.smtp_check
+    )
+    assert _by(result, "smtp", "dns")["status"] == md.FAILED
+    assert ("smtp_auth",) not in hooks.calls  # nothing is attempted against a name that does not resolve
+    assert PASSWORD not in str(result)
+
+
+def _closed_port():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]  # released on exit: nothing listens there
+
+
+@pytest.mark.parametrize("security", ["ssl", "starttls"])
+def test_every_default_hook_runs_end_to_end_against_this_machine_only(security):
+    """No hook injected at all: the real resolver and the real TLS opener, pointed at a closed port of 127.0.0.1. The
+    run must describe the failure and stop there (no sign-in is attempted, nothing can be sent), never raise."""
+    result = md.run(now=NOW, smtp_config=_smtp(port=_closed_port(), security=security, host="127.0.0.1"))
+    assert _by(result, "smtp", "dns")["status"] == md.PASSED
+    tls = _by(result, "smtp", "tls")
+    assert tls["status"] == md.FAILED and "Connexion impossible" in tls["detail"]
+    assert _by(result, "smtp", "auth")["status"] == md.SKIPPED
+    assert result["ok"] is False and PASSWORD not in str(result)
