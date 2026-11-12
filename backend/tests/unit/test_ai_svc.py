@@ -146,7 +146,12 @@ def test_the_request_goes_to_the_provider_with_the_key_and_only_the_fields_of_th
     sent = json.dumps(payload["messages"], ensure_ascii=False)
     assert "Chez Marcel" in sent and "Marcel SARL" in sent and "OutreachOS" in sent and "réserver un appel" in sent
     assert "never invent a fact" in payload["messages"][0]["content"]
-    assert out == {"subject": "Une idée pour Chez Marcel", "body": "Bonjour,\n\nVoici une idée.", "language": "fr"}
+    assert out == {
+        "subject": "Une idée pour Chez Marcel",
+        "body": "Bonjour,\n\nVoici une idée.",
+        "whatsapp": None,  # the model gave no WhatsApp text: none is made up
+        "language": "fr",
+    }
 
 
 def test_a_lead_s_e_mail_and_phone_cannot_reach_the_provider():
@@ -175,7 +180,15 @@ def test_whatsapp_has_no_subject(monkeypatch):
     ],
 )
 def test_the_answer_is_read_whatever_the_model_wraps_it_in(raw, subject, body):
-    assert ai_svc.parse_answer(raw) == {"subject": subject, "body": body}
+    assert ai_svc.parse_answer(raw) == {"subject": subject, "body": body, "whatsapp": None}
+
+
+def test_a_whatsapp_text_is_kept_only_when_the_model_really_wrote_one():
+    with_text = json.dumps({"subject": "S", "body": "Corps", "whatsapp": "  Bonjour, une question rapide.  "})
+    assert ai_svc.parse_answer(with_text)["whatsapp"] == "Bonjour, une question rapide."
+    for empty in ("", "   ", None, 42):
+        raw = json.dumps({"subject": "S", "body": "Corps", "whatsapp": empty})
+        assert ai_svc.parse_answer(raw)["whatsapp"] is None
 
 
 def test_a_provider_without_json_mode_is_asked_again_in_plain_mode_once(monkeypatch):

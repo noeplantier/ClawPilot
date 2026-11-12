@@ -38,11 +38,39 @@ async def prospect_kpis(session: AsyncSession, account_id: uuid.UUID) -> dict:
             .where(Lead.account_id == account_id, ACTIVE, IN_DISCOVERY)
         )
     ).one()
+    hot_count = (
+        await session.execute(
+            select(func.count(latest.c.score))
+            .select_from(Lead)
+            .join(latest, latest.c.lead_id == Lead.id)
+            .where(Lead.account_id == account_id, ACTIVE, IN_DISCOVERY, latest.c.score >= 70)
+        )
+    ).scalar_one()
+    emails_count = (
+        await session.execute(
+            select(func.count(Lead.id)).where(
+                Lead.account_id == account_id, ACTIVE, IN_DISCOVERY, Lead.email.is_not(None), Lead.email != ""
+            )
+        )
+    ).scalar_one()
+    phones_count = (
+        await session.execute(
+            select(func.count(Lead.id)).where(
+                Lead.account_id == account_id, ACTIVE, IN_DISCOVERY, Lead.phone.is_not(None), Lead.phone != ""
+            )
+        )
+    ).scalar_one()
+    approved_count = by_review.get("approved", 0)
     return {
         "total": sum(by_review.values()),
         "by_review": {k: by_review.get(k, 0) for k in ("pending", "approved", "rejected")},
         "scored": int(scored),
         "avg_score": round(float(avg), 1) if avg is not None else None,  # None = nothing scored yet, not 0
+        "hot_leads": int(hot_count),
+        "qualified_leads": int(approved_count),
+        "emails_available": int(emails_count),
+        "phones_available": int(phones_count),
+        "pipeline_value": int(approved_count * 2500),  # Baseline 2500€ estimated service value per qualified client
     }
 
 
@@ -112,10 +140,30 @@ async def daily_series(session: AsyncSession, account_id: uuid.UUID, days: int, 
             )
         )
     )
+    acquired_day = cast(Lead.created_at, SqlDate)
+    acquisitions = _pairs(
+        (
+            await session.execute(
+                select(acquired_day, func.count())
+                .where(
+                    Lead.account_id == account_id,
+                    Lead.created_at >= start,
+                )
+                .group_by(acquired_day)
+            )
+        )
+    )
     out = []
     for i in range(days):
         day = (start + timedelta(days=i)).date()
-        out.append({"date": day.isoformat(), "sent": int(sent.get(day, 0)), "replied": int(replies.get(day, 0))})
+        out.append(
+            {
+                "date": day.isoformat(),
+                "sent": int(sent.get(day, 0)),
+                "replied": int(replies.get(day, 0)),
+                "acquired": int(acquisitions.get(day, 0)),
+            }
+        )
     return out
 
 

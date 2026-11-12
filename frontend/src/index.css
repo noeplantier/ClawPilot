@@ -15,6 +15,7 @@
   --brand-violet-hover: #8B5CF6;
   --brand-lilac: #B79BFF; /* brand-300 */
   --brand-400: #9B74FA;
+  --chart-sent: #818CF8; /* the "sent" series of the dashboard chart and its legend: one place, not a class of its own */
   --brand-500: #7C3AED;
   --leaf: #4ADE80;
   --surface-dark: #120F1E;

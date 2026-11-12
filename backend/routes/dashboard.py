@@ -23,7 +23,11 @@ def _rate(part: int, whole: int):
 
 
 @router.get("/overview", response_model=DashboardOut)
-async def overview(user: dict = Depends(get_current_user), session: AsyncSession = Depends(get_db_session)):
+async def overview(
+    days: int = 14,
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+):
     account_id = uuid.UUID(user["org_id"])
     now = dashboard_repo.utcnow()
     prospects = await dashboard_repo.prospect_kpis(session, account_id)
@@ -31,6 +35,7 @@ async def overview(user: dict = Depends(get_current_user), session: AsyncSession
     status = await send_gate.status(session, account_id, "email", now)
     signals = await dashboard_repo.latest_detected_signals(session, account_id, 8)
     campaigns = await dashboard_repo.campaigns(session, account_id, 8)
+    clamped_days = max(1, min(90, days))
     return DashboardOut(
         generated_at=now,
         kpis={
@@ -39,6 +44,11 @@ async def overview(user: dict = Depends(get_current_user), session: AsyncSession
             "approved": prospects["by_review"]["approved"],
             "scored": prospects["scored"],
             "avg_score": prospects["avg_score"],
+            "hot_leads": prospects.get("hot_leads", 0),
+            "qualified_leads": prospects.get("qualified_leads", 0),
+            "emails_available": prospects.get("emails_available", 0),
+            "phones_available": prospects.get("phones_available", 0),
+            "pipeline_value": prospects.get("pipeline_value", 0),
             "sent_today": status.sent_today,
             "messages": out["messages"],
             "replies": out["replied"],
@@ -47,7 +57,7 @@ async def overview(user: dict = Depends(get_current_user), session: AsyncSession
             "bounce_rate": _rate(out["bounced"], out["messages"]),
             "unsubscribed": out["unsubscribed"],
         },
-        series=await dashboard_repo.daily_series(session, account_id, SERIES_DAYS, now),
+        series=await dashboard_repo.daily_series(session, account_id, clamped_days, now),
         latest_prospects=await dashboard_repo.latest_prospects(session, account_id, 6),
         latest_signals=[{**s, "label": SIGNAL_LABELS.get(s["key"], s["key"])} for s in signals],
         campaigns=[

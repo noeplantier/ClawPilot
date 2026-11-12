@@ -28,7 +28,104 @@ STATES = (SITE_FOUND, SITE_UNREACHABLE, SITE_NONE_IDENTIFIED, SITE_UNKNOWN)
 NO_SITE_SENTENCE = {
     "fr": "Je n'ai pas identifié de site officiel pour votre établissement.",
     "en": "I could not identify an official website for your business.",
+    "id": "Saya belum menemukan situs web resmi untuk bisnis Anda.",
+    "es": "No he identificado un sitio web oficial para su establecimiento.",
+    "de": "Ich konnte keine offizielle Website für Ihr Unternehmen finden.",
+    "it": "Non ho individuato un sito web ufficiale per la vostra attività.",
+    "pt": "Não identifiquei um site oficial para o seu estabelecimento.",
+    "nl": "Ik heb geen officiële website kunnen vinden voor uw onderneming.",
+    "ar": "لم أتمكن من العثور على موقع رسمي لنشاطكم التجاري.",
 }
+
+LANGUAGE_NAMES = {
+    "fr": "French",
+    "en": "English",
+    "id": "Indonesian",
+    "es": "Spanish",
+    "de": "German",
+    "pt": "Portuguese",
+    "it": "Italian",
+    "nl": "Dutch",
+    "ar": "Arabic",
+}
+
+COUNTRY_LANGUAGES = {
+    "FR": "fr",
+    "BE": "fr",
+    "CH": "fr",
+    "MC": "fr",
+    "SN": "fr",
+    "CI": "fr",
+    "US": "en",
+    "GB": "en",
+    "AU": "en",
+    "CA": "en",
+    "NZ": "en",
+    "IE": "en",
+    "SG": "en",
+    "ID": "id",
+    "ES": "es",
+    "MX": "es",
+    "AR": "es",
+    "CO": "es",
+    "CL": "es",
+    "PE": "es",
+    "DE": "de",
+    "AT": "de",
+    "PT": "pt",
+    "BR": "pt",
+    "IT": "it",
+    "NL": "nl",
+    "AE": "ar",
+    "SA": "ar",
+    "EG": "ar",
+    "MA": "ar",
+    "QA": "ar",
+}
+
+
+def detect_language(country: Optional[str], default: str = "en") -> str:
+    if not country:
+        return default
+    return COUNTRY_LANGUAGES.get(country.strip().upper(), default)
+
+
+OPPORTUNITY_A = "opportunity_a"  # No website -> creation / landing page
+OPPORTUNITY_B = "opportunity_b"  # Outdated website -> redesign / UX/UI / mobile
+OPPORTUNITY_C = "opportunity_c"  # SEO & digital visibility -> technical SEO / local SEO / GEO
+OPPORTUNITIES = (OPPORTUNITY_A, OPPORTUNITY_B, OPPORTUNITY_C)
+
+OPPORTUNITY_DETAILS = {
+    OPPORTUNITY_A: {
+        "id": OPPORTUNITY_A,
+        "name": "Opportunity A — No Website",
+        "service": "Website Creation & Landing Page",
+        "description": "Creation of modern business website, conversion-oriented landing page and mobile showcase.",
+    },
+    OPPORTUNITY_B: {
+        "id": OPPORTUNITY_B,
+        "name": "Opportunity B — Outdated Website",
+        "service": "Website Redesign & Modern UX/UI",
+        "description": "Modern UX/UI modernization, mobile responsiveness, performance and conversion overhaul.",
+    },
+    OPPORTUNITY_C: {
+        "id": OPPORTUNITY_C,
+        "name": "Opportunity C — SEO & Digital Visibility",
+        "service": "Technical & Local SEO",
+        "description": "Local search presence, Google Maps optimization, GEO search visibility and indexing.",
+    },
+}
+
+
+def match_opportunity(*, website: Optional[str], detected: Mapping[str, str]) -> str:
+    """Classify the primary commercial opportunity using available evidence."""
+    if not website or not website.strip() or "no_website" in detected:
+        return OPPORTUNITY_A
+    if "legacy_tech" in detected or "website_unreachable" in detected:
+        return OPPORTUNITY_B
+    return OPPORTUNITY_C
+
+
 BENEFITS = {  # what a web page does for this kind of activity (chosen from the activity actually recorded)
     "restaurants": "présenter la carte et permettre de réserver",
     "bakeries": "présenter les produits et les horaires",

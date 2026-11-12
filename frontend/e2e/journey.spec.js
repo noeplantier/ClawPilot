@@ -554,6 +554,7 @@ test("the review queue is split into heat lanes counted by the server, hottest f
   await expect(page.getByTestId("queue-live")).toContainText("Live · updated");
   await expect(page.getByTestId("queue-known")).toContainText("Known:");
   // the first card is the hottest one
+  const hottest = await page.getByTestId("queue-name").innerText();
   const firstTier = await page.getByTestId("queue-card").getByTestId("heat-badge").getAttribute("data-tier");
   const order = ["hot", "warm", "cold"];
   for (const lane of order.slice(0, order.indexOf(firstTier))) expect(await n(lane)).toBe(0); // nothing hotter is waiting
@@ -564,6 +565,9 @@ test("the review queue is split into heat lanes counted by the server, hottest f
     await expect(page.getByTestId("queue-card").getByTestId("heat-badge")).toHaveAttribute("data-tier", lane);
   }
   await page.getByTestId("queue-lane-all").click();
+  // back to the whole queue: the card is the hottest prospect again. Waiting for it also keeps the next step from reading the
+  // "up next" list one render early (the card re-pins just after the lane changes).
+  await expect(page.getByTestId("queue-name")).toHaveText(hottest);
   if (all > 1) {
     await expect(page.getByTestId("queue-next")).toBeVisible();
     const next = page.getByTestId("queue-next-row").first();

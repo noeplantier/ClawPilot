@@ -19,6 +19,11 @@ describe("the go-to palette replaces nothing that the top bar offered", () => {
     const added = buildCommands([{ ...SECTIONS[0], tabs: [...SECTIONS[0].tabs, ...extra] }]);
     expect(added.some((c) => c.to === "/app/z")).toBe(true);
   });
+  it("a screen is not found by the words that describe its siblings", () => {
+    const crm = commands.find((c) => c.to === "/app/leads");
+    expect(crm.keywords.join(" ")).not.toMatch(/enrichir/i); // "enrichir" must find « À enrichir », not the CRM
+    expect(commands.find((c) => c.to === "/app/prospects/to-enrich").label).toBe("À enrichir");
+  });
   it("reaches the two screens of the new journey", () => {
     expect(commands.some((c) => c.to === "/app/journey" && c.label === "Campagne par zone")).toBe(true);
     expect(commands.some((c) => c.to === "/app/automation-max")).toBe(true);

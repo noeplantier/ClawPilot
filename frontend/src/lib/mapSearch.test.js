@@ -1,4 +1,4 @@
-import { areaTooLarge, importRows, summarize, summaryText, markerColor, panelPadding, reachablePlace, isHot, readyOnly, readySummary, zoneOf, zoneSummary, journeyLink } from "@/lib/mapSearch";
+import { areaTooLarge, importRows, summarize, summaryText, markerColor, panelPadding, reachablePlace, isHot, readyOnly, readySummary, zoneOf, zoneSummary, journeyLink, classifyProspect } from "@/lib/mapSearch";
 
 const A = { external_id: "node/1", name: "A", lat: 45.7, lon: 4.8, email: "a@a.fr", phone: "+33 1", website: "https://a.fr", source_url: "u" };
 const B = { external_id: "node/2", name: "B", lat: 45.7, lon: 4.8, email: null, phone: "+33 2", website: null, source_url: "u" };
@@ -85,5 +85,21 @@ describe("the zone a search really looked at", () => {
     expect([q.get("south"), q.get("west"), q.get("north"), q.get("east"), q.get("category")]).toEqual(["45.7", "4.78", "45.8", "4.9", "restaurant"]);
     expect(q.has("label")).toBe(false);
     expect(new URLSearchParams(journeyLink(zoneOf(BOX), "Lyon 6").split("?")[1]).get("label")).toBe("Lyon 6");
+  });
+});
+
+describe("hot is the server's observed intent, never a score", () => {
+  const base = { email: "a@b.example", phone: "+33 4 78 12 34 56", website: "https://x.example", review_status: "pending" };
+  it("a high score or a hot heat band alone leaves a prospect qualified", () => {
+    const scored = { ...base, priority: "qualified", score: 96, heat: { tier: "hot", value: 96 } };
+    expect(isHot(scored)).toBe(false);
+    expect(classifyProspect(scored).tier).not.toBe("HOT");
+    expect(readySummary([{ ...scored, map_ready: true, has_website: true }])).toContain("none hot");
+  });
+  it("the server's priority makes it hot, whatever the score", () => {
+    const intent = { ...base, priority: "hot", score: 10 };
+    expect(isHot(intent)).toBe(true);
+    expect(classifyProspect(intent).tier).toBe("HOT");
+    expect(isHot(null)).toBe(false);
   });
 });

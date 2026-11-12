@@ -44,10 +44,12 @@ export const STATUS_LABEL = { pending: "to review", approved: "approved", reject
 
 // The map draws only the prospects the server qualified (`map_ready`: e-mail, phone, address and position on a fresh source,
 // a fit score; a website is never required). The page never recomputes that: the server decides before any limit.
-export const readyOnly = (mine) => mine.filter((p) => p.map_ready === true);
+export const readyOnly = (mine) => (mine || []).filter((p) => p.map_ready === true);
 
 // "Hot" means an observed, sourced commercial intent and nothing else; a qualified prospect without one is not hot.
-export const isHot = (p) => p.priority === "hot";
+// "Hot" is an observed, sourced commercial intent decided by the server (`priority`), never a score: a high heat or fit
+// score alone leaves a prospect "qualified" (docs/eligibility.md).
+export const isHot = (p) => Boolean(p && p.priority === "hot");
 
 // A place found by the search is drawn only when it published BOTH a phone and an e-mail: nothing else can be reached
 // by a person. A missing value is unknown, never a default; the places left out are counted, not hidden silently.
@@ -97,4 +99,147 @@ export function journeyLink(zone, label) {
   const q = new URLSearchParams({ south: zone.south, west: zone.west, north: zone.north, east: zone.east, category: zone.category });
   if (label) q.set("label", label);
   return `/app/journey?${q.toString()}`;
+}
+
+// -------------------------------------------------------------
+// Plantiers Smart Lead Qualification & Opportunity Classification
+// -------------------------------------------------------------
+export const QUALIFICATION_TIERS = {
+  HOT: {
+    key: "HOT",
+    label: "HOT LEAD",
+    color: "#F59E0B",
+    glow: "0 0 16px rgba(245, 158, 11, 0.6)",
+    bg: "rgba(245, 158, 11, 0.15)",
+    border: "rgba(245, 158, 11, 0.4)",
+    badgeClass: "bg-amber-500/20 text-amber-300 border-amber-500/40",
+  },
+  HIGHLY_QUALIFIED: {
+    key: "HIGHLY_QUALIFIED",
+    label: "HIGHLY QUALIFIED",
+    color: "#22C55E",
+    glow: "0 0 16px rgba(34, 197, 94, 0.5)",
+    bg: "rgba(34, 197, 94, 0.15)",
+    border: "rgba(34, 197, 94, 0.4)",
+    badgeClass: "bg-leaf-500/20 text-leaf-400 border-leaf-500/40",
+  },
+  QUALIFIED: {
+    key: "QUALIFIED",
+    label: "QUALIFIED",
+    color: "#7C3AED",
+    glow: "0 0 14px rgba(124, 58, 237, 0.5)",
+    bg: "rgba(124, 58, 237, 0.15)",
+    border: "rgba(124, 58, 237, 0.4)",
+    badgeClass: "bg-brand-500/20 text-brand-300 border-brand-500/40",
+  },
+  NEEDS_REVIEW: {
+    key: "NEEDS_REVIEW",
+    label: "NEEDS REVIEW",
+    color: "#94A3B8",
+    glow: "none",
+    bg: "rgba(148, 163, 184, 0.1)",
+    border: "rgba(148, 163, 184, 0.3)",
+    badgeClass: "bg-white/10 text-white/70 border-white/20",
+  },
+};
+
+export function classifyProspect(p) {
+  if (!p) return { tier: "NEEDS_REVIEW", ...QUALIFICATION_TIERS.NEEDS_REVIEW, confidence: 0, reasons: ["No data"] };
+
+  const hasEmail = Boolean(p.email && String(p.email).includes("@"));
+  const hasPhone = Boolean(p.phone && String(p.phone).trim().length >= 4);
+  const hasWebsite = Boolean(p.website && String(p.website).trim().length > 3);
+  const score = typeof p.score === "number" ? p.score : (p.heat?.value ?? null);
+  const isHotLead = isHot(p); // the server's decision; a score never makes a prospect hot
+
+  const reasons = [];
+
+  // Determine Opportunity
+  let opportunity = {
+    id: "opportunity_a",
+    name: "Opportunity A — No Website",
+    pitch: "Creation of a modern, high-converting business website & digital presence",
+  };
+
+  if (!hasWebsite) {
+    opportunity = {
+      id: "opportunity_a",
+      name: "Opportunity A — No Website",
+      pitch: "Creation of a modern, conversion-oriented business website & mobile showcase",
+    };
+    reasons.push("No official business website detected in listing");
+  } else if (p.signals && p.signals.includes("legacy_tech")) {
+    opportunity = {
+      id: "opportunity_b",
+      name: "Opportunity B — Outdated Website",
+      pitch: "Modern UX/UI redesign, mobile responsiveness & performance overhaul",
+    };
+    reasons.push("Outdated web technology and non-responsive layout identified");
+  } else {
+    opportunity = {
+      id: "opportunity_c",
+      name: "Opportunity C — SEO & Digital Visibility",
+      pitch: "Technical & Local SEO, GEO search ranking optimization and local search growth",
+    };
+    reasons.push("Website active with high local discovery and SEO expansion potential");
+  }
+
+  // Determine Tier
+  if (isHotLead && hasEmail && hasPhone) {
+    reasons.unshift("Observed commercial intent recorded");
+    if (score !== null) reasons.unshift(`High fit score (${score}/100)`);
+    reasons.unshift("Dual verified contacts: business email and telephone");
+    return {
+      tier: "HOT",
+      ...QUALIFICATION_TIERS.HOT,
+      confidence: Math.min(99, (score || 80) + 10),
+      reasons,
+      opportunity,
+      hasEmail,
+      hasPhone,
+      hasWebsite,
+    };
+  }
+
+  if (hasEmail && hasPhone) {
+    reasons.unshift("Dual verified direct contacts (email + phone)");
+    if (p.review_status === "approved") reasons.unshift("Approved in CRM pipeline");
+    return {
+      tier: "HIGHLY_QUALIFIED",
+      ...QUALIFICATION_TIERS.HIGHLY_QUALIFIED,
+      confidence: score || 75,
+      reasons,
+      opportunity,
+      hasEmail,
+      hasPhone,
+      hasWebsite,
+    };
+  }
+
+  if (hasEmail || hasPhone) {
+    if (hasEmail) reasons.unshift("Verified email contact available");
+    if (hasPhone) reasons.unshift("Verified phone contact available");
+    return {
+      tier: "QUALIFIED",
+      ...QUALIFICATION_TIERS.QUALIFIED,
+      confidence: score || 55,
+      reasons,
+      opportunity,
+      hasEmail,
+      hasPhone,
+      hasWebsite,
+    };
+  }
+
+  reasons.unshift("Missing direct business email or telephone");
+  return {
+    tier: "NEEDS_REVIEW",
+    ...QUALIFICATION_TIERS.NEEDS_REVIEW,
+    confidence: 30,
+    reasons,
+    opportunity,
+    hasEmail: false,
+    hasPhone: false,
+    hasWebsite,
+  };
 }

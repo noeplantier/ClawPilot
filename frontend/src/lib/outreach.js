@@ -8,7 +8,7 @@ import * as swr from "@/lib/swr";
 export const canDecide = (user) => ["owner", "admin"].includes(user && user.role);
 
 export const dashboardApi = {
-  overview: () => api.get("/dashboard/overview").then((r) => r.data),
+  overview: (days) => api.get("/dashboard/overview", { params: days ? { days } : {} }).then((r) => r.data),
 };
 
 export const importsApi = {

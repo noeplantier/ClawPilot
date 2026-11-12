@@ -18,11 +18,25 @@ module.exports = {
   		},
   		boxShadow: {
   			glow: "0 0 32px rgba(124, 58, 237, 0.35)",
-  			"glow-soft": "0 0 60px rgba(124, 58, 237, 0.18)"
+  			"glow-soft": "0 0 60px rgba(124, 58, 237, 0.18)",
+  			"glow-leaf": "0 0 20px rgba(34, 197, 94, 0.3)"
   		},
   		colors: {
 			void: { DEFAULT: "#07060B", elevated: "#0C0A14", surface: "#120F1E" },
 			leaf: { 400: "#4ADE80", 500: "#22C55E" },
+			brand: {
+				50: '#F5F1FF',
+				100: '#EAE1FF',
+				200: '#D3C2FF',
+				300: '#B79BFF',
+				400: '#9B74FA',
+				500: '#7C3AED',
+				600: '#6D28D9',
+				700: '#5B21B6',
+				800: '#4C1D95',
+				900: '#3B1578',
+				950: '#240B4D',
+			},
 			"brand-violet": "var(--brand-violet)",
 			"brand-violet-hover": "var(--brand-violet-hover)",
 			"brand-lilac": "var(--brand-lilac)",

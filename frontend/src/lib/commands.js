@@ -16,7 +16,7 @@ export function buildCommands(sections = SECTIONS) {
       group: section.label,
       label: tab.label,
       to: tab.to,
-      keywords: [section.label, section.blurb || ""],
+      keywords: [section.label], // not the section's blurb: it names sibling screens, so every screen of a section would match them
     })),
   );
   return [...screens, ...ACTIONS.map((a) => ({ ...a, group: "Actions" }))];

@@ -300,12 +300,15 @@ class AIGenerateIn(BaseModel):
     tone: Literal["professional", "friendly", "casual", "urgent", "concise"] = "professional"
     channel: Channel = "email"
     goal: Optional[str] = None
+    opportunity: Optional[str] = None
 
 
 class AIGenerateOut(BaseModel):
     subject: Optional[str] = None
     body: str
+    whatsapp: Optional[str] = None
     language: str
+    opportunity: Optional[str] = None
 
 
 # ------------------------ Activity Feed ------------------------
