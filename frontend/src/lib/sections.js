@@ -1,8 +1,9 @@
 // The six main sections of the application, and the screens each one holds. Pure: no React, no network.
 //
-// The sidebar shows exactly these six, flat. What used to be a tree of sub-items is the row of tabs at the top of the
-// content (`SectionTabs`): navigation inside a section, not a seventh, eighth… entry of the sidebar. Every screen that
-// exists belongs to one section; `routes.test` checks that none is left out, and every old path keeps working.
+// The sidebar shows exactly these six entries. The one you are in lists its screens right under it (there is no top bar any
+// more): navigation inside a section, not a seventh, eighth… entry. The go-to palette (Ctrl+K) lists every screen of every
+// section too. Every screen that exists belongs to one section; the tests check that none is left out, and every old path
+// keeps working.
 export const SECTIONS = [
   {
     id: "overview",
@@ -54,9 +55,10 @@ export const SECTIONS = [
     label: "Outreach",
     to: "/app/drafts",
     icon: "PaperPlaneTilt",
-    blurb: "Brouillons IA, campagne individuelle, séquences, boîte de réception, canaux.",
+    blurb: "Brouillons IA, campagne par zone, campagne individuelle, séquences, boîte de réception, canaux.",
     tabs: [
       { to: "/app/drafts", label: "Brouillons IA", testId: "tab-drafts" },
+      { to: "/app/journey", label: "Campagne par zone", testId: "tab-journey" },
       { to: "/app/launch", label: "Campagne individuelle", testId: "tab-launch" },
       { to: "/app/campaigns", label: "Campagnes et séquences", testId: "tab-campaigns" },
       { to: "/app/messages", label: "Boîte de réception", testId: "tab-messages" },
@@ -68,11 +70,12 @@ export const SECTIONS = [
     label: "Pilotage",
     to: "/app/settings",
     icon: "Gear",
-    blurb: "Offre, intégrations, automatisations, santé et réglages.",
+    blurb: "Offre, intégrations, automatisations, mode max, santé et réglages.",
     tabs: [
       { to: "/app/settings/offer", label: "Offre", testId: "tab-offer" },
       { to: "/app/settings", label: "Intégrations et réglages", testId: "tab-settings" },
       { to: "/app/agents", label: "Automatisations", testId: "tab-agents" },
+      { to: "/app/automation-max", label: "Automatisation max", testId: "tab-automation-max" },
       { to: "/app/system", label: "Santé", testId: "tab-system" },
     ],
   },

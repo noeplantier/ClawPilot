@@ -437,6 +437,11 @@ select option { background: var(--void-surface); color: var(--text-primary); }
   .btn-primary:hover, .btn-primary:active, .btn-ghost:active { transform: none; }
 }
 
+/* Sidebar: the width and the labels move together (one 200 ms ease, the aside's own transition); no loop, and none at all with reduced motion. */
+.shell-label { animation: shell-label-in 0.2s ease both; }
+@keyframes shell-label-in { from { opacity: 0; transform: translateX(-4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .shell-label { animation: none; } }
+
 /* Map search: a night map with a head-up display.
    The tiles stay the standard OpenStreetMap ones (one source, one attribution, no key): the night look is a filter on the tile
    pane, and "Classic map" (.map-classic) turns it off. Pins and clusters glow in the brand violet; their meaning (colour by

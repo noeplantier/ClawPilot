@@ -173,3 +173,29 @@ export function useAsync(fn, deps, { key = null, intervalMs = 0 } = {}) {
   }, [load, intervalMs]);
   return { ...state, reload };
 }
+
+export const journeysApi = {
+  // Réponses enveloppées { data } : déballées ici. Parcours « zone → brouillon → approbation » : lire est ouvert à tout membre ; créer, éditer, approuver, révoquer, mettre en pause : propriétaire ou admin.
+  readiness: () => api.get("/journeys/readiness").then((r) => r.data.data),
+  list: () => api.get("/journeys").then((r) => r.data.items),
+  create: (body) => api.post("/journeys", body).then((r) => r.data.data),
+  get: (id) => api.get(`/journeys/${id}`).then((r) => r.data.data),
+  putTemplate: (id, body) => api.put(`/journeys/${id}/template`, body).then((r) => r.data.data),
+  approve: (id, contentHash, expectedCount) => api.post(`/journeys/${id}/approve`, { content_hash: contentHash, expected_count: expectedCount }).then((r) => r.data.data),
+  revoke: (id, reason) => api.post(`/journeys/${id}/revoke`, { reason }).then((r) => r.data.data),
+  pause: (id) => api.post(`/journeys/${id}/pause`).then((r) => r.data.data),
+  resume: (id) => api.post(`/journeys/${id}/resume`).then((r) => r.data.data),
+  progress: (id) => api.get(`/journeys/${id}/progress`).then((r) => r.data.data),
+};
+
+export const mandatesApi = {
+  // Mode « Automatisation max » : désactivé par défaut côté serveur ; un mandat est une autorisation unique et bornée.
+  overview: () => api.get("/mandates").then((r) => r.data.data),
+  create: (body) => api.post("/mandates", body).then((r) => r.data.data),
+  detail: (id) => api.get(`/mandates/${id}`).then((r) => r.data.data),
+  activate: (id, acknowledgements) => api.post(`/mandates/${id}/activate`, { acknowledgements }).then((r) => r.data.data),
+  suspend: (id) => api.post(`/mandates/${id}/suspend`).then((r) => r.data.data),
+  revoke: (id) => api.post(`/mandates/${id}/revoke`).then((r) => r.data.data),
+  revalidate: (id) => api.post(`/mandates/${id}/revalidate`).then((r) => r.data.data),
+  report: (id) => api.get(`/mandates/${id}/report`).then((r) => r.data.data),
+};
