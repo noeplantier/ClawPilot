@@ -99,6 +99,19 @@ export const autoSelectionApi = {
   review: (leadIds, decision) => api.post("/prospects/auto/review", { lead_ids: leadIds, decision }).then((r) => r.data),
 };
 
+// Which provider sends the e-mail, and the dedicated B2B relays one can move to (names of variables only, never a secret).
+export const emailProvidersApi = {
+  get: () => api.get("/email-providers").then((r) => r.data),
+};
+
+// The autopilot an owner authorised: search when due, add, approve, prepare drafts. It never sends (the mandate does).
+export const autopilotApi = {
+  get: () => api.get("/autopilot").then((r) => r.data),
+  enable: (body) => api.put("/autopilot", body).then((r) => r.data),
+  disable: () => api.post("/autopilot/disable").then((r) => r.data),
+  run: () => api.post("/autopilot/run").then((r) => r.data),
+};
+
 export const prospectsApi = {
   // The "to enrich" queue: prospects not qualified yet, with what is missing (server pagination).
   drafts: (params) => api.get("/prospects/drafts", { params }).then((r) => r.data),

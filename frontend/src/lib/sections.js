@@ -74,7 +74,7 @@ export const SECTIONS = [
       { to: "/app/settings/offer", label: "Offre", testId: "tab-offer" },
       { to: "/app/settings", label: "Intégrations et réglages", testId: "tab-settings" },
       // Agents et mandat « Automatisation max » : une seule page « Automatisations ».
-      { to: "/app/automation-max", label: "Automatisations", testId: "tab-automation-max", also: [{ to: "/app/agents", label: "Agents" }] },
+      { to: "/app/automation-max", label: "Automatisations", testId: "tab-automation-max", also: [{ to: "/app/agents", label: "Agents" }], keywords: ["Automatisation max", "mandat"] },
       { to: "/app/system", label: "Santé", testId: "tab-system" },
     ],
   },

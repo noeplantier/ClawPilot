@@ -28,5 +28,6 @@ describe("the go-to palette replaces nothing that the top bar offered", () => {
   it("reaches the two screens of the new journey", () => {
     expect(commands.some((c) => c.to === "/app/journey" && c.label === "Campagne par zone")).toBe(true);
     expect(commands.some((c) => c.to === "/app/automation-max")).toBe(true);
+    expect(commands.find((c) => c.to === "/app/automation-max").keywords).toContain("Automatisation max"); // the former name still finds it
   });
 });

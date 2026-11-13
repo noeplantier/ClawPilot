@@ -37,7 +37,8 @@ test("a returning visitor sees the app and the last data at once, even while the
   await page.getByTestId("nav-outreach").click();
   await page.getByTestId("tab-campaigns").click();
   await expect(page).toHaveURL(/\/app\/campaigns/);
-  await expect(page.getByRole("heading", { name: "Campaigns", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Campagnes", exact: true })).toBeVisible(); // zone, individuelle, séquences: one page
+  await expect(page.getByTestId("hub-tab-campaigns")).toHaveAttribute("aria-selected", "true");
 });
 
 test("signing out leaves nothing of the organisation in the browser", async ({ page }) => {
@@ -488,13 +489,15 @@ test("the import form of a map selection can be minimised and closed, so the who
   await page.getByTestId("map-search").click();
   await showAllFound(page);
   await page.getByTestId("map-select-all").click();
-  await expect(page.getByTestId("map-import")).toContainText("Import 1 selected place");
-  await expect(page.getByTestId("map-attest")).toBeVisible();
+  await expect(page.getByTestId("map-import")).toContainText("1 établissement sélectionné");
+  await expect(page.getByTestId("map-attest")).toBeVisible(); // asked once on this browser
+  await expect(page.getByTestId("map-import-run")).toBeDisabled(); // nothing is added before the attestation
+  await expect(page.getByTestId("map-check-sites")).toBeVisible();
   await page.getByTestId("import-minimise").click();
-  await expect(page.getByTestId("map-attest")).toHaveCount(0); // minimised: only its title bar remains
-  await expect(page.getByTestId("map-import")).toBeVisible();
+  await expect(page.getByTestId("map-check-sites")).toHaveCount(0); // minimised: the details are folded, the one button stays
+  await expect(page.getByTestId("map-import-run")).toBeVisible();
   await page.getByTestId("import-minimise").click();
-  await expect(page.getByTestId("map-attest")).toBeVisible();
+  await expect(page.getByTestId("map-check-sites")).toBeVisible();
   await page.getByTestId("import-close").click(); // closing clears the selection
   await expect(page.getByTestId("map-import")).toHaveCount(0);
 });

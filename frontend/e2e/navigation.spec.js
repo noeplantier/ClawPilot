@@ -65,10 +65,10 @@ test("every section opens its first screen and lists the others under it; the ol
   await page.goto("/app/dashboard");
   const sections = [
     ["nav-prospecting", /\/app\/map$/, ["tab-map", "tab-sources", "tab-import"]],
-    ["nav-leads", /\/app\/leads$/, ["tab-crm", "tab-pipeline", "tab-prospects", "tab-review", "tab-to-enrich"]],
+    ["nav-leads", /\/app\/leads$/, ["tab-crm", "tab-pipeline", "tab-prospects", "tab-review"]], // « À traiter » holds à vérifier and à enrichir
     ["nav-batches", /\/app\/batches$/, ["tab-batches"]],
-    ["nav-outreach", /\/app\/drafts$/, ["tab-drafts", "tab-journey", "tab-launch", "tab-campaigns", "tab-messages", "tab-sending"]],
-    ["nav-control", /\/app\/settings$/, ["tab-offer", "tab-settings", "tab-agents", "tab-automation-max", "tab-system"]],
+    ["nav-outreach", /\/app\/drafts$/, ["tab-drafts", "tab-campaigns", "tab-messages", "tab-sending"]], // « Campagnes » holds zone, individuelle, séquences
+    ["nav-control", /\/app\/settings$/, ["tab-offer", "tab-settings", "tab-automation-max", "tab-system"]], // « Automatisations » holds the mandate and the agents
     ["nav-overview", /\/app\/dashboard$/, ["tab-dashboard", "tab-analytics"]],
   ];
   for (const [entry, url, tabs] of sections) {
@@ -144,7 +144,9 @@ test("folded, the six entries stay reachable by name with a tooltip, and the mob
   // on a phone the screens of the section are in the drawer, none cut off or unreachable
   await page.goto("/app/prospects");
   await page.getByTestId("mobile-nav-toggle").click();
-  await page.getByTestId("mobile-tab-to-enrich").click();
+  await page.getByTestId("mobile-tab-review").click(); // « À traiter »: then its « À enrichir » tab
+  await expect(page).toHaveURL(/\/app\/prospects\/review$/);
+  await page.getByTestId("hub-tab-to-enrich").click();
   await expect(page).toHaveURL(/\/app\/prospects\/to-enrich$/);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true); // no sideways scroll
 });

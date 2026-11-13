@@ -38,6 +38,7 @@ celery_app = Celery(
         "tasks.health_tasks",
         "tasks.campaign_tasks",
         "tasks.mandate_tasks",
+        "tasks.autopilot_tasks",
     ],
 )
 
@@ -59,6 +60,7 @@ celery_app.conf.update(
         "tasks.health_tasks.*": {"queue": "automation"},
         "tasks.campaign_tasks.*": {"queue": "sends"},
         "tasks.mandate_tasks.*": {"queue": "automation"},
+        "tasks.autopilot_tasks.*": {"queue": "automation"},
     },
     beat_schedule={
         # Safety net for apply_async(eta=...) sends that got lost (e.g. a
@@ -89,6 +91,12 @@ celery_app.conf.update(
         "run-automation-mandates": {
             "task": "tasks.mandate_tasks.run_mandates",
             "schedule": 300.0,
+            "options": {"queue": "automation"},
+        },
+        # The autopilots owners turned on: search when due, add, approve, prepare drafts. Never sends (mandate does).
+        "run-autopilots": {
+            "task": "tasks.autopilot_tasks.run_autopilots",
+            "schedule": 900.0,
             "options": {"queue": "automation"},
         },
         "celery-beat-health-heartbeat": {
