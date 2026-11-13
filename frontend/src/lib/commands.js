@@ -18,7 +18,7 @@ export function buildCommands(sections = SECTIONS) {
         group: section.label,
         label: tab.label,
         to: tab.to,
-        keywords: [section.label], // not the section's blurb: it names sibling screens, so every screen of a section would match them
+        keywords: [section.label, ...(tab.keywords || [])], // not the section's blurb: it names sibling screens, so every screen of a section would match them
       },
       // The screens merged into this tab stay reachable by their own name (an onglet of the same page).
       ...(tab.also || []).map((a) => ({ id: `go-${tab.testId}-${a.to.split("/").pop()}`, group: section.label, label: a.label, to: a.to, keywords: [section.label, tab.label] })),
