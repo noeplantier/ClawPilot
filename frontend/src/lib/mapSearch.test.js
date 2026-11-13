@@ -1,4 +1,4 @@
-import { areaTooLarge, importRows, summarize, summaryText, markerColor, panelPadding, reachablePlace, isHot, readyOnly, readySummary, zoneOf, zoneSummary, journeyLink, classifyProspect } from "@/lib/mapSearch";
+import { areaTooLarge, importRows, summarize, summaryText, markerColor, panelPadding, reachablePlace, isHot, readyOnly, readySummary, zoneOf, zoneSummary, journeyLink, classifyProspect, mapSiteState } from "@/lib/mapSearch";
 
 const A = { external_id: "node/1", name: "A", lat: 45.7, lon: 4.8, email: "a@a.fr", phone: "+33 1", website: "https://a.fr", source_url: "u" };
 const B = { external_id: "node/2", name: "B", lat: 45.7, lon: 4.8, email: null, phone: "+33 2", website: null, source_url: "u" };
@@ -101,5 +101,54 @@ describe("hot is the server's observed intent, never a score", () => {
     expect(isHot(intent)).toBe(true);
     expect(classifyProspect(intent).tier).toBe("HOT");
     expect(isHot(null)).toBe(false);
+  });
+});
+
+describe("the map says only what the API returned", () => {
+  const ready = { email: "a@b.example", phone: "+33 4 78 12 34 56", review_status: "pending", map_ready: true, priority: "qualified", signals: [] };
+
+  it("an empty website field is unknown, never « no website »", () => {
+    for (const website of [undefined, null, ""]) {
+      const p = { ...ready, website, has_website: false };
+      expect(mapSiteState(p)).toBe("unknown");
+      const cls = classifyProspect(p);
+      expect(cls.siteKey).toBe("unknown");
+      expect(cls.site.label).toBe("Site inconnu (non vérifié)");
+      expect(JSON.stringify(cls)).not.toMatch(/no website|aucun site|opportunit/i);
+    }
+  });
+
+  it("« no website identified » only when the server detected the no_website signal", () => {
+    const p = { ...ready, website: null, has_website: false, signals: ["no_website"] };
+    expect(mapSiteState(p)).toBe("none_identified");
+    expect(classifyProspect(p).site.label).toBe("Aucun site identifié après recherche");
+  });
+
+  it("a website the server returned is present, unreachable only on the detected signal", () => {
+    const p = { ...ready, website: "https://x.example", has_website: true };
+    expect(mapSiteState(p)).toBe("site_found");
+    expect(mapSiteState({ ...p, signals: ["website_unreachable"] })).toBe("site_unreachable");
+  });
+
+  it("gives no confidence and no opportunity: the API provides neither", () => {
+    const cls = classifyProspect({ ...ready, score: 96, heat: { tier: "hot", value: 96 } });
+    expect(cls).not.toHaveProperty("confidence");
+    expect(cls).not.toHaveProperty("opportunity");
+    expect(classifyProspect(null)).not.toHaveProperty("confidence");
+  });
+
+  it("an old site is said only on the server's detected signal, and never as a non-responsive layout", () => {
+    const site = { ...ready, website: "https://x.example", has_website: true };
+    expect(classifyProspect({ ...site, signals: ["legacy_tech"] }).reasons.join(" ")).not.toMatch(/ancien|outdated|responsive/i);
+    const reasons = classifyProspect({ ...site, signals: ["outdated_technology"] }).reasons.join(" ");
+    expect(reasons).toContain("Marqueur technique ancien");
+    expect(reasons).not.toMatch(/responsive/i);
+  });
+
+  it("the tier is the server's decision, in French, never re-ranked from the contacts", () => {
+    expect(classifyProspect(ready)).toMatchObject({ tier: "QUALIFIED", label: "Qualifié prioritaire" });
+    expect(classifyProspect({ ...ready, priority: "hot" }).label).toBe("Hot — intention observée");
+    expect(classifyProspect({ ...ready, priority_label: "Qualifié prioritaire (serveur)" }).label).toBe("Qualifié prioritaire (serveur)");
+    expect(classifyProspect({ email: "a@b.example", phone: "+33 4 78 12 34 56" })).toMatchObject({ tier: "NEEDS_REVIEW", label: "À compléter" });
   });
 });
