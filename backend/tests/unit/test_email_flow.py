@@ -230,6 +230,7 @@ def test_the_worker_publishes_its_configuration_in_the_beat_heartbeat_without_an
 def _load_tasks():
     for module in (
         "automation",
+        "autopilot",
         "campaign",
         "health",
         "inbox",
@@ -263,6 +264,7 @@ def test_every_beat_entry_targets_a_consumed_queue_and_a_registered_task():
         assert entry["options"]["queue"] in CONSUMED, key
     assert "send-due-campaign-messages" in celery_app.conf.beat_schedule  # the individual campaigns' sender
     assert "run-automation-mandates" in celery_app.conf.beat_schedule  # the bounded automatic mode (no-op while off)
+    assert "run-autopilots" in celery_app.conf.beat_schedule  # the autopilots owners turned on (never sends)
 
 
 def test_the_deployed_worker_and_the_embedded_worker_consume_exactly_those_queues():

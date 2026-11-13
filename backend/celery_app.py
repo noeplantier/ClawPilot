@@ -60,6 +60,7 @@ celery_app.conf.update(
         "tasks.health_tasks.*": {"queue": "automation"},
         "tasks.campaign_tasks.*": {"queue": "sends"},
         "tasks.mandate_tasks.*": {"queue": "automation"},
+        "tasks.autopilot_tasks.*": {"queue": "automation"},
     },
     beat_schedule={
         # Safety net for apply_async(eta=...) sends that got lost (e.g. a
