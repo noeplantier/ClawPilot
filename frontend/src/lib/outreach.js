@@ -93,6 +93,12 @@ export const usageApi = {
   setModel: (model) => api.put("/usage/model", { model }).then((r) => r.data),
 };
 
+// Automatic selection: the qualified prospects that wait for review, chosen by the server; approved in one click.
+export const autoSelectionApi = {
+  selection: (limit = 200) => api.get("/prospects/auto/selection", { params: { limit } }).then((r) => r.data),
+  review: (leadIds, decision) => api.post("/prospects/auto/review", { lead_ids: leadIds, decision }).then((r) => r.data),
+};
+
 export const prospectsApi = {
   // The "to enrich" queue: prospects not qualified yet, with what is missing (server pagination).
   drafts: (params) => api.get("/prospects/drafts", { params }).then((r) => r.data),

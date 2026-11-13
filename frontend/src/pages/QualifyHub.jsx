@@ -5,6 +5,7 @@ import { prospectsApi, useAsync } from "@/lib/outreach";
 import { LIVE_MS } from "@/lib/live";
 import ReviewQueue from "@/pages/ReviewQueue";
 import ToEnrich from "@/pages/ToEnrich";
+import AutoSelection from "@/components/hub/AutoSelection";
 
 // « À traiter » : la file de relecture et la file « À enrichir » sur une seule page. Les deux compteurs viennent du serveur ;
 // le raccourci clavier de la relecture et ses décisions (auditées) sont ceux de la file, inchangés.
@@ -22,6 +23,7 @@ export default function QualifyHub({ tab = "review" }) {
     <PageShell testId="qualify-hub" kicker="leads.a-traiter" title="À traiter"
       lead="Les prospects qui attendent une décision ou une information, dans une seule file.">
       <HubTabs tabs={tabs} label="Files de qualification" />
+      {tab !== "to-enrich" && <AutoSelection onDecided={pending.reload} />}
       {tab === "to-enrich" ? <ToEnrich embedded /> : <ReviewQueue embedded />}
     </PageShell>
   );

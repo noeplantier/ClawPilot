@@ -6,6 +6,7 @@ import { createRoot } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 
 jest.mock("@/lib/api", () => ({ api: { get: jest.fn(), post: jest.fn() } }));
+jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
 jest.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: { id: "u1", role: "owner" } }) }));
 const stub = (name) => ({ __esModule: true, default: ({ embedded }) => <div data-testid={`screen-${name}`}>{embedded ? "embedded" : "standalone"}</div> });
 jest.mock("@/pages/Journey", () => stub("journey"));
@@ -42,6 +43,7 @@ beforeEach(() => {
   document.body.appendChild(container);
   root = createRoot(container);
   api.get.mockReset();
+  api.post.mockReset();
   table = {
     "/dashboard/overview": OVERVIEW,
     "/journeys": { items: [{ id: "J1" }, { id: "J2" }] },
@@ -100,6 +102,28 @@ describe("À traiter: à vérifier and à enrichir on one page", () => {
     expect(byId("hub-tab-to-enrich").getAttribute("aria-selected")).toBe("true");
     expect(byId("screen-to-enrich").textContent).toBe("embedded");
     expect(byId("screen-review")).toBeNull();
+  });
+});
+
+describe("the server's own selection, approved in one click", () => {
+  const SELECTION = { total: 2, hot: 1, items: [
+    { id: "p1", name: "Boulangerie A", city: "Lyon", priority: "hot", score: 88 },
+    { id: "p2", name: "Café B", city: "Lyon", priority: "qualified", score: null },
+  ] };
+  it("shows how many qualified prospects the server selected, and approves them all at once", async () => {
+    table["/prospects/auto/selection"] = SELECTION;
+    api.post.mockResolvedValue({ data: { approved: 2, rejected: 0, suppressed: 0, skipped: 0 } });
+    await show(<QualifyHub tab="review" />, "/app/prospects/review");
+    expect(byId("auto-selection-title").textContent).toBe("2 prospects qualifiés sélectionnés pour vous");
+    await act(async () => { byId("auto-selection-toggle").click(); });
+    expect(byId("auto-selection-list").textContent).toContain("non scoré"); // a missing score is not a 0
+    await act(async () => { byId("auto-selection-approve").click(); });
+    expect(api.post).toHaveBeenCalledWith("/prospects/auto/review", { lead_ids: ["p1", "p2"], decision: "approve" });
+  });
+  it("draws nothing when no qualified prospect waits", async () => {
+    table["/prospects/auto/selection"] = { total: 0, hot: 0, items: [] };
+    await show(<QualifyHub tab="review" />, "/app/prospects/review");
+    expect(byId("auto-selection")).toBeNull();
   });
 });
 

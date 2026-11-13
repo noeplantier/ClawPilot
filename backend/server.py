@@ -16,6 +16,7 @@ from routes.agents import router as agents_router
 from routes.ai import router as ai_router
 from routes.analytics import router as analytics_router
 from routes.auth import router as auth_router
+from routes.auto_selection import router as auto_selection_router
 from routes.campaigns import router as campaigns_router
 from routes.dashboard import router as dashboard_router
 from routes.jobs import router as jobs_router
@@ -71,6 +72,7 @@ api_router.include_router(webhooks_router)
 api_router.include_router(notes_router)
 api_router.include_router(tasks_router)
 api_router.include_router(tags_router)
+api_router.include_router(auto_selection_router)  # before /prospects/{lead_id}
 api_router.include_router(prospects_router)
 api_router.include_router(prospect_imports_router)
 api_router.include_router(map_router)
