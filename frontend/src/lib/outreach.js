@@ -99,6 +99,11 @@ export const autoSelectionApi = {
   review: (leadIds, decision) => api.post("/prospects/auto/review", { lead_ids: leadIds, decision }).then((r) => r.data),
 };
 
+// Which provider sends the e-mail, and the dedicated B2B relays one can move to (names of variables only, never a secret).
+export const emailProvidersApi = {
+  get: () => api.get("/email-providers").then((r) => r.data),
+};
+
 export const prospectsApi = {
   // The "to enrich" queue: prospects not qualified yet, with what is missing (server pagination).
   drafts: (params) => api.get("/prospects/drafts", { params }).then((r) => r.data),

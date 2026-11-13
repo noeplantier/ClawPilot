@@ -45,6 +45,109 @@ class Authorization:
     label: str
 
 
+@dataclass(frozen=True)
+class RelayPreset:
+    """A dedicated sending relay (a service made to send e-mail, unlike a shared mailbox): public SMTP settings only.
+    The login and the password are never here: they are the operator's, set on the server (SMTP_USERNAME and
+    SMTP_PASSWORD)."""
+
+    id: str
+    name: str
+    host: str
+    port: int
+    security: str  # "starttls" | "ssl"
+    username_hint: str  # what goes in SMTP_USERNAME, in words
+    note: str  # one sentence for the operator, in French
+    domains: tuple[str, ...] = ()  # the provider's SMTP domains: any host under one of them is this relay
+    recommended: bool = False
+
+
+B2B_RELAYS: tuple[RelayPreset, ...] = (
+    RelayPreset(
+        "brevo",
+        "Brevo",
+        "smtp-relay.brevo.com",
+        587,
+        "starttls",
+        "l'identifiant SMTP affiché dans Brevo (SMTP et API)",
+        "Société européenne, offre gratuite avec un quota quotidien ; l'expéditeur doit être vérifié dans Brevo.",
+        domains=("brevo.com", "sendinblue.com"),
+        recommended=True,
+    ),
+    RelayPreset(
+        "mailjet",
+        "Mailjet",
+        "in-v3.mailjet.com",
+        587,
+        "starttls",
+        "la clé API Mailjet (le mot de passe est la clé secrète)",
+        "Société européenne, offre gratuite avec un quota quotidien.",
+        domains=("mailjet.com",),
+    ),
+    RelayPreset(
+        "sendgrid",
+        "SendGrid (SMTP)",
+        "smtp.sendgrid.net",
+        587,
+        "starttls",
+        "le mot « apikey » (le mot de passe est la clé API)",
+        "Relais américain ; le domaine d'envoi doit être authentifié.",
+        domains=("sendgrid.net",),
+    ),
+    RelayPreset(
+        "mailgun",
+        "Mailgun",
+        "smtp.eu.mailgun.org",
+        587,
+        "starttls",
+        "l'identifiant SMTP du domaine dans Mailgun",
+        "Région UE ; le domaine d'envoi doit être vérifié.",
+        domains=("mailgun.org",),
+    ),
+    RelayPreset(
+        "google",
+        "Google Workspace",
+        "smtp.gmail.com",
+        587,
+        "starttls",
+        "l'adresse de la boîte (le mot de passe est un mot de passe d'application)",
+        "Une boîte Workspace sur un domaine dédié à la prospection, à faible volume.",
+        domains=("gmail.com", "googlemail.com"),
+    ),
+    RelayPreset(
+        "microsoft",
+        "Microsoft 365",
+        "smtp.office365.com",
+        587,
+        "starttls",
+        "l'adresse de la boîte",
+        "Une boîte Microsoft 365 sur un domaine dédié à la prospection, à faible volume.",
+        domains=("office365.com", "outlook.com"),
+    ),
+    RelayPreset(
+        "zoho",
+        "Zoho Mail",
+        "smtp.zoho.eu",
+        587,
+        "starttls",
+        "l'adresse de la boîte",
+        "Hébergement européen ; à faible volume.",
+        domains=("zoho.eu", "zoho.com"),
+    ),
+)
+
+
+def relay_of(host: Optional[str]) -> Optional[RelayPreset]:
+    """The known relay this SMTP host belongs to (exact host, or a regional variant of it), else None."""
+    h = (host or "").strip().lower()
+    if not h:
+        return None
+    for preset in B2B_RELAYS:
+        if h == preset.host or any(h == d or h.endswith("." + d) for d in preset.domains):
+            return preset
+    return None
+
+
 def _is_hostinger(host: str) -> bool:
     host = host.lower()
     return "hostinger" in host or host == "titan.email" or host.endswith(".titan.email")
@@ -64,6 +167,19 @@ def identify(*, smtp_host: Optional[str], sendgrid_configured: bool) -> Provider
                 "l'import) sont "
                 "autorisés à recevoir une campagne par ce fournisseur ; un quota d'envoi disponible ne vaut pas "
                 "autorisation. Relisez les conditions du fournisseur avant tout envoi réel."
+            ),
+        )
+    relay = relay_of(host)
+    if host and relay is not None:
+        return ProviderInfo(
+            id=f"smtp_{relay.id}",
+            label=f"{relay.name} ({host})",
+            host=host,
+            cold_outreach=UNVERIFIED,
+            restriction=(
+                f"{relay.name} : relais d'envoi dédié, pas une messagerie mutualisée. L'application ne lit pas ses "
+                "conditions : vérifiez qu'elles autorisent la prospection B2B pour votre usage (base légale, "
+                "désinscription, volume) avant tout envoi réel ; un quota disponible ne vaut pas autorisation."
             ),
         )
     if host:

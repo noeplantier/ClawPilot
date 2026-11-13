@@ -10,6 +10,7 @@ import {
   validateLimits,
 } from "@/lib/outreachFormat";
 import HistoryTimeline from "@/components/outreach/HistoryTimeline";
+import ProviderSwitch from "@/components/outreach/ProviderSwitch";
 import { EmptyBlock, ErrorBlock, LoadingBlock } from "@/components/outreach/States";
 
 const BLOCKED_TEXT = {
@@ -341,6 +342,7 @@ export default function Sending() {
       {page.data && (
         <>
           <StatusPanel status={page.data.status} settings={page.data.settings} />
+          <ProviderSwitch />
           <LimitsForm key={JSON.stringify(page.data.limits)} limits={page.data.limits} canEdit={edit} onSaved={page.reload} />
           {edit && <SmtpTestPanel onDone={page.reload} />}
           {edit && <WhatsappTestPanel onDone={page.reload} />}
