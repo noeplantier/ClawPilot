@@ -24,6 +24,8 @@ from models import (
     CityHeatOut,
     ImportIn,
     MapAddIn,
+    MapAddManyIn,
+    MapAddManyOut,
     MapAddOut,
     MapFallbackOut,
     MapJobOut,
@@ -352,4 +354,121 @@ async def add_place(payload: MapAddIn, user: dict = Depends(decider), session: A
         email_found_on_site=bool(lead.email) and not (place.email or "").strip(),
         website_checked=imported.sites_checked > 0,
         heat=heat_out(lead, score_row.score if score_row else None),
+    )
+
+
+@router.post("/places/add-many", response_model=MapAddManyOut)
+async def add_places(payload: MapAddManyIn, user: dict = Depends(decider), session: AsyncSession = Depends(get_db_session)):
+    """One click on the selection of the map: every place becomes a prospect and, by default, joins the CRM.
+
+    Exactly the attested import of the single click, for up to 200 places at once: same origin (the OpenStreetMap page of
+    each place), same legal basis, suppression list and audit. `approve` is the person's own decision for the selection
+    they see; a prospect a person REJECTED before is left rejected, and a suppressed business is never added or approved.
+    Nothing is sent: contacting still needs an approved draft and the send rules.
+    """
+    account_id = uuid.UUID(user["org_id"])
+    if not feature_flags.is_enabled("prospect_import"):
+        raise _refuse(403, "feature_disabled", "Adding places needs FEATURE_PROSPECT_IMPORT (off by default)")
+    if payload.check_website and not feature_flags.is_enabled("external_sources"):
+        raise _refuse(409, "external_sources_disabled", "Reading the businesses' websites needs FEATURE_EXTERNAL_SOURCES")
+    if not payload.attestation:
+        raise _refuse(
+            422,
+            "attestation_required",
+            "Confirm that you may use these professional contact details for B2B prospecting",
+        )
+    key = str(account_id)
+    wait = _add_limiter.retry_after(key)
+    if wait:
+        raise HTTPException(
+            status_code=429, detail="Too many additions: wait a minute", headers={"Retry-After": str(wait)}
+        )
+    _add_limiter.record(key)
+
+    rows = []
+    for place in payload.places:
+        row = {
+            "name": place.name,
+            "address": place.address,
+            "postcode": place.postcode,
+            "city": place.city,
+            "phone": place.phone,
+            "email": place.email,
+            "website": place.website,
+            "category": place.category,
+            "external_id": place.external_id,
+            "source_url": place.source_url,
+            "lat": place.lat,
+            "lon": place.lon,
+        }
+        rows.append({k: v for k, v in row.items() if v not in (None, "")})
+    content = json.dumps(rows, ensure_ascii=False)
+    imported = await prospect_imports.import_prospects(
+        ImportIn(
+            format="json",
+            content=content,
+            filename="map-selection.json",
+            origin=IMPORT_ORIGIN,
+            legal_basis="legitimate_interest_b2b",
+            country=payload.country,
+            language="fr",
+            vertical="local business",
+            preview=False,
+            attestation=True,
+            check_websites=payload.check_website,
+        ),
+        user,
+        session,
+    )
+    parsed = importer.parse_import(content, "json", source_name="map-place", default_source_url="import://map-place")
+    seen: set = set()
+    in_crm = waiting = kept_rejected = suppressed = missing = 0
+    for listing in parsed.listings:
+        lead = await prospect_repo.find_by_keys(session, account_id, build_candidate(listing).match_keys)
+        if lead is None:
+            missing += 1  # not written: suppressed (counted by the import) or unreadable
+            continue
+        if lead.id in seen:
+            continue
+        seen.add(lead.id)
+        if lead.review_status == "rejected":
+            kept_rejected += 1
+            continue
+        if payload.approve and lead.review_status != "approved":
+            if await suppression_repo.is_suppressed(
+                session,
+                account_id,
+                email=normalize_email(lead.email),
+                phone=normalize_phone(lead.phone),
+                domain=normalize_domain(lead.website),
+            ):
+                suppressed += 1
+                continue
+            previous = lead.review_status
+            await prospect_repo.set_review(session, lead, status="approved", user_id=uuid.UUID(user["id"]))
+            await audit_repo.log(
+                session,
+                account_id,
+                action="prospect.approved",
+                resource_type="prospect",
+                resource_id=lead.id,
+                actor_user_id=uuid.UUID(user["id"]),
+                diff={"from": previous, "to": "approved", "has_note": False, "via": "map_bulk_add"},
+            )
+        if lead.review_status == "approved":
+            in_crm += 1
+        else:
+            waiting += 1
+    suppressed += imported.suppressed
+    return MapAddManyOut(
+        requested=len(payload.places),
+        created=imported.created,
+        already_known=imported.updated,
+        in_crm=in_crm,
+        waiting_review=waiting,
+        kept_rejected=kept_rejected,
+        suppressed=suppressed,
+        unreadable=max(0, len(payload.places) - len(parsed.listings)) + max(0, missing - imported.suppressed),
+        sites_checked=imported.sites_checked,
+        lead_ids=[str(i) for i in seen],
     )

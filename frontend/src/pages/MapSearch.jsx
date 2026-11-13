@@ -7,15 +7,16 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { ArrowRight, ArrowsOut, ArrowsIn, CaretDown, CaretUp, Eye, EyeSlash, MagnifyingGlass, Moon, Sun, X } from "@phosphor-icons/react";
 import { useAuth } from "@/contexts/AuthContext";
-import { campaignsApi, canDecide, importsApi, mapApi, prospectsApi, useAsync } from "@/lib/outreach";
+import { campaignsApi, canDecide, mapApi, prospectsApi, useAsync } from "@/lib/outreach";
 import * as swr from "@/lib/swr";
 import { describeApiError } from "@/lib/outreachFormat";
 import { isTypingTarget, readPref, writePref } from "@/lib/uiPrefs";
 import {
-  CATEGORY_LABELS, IMPORT_ORIGIN, MAX_SITES_CHECKED, STATUS_LABEL, areaTooLarge, classifyProspect, importRows, markerColor,
+  CATEGORY_LABELS, MAX_SITES_CHECKED, STATUS_LABEL, areaTooLarge, classifyProspect, markerColor,
   journeyLink, panelPadding, reachablePlace, readyOnly, readySummary, summaryText, zoneOf, zoneSummary,
 } from "@/lib/mapSearch";
 import { fetchOverpass } from "@/lib/overpassBrowser";
+import { ATTEST_PREF, ATTEST_TEXT, addManyBodies, describeAddedMany, sumAdded } from "@/lib/mapQuickAdd";
 import { nextDelay, startBurst, withSecondary } from "@/lib/pollPlan";
 import { canRetryInBrowser, jobLine, runSearch } from "@/lib/mapJobs";
 import {
@@ -76,57 +77,62 @@ const bounds = (map) => {
   return { south: b.getSouth(), west: b.getWest(), north: b.getNorth(), east: b.getEast() };
 };
 
-function ImportPanel({ selected, onDone, open, onToggle, onClose }) {
-  const [attest, setAttest] = useState(false);
+// The selection of the map, added to the CRM in ONE click: the same attested import as a single pin, for every selected place.
+// The attestation is asked once and remembered on this browser (every request still carries it and is audited server-side).
+function ImportPanel({ selected, onDone, open, onToggle, onClose, onRefresh }) {
+  const [attest, setAttest] = useState(() => readPref(ATTEST_PREF, false));
   const [checkSites, setCheckSites] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState("");
   const [error, setError] = useState(null);
-  const send = async () => {
-    setBusy(true);
+  const remember = (value) => { setAttest(value); writePref(ATTEST_PREF, value); };
+  const send = async (approve) => {
+    setBusy(approve ? "crm" : "review");
     setError(null);
     try {
-      const out = await importsApi.submit({
-        format: "json", content: JSON.stringify(importRows(selected)), filename: "map-selection.json",
-        origin: IMPORT_ORIGIN, legal_basis: "legitimate_interest_b2b", country: "FR", language: "fr", vertical: "local business",
-        preview: false, attestation: attest, check_websites: checkSites,
-      });
-      toast.success(`Imported: ${out.created} new, ${out.updated} updated${checkSites ? ` · ${out.sites_checked} website(s) checked` : ""}. All wait for your review.`);
+      const answers = [];
+      for (const body of addManyBodies(selected, { approve, checkWebsite: checkSites })) answers.push(await mapApi.addMany(body));
+      toast.success(describeAddedMany(sumAdded(answers)).join(" "));
+      if (onRefresh) onRefresh();
       onDone();
     } catch (e) {
       setError(describeApiError(e));
     } finally {
-      setBusy(false);
+      setBusy("");
     }
   };
+  const n = selected.length;
   return (
     <div className="rounded-xl border border-brand-violet/30 bg-white/[0.04] p-3 space-y-3" data-testid="map-import">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="font-display text-base font-bold">Import {selected.length} selected place{selected.length === 1 ? "" : "s"}</h2>
+        <h2 className="font-display text-base font-bold">{n} établissement{n === 1 ? "" : "s"} sélectionné{n === 1 ? "" : "s"}</h2>
         <div className="flex gap-1">
-          <button className="btn-ghost !px-2 !py-1" onClick={onToggle} aria-expanded={open} aria-label={open ? "Minimise the import form" : "Expand the import form"} data-testid="import-minimise">
+          <button className="btn-ghost !px-2 !py-1" onClick={onToggle} aria-expanded={open} aria-label={open ? "Réduire" : "Déplier"} data-testid="import-minimise">
             {open ? <CaretDown size={14} /> : <CaretUp size={14} />}
           </button>
-          <button className="btn-ghost !px-2 !py-1" onClick={onClose} aria-label="Close the import form and clear the selection" data-testid="import-close"><X size={14} /></button>
+          <button className="btn-ghost !px-2 !py-1" onClick={onClose} aria-label="Fermer et vider la sélection" data-testid="import-close"><X size={14} /></button>
         </div>
       </div>
-      {open && (
-        <>
-      <p className="text-xs text-soft">
-        They become prospects waiting for your review, with their OpenStreetMap page as provenance. Nothing is sent.
-      </p>
-      <label className="flex items-start gap-2 text-sm">
-        <input type="checkbox" checked={checkSites} onChange={(e) => setCheckSites(e.target.checked)} className="mt-1" data-testid="map-check-sites" />
-        <span>Look for a public contact e-mail on each business&apos;s own website (robots.txt respected, {MAX_SITES_CHECKED} sites max per import). Needs FEATURE_EXTERNAL_SOURCES.</span>
-      </label>
-      <label className="flex items-start gap-2 text-sm">
-        <input type="checkbox" checked={attest} onChange={(e) => setAttest(e.target.checked)} className="mt-1" data-testid="map-attest" />
-        <span>I confirm that I may use these professional contact details for B2B prospecting (legitimate interest), and that I will honour opt-outs.</span>
-      </label>
-      {error && <div role="alert" className="text-sm text-red-300" data-testid="map-import-error">{error}</div>}
-      <button className="btn-ink" disabled={busy || !attest || selected.length === 0} onClick={send} data-testid="map-import-run">
-        {busy ? "IMPORTING…" : `IMPORT ${selected.length}`}
+      {!attest && (
+        <label className="flex items-start gap-2 text-sm">
+          <input type="checkbox" checked={attest} onChange={(e) => remember(e.target.checked)} className="mt-1" data-testid="map-attest" />
+          <span>{ATTEST_TEXT} <span className="text-soft">(demandé une seule fois sur ce navigateur)</span></span>
+        </label>
+      )}
+      <button className="btn-primary w-full justify-center" disabled={Boolean(busy) || !attest || n === 0} onClick={() => send(true)} data-testid="map-import-run">
+        {busy === "crm" ? "AJOUT EN COURS…" : `AJOUTER ${n} AU CRM`}
       </button>
-        </>
+      {error && <div role="alert" className="text-sm text-red-300" data-testid="map-import-error">{error}</div>}
+      {open && (
+        <div className="space-y-2 text-xs text-soft">
+          <p>Origine : la page OpenStreetMap de chaque lieu. Rien n&apos;est envoyé ; un prospect rejeté par une personne reste rejeté.</p>
+          <label className="flex items-start gap-2">
+            <input type="checkbox" checked={checkSites} onChange={(e) => setCheckSites(e.target.checked)} className="mt-0.5" data-testid="map-check-sites" />
+            <span>Chercher un e-mail public sur le site de chaque établissement (robots.txt respecté, {MAX_SITES_CHECKED} sites au plus). Nécessite FEATURE_EXTERNAL_SOURCES.</span>
+          </label>
+          <button className="btn-ghost" disabled={Boolean(busy) || !attest || n === 0} onClick={() => send(false)} data-testid="map-import-review">
+            {busy === "review" ? "AJOUT EN COURS…" : "AJOUTER EN RELECTURE SEULEMENT"}
+          </button>
+        </div>
       )}
     </div>
   );
@@ -601,7 +607,7 @@ function MapView({ canImport }) {
                   </label>
                   {found.length > 0 && (
                     <div className="flex gap-2 flex-wrap">
-                      <button className="btn-ghost" onClick={() => setSelected(new Set(found.map((p) => p.external_id)))} data-testid="map-select-all">SELECT ALL</button>
+                      <button className="btn-ghost" onClick={() => setSelected(new Set(found.map((p) => p.external_id)))} data-testid="map-select-all">TOUT SÉLECTIONNER ({found.length})</button>
                       <button className="btn-ghost" onClick={() => setSelected(new Set(found.filter((p) => p.email).map((p) => p.external_id)))} data-testid="map-select-email">ONLY WITH E-MAIL</button>
                       <button className="btn-ghost" onClick={() => setSelected(new Set())}>NONE</button>
                     </div>
@@ -622,7 +628,7 @@ function MapView({ canImport }) {
             )}
             {canImport && chosen.length > 0 && (
               <div className="border-t border-border p-3">
-                <ImportPanel selected={chosen} onDone={() => setSelected(new Set())} open={importOpen} onToggle={() => setImportOpen((v) => !v)} onClose={() => setSelected(new Set())} />
+                <ImportPanel selected={chosen} onDone={() => setSelected(new Set())} onRefresh={() => pullRef.current && pullRef.current()} open={importOpen} onToggle={() => setImportOpen((v) => !v)} onClose={() => setSelected(new Set())} />
               </div>
             )}
             {!canImport && result && <p className="p-3 text-xs text-amber-300 border-t border-border" data-testid="map-import-off">Importing is off: set FEATURE_PROSPECT_IMPORT=true to import the selection.</p>}

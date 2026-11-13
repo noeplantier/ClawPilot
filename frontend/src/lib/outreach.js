@@ -40,6 +40,8 @@ export const mapApi = {
   cities: (opts) => api.get("/map/cities", opts).then((r) => r.data),
   // One click on a pin: the place becomes a prospect (and, by the person's choice, joins the CRM).
   addPlace: (body) => api.post("/map/places/add", body).then((r) => r.data),
+  // One click on the selection: up to 200 places join the CRM through the same attested import (POST /map/places/add-many).
+  addMany: (body) => api.post("/map/places/add-many", body).then((r) => r.data),
 };
 
 export const focusApi = {
