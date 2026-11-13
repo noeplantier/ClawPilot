@@ -79,3 +79,23 @@ cd ../frontend && npm test -- --watchAll=false src/pages/automationMax.test.jsx 
 - Pas de découverte automatique de nouveaux établissements dans le mandat : une zone, au plus 100 messages.
 - Le mode exige l'interrupteur serveur, la lecture des réponses (IMAP) et un worker avec son beat (`EMBEDDED_WORKER=1` ou services dédiés).
 - Aucune notification externe n'est envoyée ; le rapport se lit dans l'écran.
+
+## Pilote automatique (en amont du mandat)
+
+**Désactivé par défaut.** Écran : **Pilotage › Automatisations** (en tête). API : `/api/autopilot` (`routes/autopilot.py`), règles pures
+`services/outreach_os/autopilot.py`, exécution `services/autopilot_runner.py`, tâche `tasks.autopilot_tasks.run_autopilots` (toutes les 15 min).
+
+Un **propriétaire** l'active avec quatre confirmations (`b2b_use`, `auto_approve`, `ai_credits`, `can_stop`). À chaque passage (planifié, ou
+« Lancer maintenant ») il fait, dans cet ordre et seulement ce qui a été autorisé :
+
+1. **Recherche** de la zone sur la carte, au plus toutes les `MIN_SEARCH_HOURS` (6 h), par le même job persisté que l'écran Carte (Overpass,
+   cache, limites). Exige `FEATURE_EXTERNAL_SOURCES` ; sinon la recherche est sautée et le passage le dit.
+2. **Ajout** des lieux qui ont publié un téléphone **et** un e-mail, par le même import attesté que l'ajout groupé de la carte (origine OSM, base
+   légale, liste d'opposition), en attente de relecture. Exige `FEATURE_PROSPECT_IMPORT`.
+3. **Approbation** des prospects en attente que la politique d'éligibilité qualifie, au plus `max_approvals` (≤ 200) par passage, au nom du
+   propriétaire, chaque décision écrite dans le journal (`via: auto_selection`).
+4. **Brouillons IA** des prospects approuvés à ce passage, dans la limite des crédits.
+
+Il **n'envoie jamais** : l'envoi reste au mandat actif, dans ses plafonds, par toutes les portes du moteur d'envoi. Un passage est écrit dans le
+journal d'audit (`autopilot.run`) avec ce qu'il a fait et sauté. Arrêt à tout instant par un propriétaire ou un administrateur ; le pilote
+s'arrête aussi seul si le propriétaire qui l'a autorisé n'est plus propriétaire du compte.

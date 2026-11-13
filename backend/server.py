@@ -17,6 +17,7 @@ from routes.ai import router as ai_router
 from routes.analytics import router as analytics_router
 from routes.auth import router as auth_router
 from routes.auto_selection import router as auto_selection_router
+from routes.autopilot import router as autopilot_router
 from routes.campaigns import router as campaigns_router
 from routes.dashboard import router as dashboard_router
 from routes.email_providers import router as email_providers_router
@@ -88,6 +89,7 @@ api_router.include_router(unsubscribe_router)
 api_router.include_router(prospecting_router)
 api_router.include_router(suggestions_router)
 api_router.include_router(usage_router)
+api_router.include_router(autopilot_router)
 api_router.include_router(email_providers_router)
 
 app.include_router(api_router)

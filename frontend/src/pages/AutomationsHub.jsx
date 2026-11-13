@@ -4,6 +4,7 @@ import HubTabs from "@/components/shell/HubTabs";
 import { mandatesApi, useAsync } from "@/lib/outreach";
 import AutomationMax from "@/pages/AutomationMax";
 import Agents from "@/pages/Agents";
+import AutopilotPanel from "@/components/hub/AutopilotPanel";
 
 // « Automatisations » : le mandat borné (Automatisation max) et les agents sur une seule page. L'interrupteur serveur
 // (FEATURE_AUTOMATION_MAX) et l'autorisation d'un propriétaire restent les seules façons de faire agir un mandat.
@@ -18,7 +19,8 @@ export default function AutomationsHub({ tab = "max" }) {
   ];
   return (
     <PageShell testId="automations-hub" kicker="Pilotage" title="Automatisations"
-      lead="Ce qui agit sans vous, dans les limites que vous avez écrites, et ce que vous pouvez arrêter à tout instant.">
+      lead="Le pilote automatique trouve, ajoute, qualifie et prépare ; le mandat envoie, dans ses plafonds. Tout s'active à votre demande et s'arrête à tout instant.">
+      <AutopilotPanel />
       <HubTabs tabs={tabs} label="Automatisations" />
       {tab === "agents" ? <Agents embedded /> : <AutomationMax embedded />}
     </PageShell>

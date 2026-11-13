@@ -25,6 +25,8 @@ class Account(Base, UUIDPKMixin, TimestampMixin):
     offer: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     # The outreach model chosen for AI drafts (services/outreach_os/credits.py); None = the default one.
     outreach_model: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # The autopilot an owner authorised (services/outreach_os/autopilot.py); None = never configured, i.e. off.
+    autopilot: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     users: Mapped[list["User"]] = relationship(back_populates="account", cascade="all, delete-orphan")
 
