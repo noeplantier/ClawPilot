@@ -40,26 +40,27 @@ const clusterIcon = (n) => {
   return L.divIcon({ className: "map-pin", html: `<span class="map-cluster" style="width:${size}px;height:${size}px">${n}</span>`, iconSize: [size, size], iconAnchor: [size / 2, size / 2] });
 };
 
+const esc = (v) => String(v || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
 const minePin = (p, fresh) => {
   const cls = classifyProspect(p);
   return L.divIcon({
     className: "map-pin",
-    html: `<span style="--c:${cls.color};--glow:${cls.glow}" class="map-pin-square${fresh ? " is-new" : ""}${cls.tier === "HOT" ? " is-hot" : ""}" title="${cls.label}: ${p.name}"></span>`,
+    html: `<span style="--c:${cls.color};--glow:${cls.glow}" class="map-pin-square${fresh ? " is-new" : ""}${cls.tier === "HOT" ? " is-hot" : ""}" title="${esc(cls.label)} : ${esc(p.name)}"></span>`,
     iconSize: [22, 22], iconAnchor: [11, 11], popupAnchor: [0, -10],
   });
 };
 
 function minePopup(p) {
-  const esc = (v) => String(v || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const cls = classifyProspect(p);
   const site = p.website && /^https?:\/\//i.test(p.website)
     ? `<div><a href="${esc(p.website)}" target="_blank" rel="noopener noreferrer" class="text-brand-lilac hover:underline">${esc(p.website.replace(/^https?:\/\//i, ""))}</a></div>`
     : "";
   const heat = p.heat ? `<b>${p.heat.tier} ${p.heat.value}</b> · ` : "";
   return `<strong>${esc(p.name)}</strong><div>${p.city ? esc(p.city) : "<i>city not set</i>"}</div>` +
-    `<div class="flex items-center gap-1.5 my-1"><span style="background:${cls.bg};color:${cls.color};border:1px solid ${cls.border}" class="text-[10px] px-1.5 py-0.5 rounded-full font-mono font-bold">${cls.label}</span> · ${heat}${STATUS_LABEL[p.review_status]}</div>` +
+    `<div class="flex items-center gap-1.5 my-1"><span style="background:${cls.bg};color:${cls.color};border:1px solid ${cls.border}" class="text-[10px] px-1.5 py-0.5 rounded-full font-mono font-bold">${esc(cls.label)}</span> · ${heat}${STATUS_LABEL[p.review_status]}</div>` +
     `<div><a href="tel:${esc(p.phone || "")}">${esc(p.phone || "")}</a></div><div><a href="mailto:${esc(p.email || "")}">${esc(p.email || "")}</a></div>${site}` +
-    `<div class="text-[11px] text-brand-lilac font-medium mt-1">${esc(cls.opportunity.name)}</div>` +
+    `<div class="text-[11px] text-brand-lilac font-medium mt-1">${esc(cls.site.label)}</div>` +
     `<div class="pt-1"><a href="/app/prospects/${esc(p.id)}">Open the prospect</a>${p.review_status === "approved" ? ` · <a href="/app/leads">in your CRM</a>` : ""} · <a href="/app/launch">Launch</a></div>`;
 }
 
