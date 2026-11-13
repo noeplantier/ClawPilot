@@ -5,12 +5,13 @@ describe("the go-to palette replaces nothing that the top bar offered", () => {
   const commands = buildCommands();
   it("lists every screen of every section once, in the order of the sidebar", () => {
     const screens = commands.filter((c) => c.to);
-    expect(screens.map((c) => c.to)).toEqual(SECTIONS.flatMap((s) => s.tabs.map((t) => t.to)));
+    // A merged page keeps one command per screen it holds (its tabs), right after the entry of the sidebar.
+    expect(screens.map((c) => c.to)).toEqual(SECTIONS.flatMap((s) => s.tabs.flatMap((t) => [t.to, ...(t.also || []).map((a) => a.to)])));
     expect(new Set(commands.map((c) => c.id)).size).toBe(commands.length);
     expect(screens.every((c) => c.group && c.label)).toBe(true);
   });
   it("keeps the former top-bar action (the AI composer), the fold and the sign-out", () => {
-    expect(commands.filter((c) => c.action).map((c) => c.action).sort()).toEqual(["compose", "fold", "logout"]);
+    expect(commands.filter((c) => c.action).map((c) => c.action).sort()).toEqual(["compose", "fold", "logout", "usage"]);
     expect(ACTIONS.find((a) => a.action === "compose").label).toBe("Composer IA");
   });
   it("groups by section then actions, and a screen added to a section appears without further work", () => {

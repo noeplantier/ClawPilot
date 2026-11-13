@@ -13,7 +13,7 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import Subquery, and_, case, func, not_, or_, select, text, update
+from sqlalchemy import Subquery, and_, case, func, not_, or_, select, text, true, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -539,7 +539,11 @@ async def detected_by_lead(
 
 
 async def list_positions(
-    session: AsyncSession, account_id: uuid.UUID, limit: int = 2000, now: Optional[datetime] = None
+    session: AsyncSession,
+    account_id: uuid.UUID,
+    limit: int = 2000,
+    now: Optional[datetime] = None,
+    review_status: Optional[str] = None,
 ) -> list[dict]:
     """What the commercial map draws: the discovery prospects the common eligibility policy qualifies (e-mail, phone,
     address and position on a fresh non-demo source, a fit score), decided in SQL before the limit, never by the page.
@@ -556,6 +560,7 @@ async def list_positions(
             .join(src, src.c.lead_id == Lead.id)
             .outerjoin(latest, latest.c.lead_id == Lead.id)
             .where(Lead.account_id == account_id, ACTIVE, IN_DISCOVERY, eligibility_sql.qualified(src, now))
+            .where(Lead.review_status == review_status if review_status else true())
             .order_by(
                 hot.desc(), heat_value.desc(), heat_sql.known(Lead.website).desc(), Lead.created_at.desc(), Lead.id
             )

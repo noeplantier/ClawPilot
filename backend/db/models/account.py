@@ -23,6 +23,8 @@ class Account(Base, UUIDPKMixin, TimestampMixin):
     # The offer the organisation sells ({name, pitch, cta, language}); None until the owner writes it. No automatic
     # draft is prepared without one, and none is ever invented.
     offer: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # The outreach model chosen for AI drafts (services/outreach_os/credits.py); None = the default one.
+    outreach_model: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
     users: Mapped[list["User"]] = relationship(back_populates="account", cascade="all, delete-orphan")
 

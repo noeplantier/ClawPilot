@@ -9,7 +9,7 @@ export function Widget({ title, kicker, testId, action, children }) {
     <section className="surface p-5 space-y-3" data-testid={testId} aria-label={title}>
       <header className="flex items-start justify-between gap-3">
         <div>
-          {kicker && <div className="mono-accent">{kicker}</div>}
+          {kicker && <div className="eyebrow">{String(kicker).replace(/^\/\/\s*/, "")}</div>}
           <h2 className="font-display text-lg font-bold tracking-tight">{title}</h2>
         </div>
         {action}
@@ -319,12 +319,12 @@ export function GeoDistribution({ geo }) {
   return (
     <div className="space-y-3" data-testid="geo">
       <div>
-        <div className="mono-accent">// countries</div>
+        <div className="eyebrow">countries</div>
         <ul className="space-y-2 mt-1" data-testid="geo-countries">{geo.countries.map((c) => <Bar key={c.name} label={c.name} n={c.prospects} max={max} />)}</ul>
         {geo.unknown_country > 0 && <p className="text-xs text-soft mt-1" data-testid="geo-unknown">{geo.unknown_country} without a country</p>}
       </div>
       <div>
-        <div className="mono-accent">// cities</div>
+        <div className="eyebrow">cities</div>
         <ul className="space-y-2 mt-1" data-testid="geo-cities">{geo.cities.map((c) => <Bar key={c.name} label={c.name} n={c.prospects} max={max} />)}</ul>
         {geo.unknown_city > 0 && <p className="text-xs text-soft mt-1">{geo.unknown_city} without a city</p>}
       </div>

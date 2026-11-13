@@ -15,6 +15,22 @@ joignables depuis l'environnement de développement : le design vient du dépôt
 | Typographie | Inter (400-800) + JetBrains Mono (400-600), **auto-hébergées** (`@fontsource`, sous-ensemble latin : accents français inclus) | plus aucune feuille de style tierce bloquante |
 | Composants | `.btn-primary` (violet plein, bord haut clair + halo, se soulève de 2 px au survol), `.btn-ghost` / `.btn-ink` (verre), `.btn-purple`, `.btn-danger`, `.chip*` (pastilles mono), `.neo-input`, `.mono-accent` (kicker), `.gradient-word` (mot en dégradé) | |
 
+## Surtitres, titres et cartes (alignés sur le site, commit `10dcb5d` de `noeplantier/plantiers`)
+- **Surtitre** `.eyebrow` : trait de 2 rem en dégradé vers `brand-500`, puis le libellé en JetBrains Mono 10 px, capitales, espacement 0,3 em, `brand-400`
+  (comme `SectionHeading` du site). Il remplace l'ancien « // section » dans les en-têtes de page et les cartes (`Widget`).
+- **Titre de page** : `font-bold`, interlignage 1,15 (le `WordReveal` du site), plus de `font-black`.
+- **Lueur des cartes** : une lumière violette douce suit le pointeur sur toute `.surface` (le `glow` du `Card` du site), posée par `lib/cardGlow.js`
+  (variables CSS `--mx` / `--my`, un seul écouteur, aucun état React) ; coupée sous `prefers-reduced-motion`.
+
+## Pages fusionnées
+Une entrée de la barre latérale peut porter plusieurs écrans (`also` dans `lib/sections.js`) : chaque écran garde son chemin, la page affiche un seul titre
+et une rangée d'onglets (`components/shell/HubTabs.jsx`, compteurs lus sur l'API, rien quand l'API ne répond pas).
+- **Outreach › Campagnes** (`/app/campaigns`, `/app/journey`, `/app/launch`) : chiffres et graphiques en direct (`GET /dashboard/overview`, toutes les 10 s), puis
+  Par zone · Individuelle · Séquences.
+- **Leads › À traiter** (`/app/prospects/review`, `/app/prospects/to-enrich`) : la sélection automatique du serveur (approuvée en un clic), puis À vérifier · À enrichir.
+- **Pilotage › Automatisations** (`/app/automation-max`, `/app/agents`) : Mandat · Agents.
+- **CRM / Pipeline** : la même barre que Prospects (actions secondaires en verre, une seule action principale, onglets CRM · Pipeline · Map).
+
 ## Logo
 `frontend/src/assets/logo-mark.png` (le « P » ruban + pousse de feuilles, celui du site) via `components/Logo.jsx` : `LogoMark` seul, ou `Logo`
 (marque + `PLANTIERS` + sous-ligne mono `OUTREACHOS`, comme « SOFTWARE ENGINEERING » sur le site). Utilisé dans la barre latérale (repliée : la marque seule),

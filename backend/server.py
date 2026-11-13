@@ -16,6 +16,7 @@ from routes.agents import router as agents_router
 from routes.ai import router as ai_router
 from routes.analytics import router as analytics_router
 from routes.auth import router as auth_router
+from routes.auto_selection import router as auto_selection_router
 from routes.campaigns import router as campaigns_router
 from routes.dashboard import router as dashboard_router
 from routes.jobs import router as jobs_router
@@ -37,6 +38,7 @@ from routes.system import router as system_router
 from routes.tags import router as tags_router
 from routes.tasks import router as tasks_router
 from routes.unsubscribe import router as unsubscribe_router
+from routes.usage import router as usage_router
 from routes.webhooks import router as webhooks_router
 
 # Delayed campaign steps run as Celery tasks in a separate worker process now
@@ -70,6 +72,7 @@ api_router.include_router(webhooks_router)
 api_router.include_router(notes_router)
 api_router.include_router(tasks_router)
 api_router.include_router(tags_router)
+api_router.include_router(auto_selection_router)  # before /prospects/{lead_id}
 api_router.include_router(prospects_router)
 api_router.include_router(prospect_imports_router)
 api_router.include_router(map_router)
@@ -83,6 +86,7 @@ api_router.include_router(mandates_router)
 api_router.include_router(unsubscribe_router)
 api_router.include_router(prospecting_router)
 api_router.include_router(suggestions_router)
+api_router.include_router(usage_router)
 
 app.include_router(api_router)
 

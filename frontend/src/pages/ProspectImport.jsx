@@ -160,7 +160,7 @@ export default function ProspectImport() {
       <div>
         <Link to="/app/prospects" className="text-sm text-soft inline-flex items-center gap-1"><ArrowLeft size={14} /> Prospects</Link>
         <div className="mono-accent mt-2">// prospects.import</div>
-        <h1 className="text-4xl font-black tracking-tighter">Import a list</h1>
+        <h1 className="mt-3 text-4xl font-bold tracking-tight leading-[1.15]">Import a list</h1>
       </div>
 
       {page.loading && !page.data && <LoadingBlock label="Reading the server configuration…" />}

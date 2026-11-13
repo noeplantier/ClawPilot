@@ -131,6 +131,25 @@
   color: var(--brand-lilac);
 }
 
+/* Eyebrow: the section label of plantiers.com (SectionHeading): a short violet line, then the label in mono, 10 px, wide tracking */
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--brand-400);
+}
+.eyebrow::before {
+  content: "";
+  display: block;
+  width: 2rem;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--brand-violet));
+}
+
 /* Card: glass on the void, hairline border, soft lift on hover */
 .surface {
   background: rgba(18, 15, 30, 0.72);
@@ -141,6 +160,20 @@
   transition: border-color 0.3s ease, background-color 0.3s ease;
 }
 .surface:hover { border-color: var(--border-strong); }
+/* The "cards feel alive" light of plantiers.com (Card, glow): a soft violet light under the pointer. The position comes from
+   lib/cardGlow.js (CSS variables on the hovered card, never React state); off under prefers-reduced-motion. */
+.surface { position: relative; }
+.surface::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  background: radial-gradient(320px circle at var(--mx, 50%) var(--my, 50%), rgba(124, 58, 237, 0.12), transparent 70%);
+}
+.surface:hover::after { opacity: 1; }
 
 /* Opaque glass for floating panels (map panels, menus): blur needs something behind it */
 .glass {
@@ -435,6 +468,7 @@ select option { background: var(--void-surface); color: var(--text-primary); }
   .pos-kpi, .pos-kpi:hover { transition: none; transform: none; }
   .pos-signal-chip, .pos-live-dot, .flash-pulse, .pulse-dot, .border-beam::before { animation: none; }
   .btn-primary, .btn-ghost, .btn-purple, .btn-ink { transition: none; }
+  .surface::after { display: none; }
   .btn-primary:hover, .btn-primary:active, .btn-ghost:active { transform: none; }
 }
 

@@ -18,12 +18,13 @@ import { zoneSummary } from "@/lib/mapSearch";
 
 // « Campagne par zone » : trois décisions (la zone, le brouillon, l'approbation), le système fait le reste.
 // Cet écran n'envoie rien : approuver planifie, chaque message est revérifié au moment où il part.
-export default function Journey() {
+export default function Journey({ embedded = false }) {
   const [params, setParams] = useSearchParams();
   const id = params.get("id") || "";
   const zone = zoneFromSearch(params.toString());
   return (
     <PageShell
+      embedded={embedded}
       testId="journey-page"
       kicker="outreach.zone"
       title="Campagne par zone"

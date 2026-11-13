@@ -33,13 +33,13 @@ export const SECTIONS = [
     label: "Leads",
     to: "/app/leads",
     icon: "Users",
-    blurb: "CRM, prospects qualifiés et Hot, fiches et file « À enrichir ».",
+    blurb: "CRM, pipeline, prospects, et la file « À traiter » (à vérifier, à enrichir).",
     tabs: [
       { to: "/app/leads", label: "CRM", testId: "tab-crm" },
       { to: "/app/leads?view=kanban", label: "Pipeline", testId: "tab-pipeline" },
       { to: "/app/prospects", label: "Prospects", testId: "tab-prospects" },
-      { to: "/app/prospects/review", label: "À vérifier", testId: "tab-review" },
-      { to: "/app/prospects/to-enrich", label: "À enrichir", testId: "tab-to-enrich" },
+      // « À vérifier » et « À enrichir » sont une seule page (deux onglets) : une seule entrée, les deux chemins y mènent.
+      { to: "/app/prospects/review", label: "À traiter", testId: "tab-review", also: [{ to: "/app/prospects/to-enrich", label: "À enrichir" }] },
     ],
   },
   {
@@ -55,12 +55,11 @@ export const SECTIONS = [
     label: "Outreach",
     to: "/app/drafts",
     icon: "PaperPlaneTilt",
-    blurb: "Brouillons IA, campagne par zone, campagne individuelle, séquences, boîte de réception, canaux.",
+    blurb: "Brouillons IA, campagnes (par zone, individuelle, séquences), boîte de réception, canaux.",
     tabs: [
       { to: "/app/drafts", label: "Brouillons IA", testId: "tab-drafts" },
-      { to: "/app/journey", label: "Campagne par zone", testId: "tab-journey" },
-      { to: "/app/launch", label: "Campagne individuelle", testId: "tab-launch" },
-      { to: "/app/campaigns", label: "Campagnes et séquences", testId: "tab-campaigns" },
+      // Zone, individuelle, séquences : une seule page « Campagnes » (trois onglets et les graphiques en direct).
+      { to: "/app/campaigns", label: "Campagnes", testId: "tab-campaigns", also: [{ to: "/app/journey", label: "Campagne par zone" }, { to: "/app/launch", label: "Campagne individuelle" }] },
       { to: "/app/messages", label: "Boîte de réception", testId: "tab-messages" },
       { to: "/app/sending", label: "Canaux", testId: "tab-sending" },
     ],
@@ -70,18 +69,21 @@ export const SECTIONS = [
     label: "Pilotage",
     to: "/app/settings",
     icon: "Gear",
-    blurb: "Offre, intégrations, automatisations, mode max, santé et réglages.",
+    blurb: "Offre, intégrations, automatisations (agents et mandat), santé et réglages.",
     tabs: [
       { to: "/app/settings/offer", label: "Offre", testId: "tab-offer" },
       { to: "/app/settings", label: "Intégrations et réglages", testId: "tab-settings" },
-      { to: "/app/agents", label: "Automatisations", testId: "tab-agents" },
-      { to: "/app/automation-max", label: "Automatisation max", testId: "tab-automation-max" },
+      // Agents et mandat « Automatisation max » : une seule page « Automatisations ».
+      { to: "/app/automation-max", label: "Automatisations", testId: "tab-automation-max", also: [{ to: "/app/agents", label: "Agents" }] },
       { to: "/app/system", label: "Santé", testId: "tab-system" },
     ],
   },
 ];
 
 export const pathOf = (to) => String(to || "").split("?")[0].replace(/\/$/, "") || "/";
+
+// The paths a tab answers for: its own, plus the screens merged into it (`also`), so an old link still lands on the right entry.
+export const tabPaths = (tab) => [pathOf(tab.to), ...(tab.also || []).map((a) => pathOf(a.to))];
 
 // The section a path belongs to. The longest matching tab wins (/app/prospects/review is "À vérifier", not "Prospects"),
 // so a nested path never lands in the wrong section; null for a path outside the app.
@@ -91,10 +93,11 @@ export function sectionOf(pathname) {
   let bestLength = -1;
   for (const section of SECTIONS) {
     for (const tab of section.tabs) {
-      const p = pathOf(tab.to);
-      if ((path === p || path.startsWith(`${p}/`)) && p.length > bestLength) {
-        best = section;
-        bestLength = p.length;
+      for (const p of tabPaths(tab)) {
+        if ((path === p || path.startsWith(`${p}/`)) && p.length > bestLength) {
+          best = section;
+          bestLength = p.length;
+        }
       }
     }
   }
@@ -109,14 +112,15 @@ export function activeTab(section, pathname, search = "") {
   let best = null;
   let bestLength = -1;
   for (const tab of section.tabs) {
-    const [tabPath, query] = tab.to.split("?");
-    const p = pathOf(tabPath);
-    if (!(path === p || path.startsWith(`${p}/`))) continue;
-    if (query && !(path === p && kanban)) continue; // a tab with a query matches only that query
-    if (!query && path === p && p === "/app/leads" && kanban) continue; // the CRM tab yields to the pipeline
-    if (p.length > bestLength) {
-      best = tab;
-      bestLength = p.length;
+    const query = tab.to.split("?")[1];
+    for (const p of tabPaths(tab)) {
+      if (!(path === p || path.startsWith(`${p}/`))) continue;
+      if (query && !(path === p && kanban)) continue; // a tab with a query matches only that query
+      if (!query && path === p && p === "/app/leads" && kanban) continue; // the CRM tab yields to the pipeline
+      if (p.length > bestLength) {
+        best = tab;
+        bestLength = p.length;
+      }
     }
   }
   return best;

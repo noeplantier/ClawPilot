@@ -40,6 +40,8 @@ export const mapApi = {
   cities: (opts) => api.get("/map/cities", opts).then((r) => r.data),
   // One click on a pin: the place becomes a prospect (and, by the person's choice, joins the CRM).
   addPlace: (body) => api.post("/map/places/add", body).then((r) => r.data),
+  // One click on the selection: up to 200 places join the CRM through the same attested import (POST /map/places/add-many).
+  addMany: (body) => api.post("/map/places/add-many", body).then((r) => r.data),
 };
 
 export const focusApi = {
@@ -83,6 +85,18 @@ export const launchApi = {
 export const offerApi = {
   get: () => api.get("/settings/offer").then((r) => r.data),
   put: (body) => api.put("/settings/offer", body).then((r) => r.data),
+};
+
+// Credits and outreach models (GET /usage/credits, PUT /usage/model): the AI work left today and in this session.
+export const usageApi = {
+  credits: () => api.get("/usage/credits").then((r) => r.data),
+  setModel: (model) => api.put("/usage/model", { model }).then((r) => r.data),
+};
+
+// Automatic selection: the qualified prospects that wait for review, chosen by the server; approved in one click.
+export const autoSelectionApi = {
+  selection: (limit = 200) => api.get("/prospects/auto/selection", { params: { limit } }).then((r) => r.data),
+  review: (leadIds, decision) => api.post("/prospects/auto/review", { lead_ids: leadIds, decision }).then((r) => r.data),
 };
 
 export const prospectsApi = {

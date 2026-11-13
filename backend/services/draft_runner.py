@@ -24,8 +24,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from db.models import Lead
 from db.session import AsyncSessionLocal
 from repositories import audit_repo, draft_job_repo, draft_repo, prospect_repo, usage_repo
-from services import ai_svc, feature_flags
-from services.outreach_os import ai_draft
+from services import ai_svc, credit_gate, feature_flags
+from services.outreach_os import ai_draft, credits
 from services.outreach_os import drafts as drafts_svc
 from services.outreach_os import email_footer
 from services.outreach_os import heat as heat_rules
@@ -183,6 +183,17 @@ async def run_job(
                 whatsapp=sender.whatsapp,
             )
             business, messages = lead.full_name, ai_draft.build_messages(ctx, offer)
+            try:
+                chosen, cost = await credit_gate.reserve(session, account_id, 1, now())
+            except credit_gate.CreditsExhausted as exc:
+                return await end("unavailable", error_code="credits_exhausted", error=exc.refusal.message)
+            except credit_gate.ModelWithoutAI as exc:
+                return await end(
+                    "unavailable",
+                    error_code="model_without_ai",
+                    error=f"Le modèle « {exc} » écrit sans IA : aucun brouillon IA n'est préparé.",
+                )
+            messages = credits.with_instruction(messages, chosen)
 
         try:
             answer = await generator(messages)
@@ -237,6 +248,7 @@ async def run_job(
                         "business": business[:80],
                     },
                 )
+            await credit_gate.spent(session, account_id, chosen, cost, "draft")
             await draft_job_repo.finish(session, job_id, status="ready", now=now(), draft_id=draft.id)
             await session.commit()
         return "ready"

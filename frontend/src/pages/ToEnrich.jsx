@@ -9,7 +9,7 @@ const PAGE_SIZE = 25;
 
 // Prospects that are not qualified yet: they stay here with what is missing, never contactable by default, and never on the
 // commercial map until an e-mail, a phone, an address and a position from a fresh source are all known.
-export default function ToEnrich() {
+export default function ToEnrich({ embedded = false }) {
   const [params, setParams] = useSearchParams();
   const page = Math.max(0, parseInt(params.get("page") || "0", 10) || 0);
   const list = useAsync(() => prospectsApi.toEnrich({ limit: PAGE_SIZE, offset: page * PAGE_SIZE }), [page], {
@@ -21,16 +21,16 @@ export default function ToEnrich() {
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const go = (n) => setParams(n > 0 ? { page: String(n) } : {}, { replace: true });
   return (
-    <div className="p-6 md:p-10 space-y-6" data-testid="to-enrich-page">
-      <div className="flex items-start justify-between flex-wrap gap-4">
-        <div>
-          <div className="mono-accent">// outreach.qualification</div>
-          <h1 className="text-4xl font-black tracking-tighter">To enrich</h1>
+    <div className={embedded ? "space-y-6" : "p-6 md:p-10 space-y-6"} data-testid="to-enrich-page">
+      <div className={`flex items-start flex-wrap gap-4 ${embedded ? "justify-end" : "justify-between"}`}>
+        {!embedded && <div>
+          <div className="eyebrow">outreach.qualification</div>
+          <h1 className="mt-3 text-4xl font-bold tracking-tight leading-[1.15]">To enrich</h1>
           <p className="text-soft mt-1 max-w-2xl">
             Prospects that lack something to be qualified. They are kept, not contactable, and join the map as soon as they have an e-mail, a phone, an address and
             a position from a fresh source.
           </p>
-        </div>
+        </div>}
         <Link to="/app/map" className="btn-primary"><MapTrifold size={14} weight="bold" /> OPEN THE MAP</Link>
       </div>
       {list.error && !list.data && <ErrorBlock message={list.error} />}

@@ -24,8 +24,8 @@ export default function Batches() {
   return (
     <div className="p-6 md:p-10 space-y-8" data-testid="batches-page">
       <div>
-        <div className="mono-accent">// outreach.batches</div>
-        <h1 className="text-4xl font-black tracking-tighter">Batches</h1>
+        <div className="eyebrow">outreach.batches</div>
+        <h1 className="mt-3 text-4xl font-bold tracking-tight leading-[1.15]">Batches</h1>
         <p className="text-soft mt-1 max-w-2xl">Launch a search or an import, follow what is being prepared, and find what ran before.</p>
       </div>
 

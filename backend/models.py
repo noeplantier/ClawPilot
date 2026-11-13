@@ -888,6 +888,29 @@ class MapAddIn(BaseModel):
     country: str = Field(default="FR", pattern="^[A-Z]{2}$")
 
 
+class MapAddManyIn(BaseModel):
+    """One click on the map's selection: every place joins the CRM (or the review queue), same attested import."""
+
+    places: List[MapPlaceIn] = Field(min_length=1, max_length=200)
+    attestation: bool = False  # "I may use these professional contact details for B2B prospecting"
+    approve: bool = True  # the person's own decision: they join the CRM; false = they wait in the review queue
+    check_website: bool = False  # read each business's own site for a public e-mail (capped by the importer)
+    country: str = Field(default="FR", pattern="^[A-Z]{2}$")
+
+
+class MapAddManyOut(BaseModel):
+    requested: int
+    created: int  # new prospects
+    already_known: int  # already one of your prospects: completed, never duplicated
+    in_crm: int  # approved now or before: in the CRM pipeline
+    waiting_review: int  # added but left in the review queue (approve=false)
+    kept_rejected: int  # a person rejected it before: a bulk click never overrides that decision
+    suppressed: int  # on the suppression list: not added, never approved
+    unreadable: int  # a row the importer could not read
+    sites_checked: int
+    lead_ids: List[str]
+
+
 class MapAddOut(BaseModel):
     lead_id: str
     name: str

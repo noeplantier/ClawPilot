@@ -138,6 +138,8 @@ set (Settings > Integrations): nothing is ever recorded as sent, generated or fo
 | `AI_API_KEY` | The provider's key (a free one exists at Groq and Mistral). Never shown, never logged |
 | `AI_MODEL` | Optional: replaces the provider's default model |
 | `AI_BASE_URL` | Only with `AI_PROVIDER=custom`: the API root (`https://…/v1`), with `AI_MODEL` |
+| `CREDITS_PER_DAY` | AI credits per day (Europe/Paris), default `100`: a spend over it is refused before any provider call (`docs/cost-control.md`) |
+| `CREDITS_PER_SESSION` | AI credits per 5-hour session, default `30` |
 | `REACT_APP_BACKEND_URL` (frontend) | API base URL |
 
 ## OutreachOS: local prospect journey (dry-run, no network)

@@ -4,7 +4,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 import {
-  Plus, MagnifyingGlass, Envelope, Phone, Trash, Table, Kanban, Sparkle, X, UploadSimple, PaperPlaneTilt,
+  Plus, MagnifyingGlass, Envelope, Phone, Trash, Table, Kanban, Sparkle, X, UploadSimple, PaperPlaneTilt, MapTrifold,
 } from "@phosphor-icons/react";
 import AIComposerModal from "@/components/AIComposerModal";
 import BulkLeadsModal from "@/components/BulkLeadsModal";
@@ -21,6 +21,12 @@ import DiscoveryMap from "@/components/DiscoveryMap";
 // Where a prospect from discovery (map, sources, import) stands in the human review; a CRM lead has none.
 const REVIEW_LABEL = { pending: "to review", approved: "approved", rejected: "rejected" };
 const REVIEW_CHIP = { pending: "chip-warn", approved: "chip-success", rejected: "chip-danger" };
+// The views of the CRM, drawn like the review tabs of Prospects: the pipeline is the kanban, the map shows the CRM's positions.
+const VIEWS = [
+  { key: "table", label: "CRM", Icon: Table },
+  { key: "kanban", label: "Pipeline", Icon: Kanban },
+  { key: "map", label: "Map", Icon: MapTrifold },
+];
 const STAGES = ["new", "contacted", "engaged", "qualified", "won", "lost"];
 const STAGE_COLORS = {
   new: "#9B74FA", contacted: "#94A3B8", engaged: "#C4B5FD",
@@ -142,8 +148,8 @@ export default function Leads() {
     <div className="p-6 md:p-10 space-y-6">
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
-          <div className="mono-accent">// crm.pipeline</div>
-          <h1 className="text-4xl font-black tracking-tighter">Leads</h1>
+          <div className="eyebrow">crm.pipeline</div>
+          <h1 className="mt-3 text-4xl font-bold tracking-tight leading-[1.15]">Leads</h1>
           <p className="text-soft mt-1">
             {leads.length}{lane !== "all" ? ` ${LANE_LABEL[lane].toLowerCase()}` : ""} contact{leads.length === 1 ? "" : "s"} across the pipeline, hottest first.
           </p>
@@ -153,21 +159,36 @@ export default function Leads() {
             {live.updatedAt ? `Live · updated ${live.updatedAt.toLocaleTimeString()} · every ${LIVE_MS / 1000} s` : "Loading…"}
           </p>
         </div>
-        <div className="flex flex-wrap gap-2 items-center">
-          <div className="flex items-center gap-2 px-3 py-1.5 border border-border rounded-md bg-card">
-            <MagnifyingGlass size={14} className="text-faint" />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, email, company" className="bg-transparent outline-none text-sm w-40 sm:w-56 font-mono" data-testid="leads-search" />
-          </div>
-          <button onClick={() => setCrmView(view === "map" ? "table" : "map")} className="btn-ghost" data-testid="toggle-map">
-            {view === "map" ? <Table size={14} /> : <MagnifyingGlass size={14} />} {view === "map" ? "CRM TABLE" : "MAP SEARCH"}
-          </button>
-          {view !== "map" && <button onClick={() => setCrmView(view === "table" ? "kanban" : "table")} className="btn-ghost" data-testid="toggle-view">
-            {view === "table" ? <Kanban size={14} /> : <Table size={14} />} {view === "table" ? "KANBAN" : "TABLE"}
-          </button>}
-          {view !== "map" && <button onClick={() => setShowBatch(true)} className="btn-ink" data-testid="open-batch-send"><PaperPlaneTilt size={14} weight="fill" /> BATCH SEND</button>}
-          {view !== "map" && <button onClick={enrich} className="btn-purple" data-testid="enrich-leads-button"><Sparkle size={14} weight="fill" /> ENRICH</button>}
-          <button onClick={() => setShowBulk(true)} className="btn-ghost" data-testid="open-bulk-import"><UploadSimple size={14} /> BULK IMPORT</button>
+        <div className="flex gap-2 items-center flex-wrap">
+          <button onClick={() => setShowBulk(true)} className="btn-ghost" data-testid="open-bulk-import"><UploadSimple size={14} /> IMPORT A LIST</button>
+          {view !== "map" && <button onClick={enrich} className="btn-ghost" data-testid="enrich-leads-button"><Sparkle size={14} /> ENRICH</button>}
+          {view !== "map" && <button onClick={() => setShowBatch(true)} className="btn-ghost" data-testid="open-batch-send"><PaperPlaneTilt size={14} /> BATCH SEND</button>}
+          <Link to="/app/map" className="btn-ghost" data-testid="open-map-search"><MapTrifold size={14} /> FIND ON THE MAP</Link>
           <button onClick={() => setShowCreate(true)} className="btn-primary" data-testid="add-lead-button"><Plus size={14} weight="bold" /> ADD LEAD</button>
+        </div>
+      </div>
+
+      {/* The same tab bar as Prospects: one row of views, the search on the right. */}
+      <div className="flex flex-wrap items-center gap-2 justify-between">
+        <div className="flex gap-1 flex-wrap" role="tablist" aria-label="Views" data-testid="leads-views">
+          {VIEWS.map((v) => (
+            <button
+              key={v.key}
+              role="tab"
+              aria-selected={view === v.key}
+              onClick={() => setCrmView(v.key)}
+              className={`px-3 py-1.5 rounded-md text-sm border font-display inline-flex items-center gap-1.5 ${
+                view === v.key ? "bg-brand-violet text-white border-white/20" : "bg-card text-soft border-border hover:border-white/20"
+              }`}
+              data-testid={`view-${v.key}`}
+            >
+              <v.Icon size={14} aria-hidden="true" /> {v.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-2 px-3 py-1.5 border border-border rounded-md bg-card">
+          <MagnifyingGlass size={14} className="text-faint" />
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, email, company" className="bg-transparent outline-none text-sm w-40 sm:w-56 font-mono" data-testid="leads-search" />
         </div>
       </div>
 

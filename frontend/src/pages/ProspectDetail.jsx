@@ -101,7 +101,7 @@ export default function ProspectDetail() {
       <header className="flex items-start justify-between flex-wrap gap-4">
         <div className="space-y-2">
           <div className="mono-accent">// prospect · {p.vertical || "unclassified"}</div>
-          <h1 className="text-4xl font-black tracking-tighter" data-testid="detail-name">{p.name}</h1>
+          <h1 className="mt-3 text-4xl font-bold tracking-tight leading-[1.15]" data-testid="detail-name">{p.name}</h1>
           <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-soft">
             <span className="inline-flex items-center gap-1"><MapPin size={14} />{p.city || "city unknown"}</span>
             <span className="inline-flex items-center gap-1"><Globe size={14} />{domainOf(p.website) || "no own website listed"}</span>

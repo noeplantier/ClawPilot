@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
-import { CaretLeft, CaretRight, Command, Gear, MapTrifold, PaperPlaneTilt, SignOut, Sparkle, SquaresFour, Stack, Users, X } from "@phosphor-icons/react";
+import { CaretLeft, CaretRight, Command, Gauge, Gear, MapTrifold, PaperPlaneTilt, SignOut, Sparkle, SquaresFour, Stack, Users, X } from "@phosphor-icons/react";
 import Logo from "@/components/Logo";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { SECTIONS, activeTab, sectionOf } from "@/lib/sections";
@@ -105,7 +105,7 @@ function FooterButton({ icon: Icon, label, iconOnly, side, onClick, testId, hint
 
 // The sidebar: the logo centred in the width that is open (the compact mark when folded), the six entries, then the tools
 // that were in the top bar (go-to palette, AI composer), the fold button and the account.
-export default function Sidebar({ folded, mobile = false, user, org, onToggleFold, onClose, onPalette, onCompose, onLogout, onNavigate, closeRef }) {
+export default function Sidebar({ folded, mobile = false, user, org, onToggleFold, onClose, onPalette, onCompose, onLogout, onNavigate, closeRef, onUsage, usage }) {
   const narrow = folded && !mobile;
   const prefix = mobile ? "mobile-" : "";
   // A laptop-height window keeps the six entries and the screens of the current one in view: the foot becomes one row of
@@ -140,6 +140,17 @@ export default function Sidebar({ folded, mobile = false, user, org, onToggleFol
           <div className={row ? "flex flex-1 gap-1 py-2 pl-3 pr-1" : "space-y-1 border-t border-white/10 p-3"} data-testid={`${prefix}tools`}>
             <FooterButton icon={Command} label="Aller à… (Ctrl K)" hint="Aller à… (Ctrl ou Cmd + K)" iconOnly={iconOnly} side={side} onClick={onPalette} testId={`${prefix}open-palette`} aria-haspopup="dialog" />
             <FooterButton icon={Sparkle} label="Composer IA" iconOnly={iconOnly} side={side} onClick={onCompose} testId={`${prefix}open-ai-composer`} aria-haspopup="dialog" />
+            {onUsage && (
+              <FooterButton
+                icon={Gauge}
+                label={usage ? `Crédits · ${Math.min(100, Math.round((usage.used / usage.limit) * 100))} % utilisés` : "Crédits et modèles"}
+                iconOnly={iconOnly}
+                side={side}
+                onClick={onUsage}
+                testId={`${prefix}open-usage`}
+                aria-haspopup="dialog"
+              />
+            )}
             {!mobile && (
               <FooterButton
                 icon={narrow ? CaretRight : CaretLeft}

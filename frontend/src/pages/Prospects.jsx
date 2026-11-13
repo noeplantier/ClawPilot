@@ -99,8 +99,8 @@ export default function Prospects() {
     <div className="p-6 md:p-10 space-y-6" data-testid="prospects-page">
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
-          <div className="mono-accent">// outreach.discovery</div>
-          <h1 className="text-4xl font-black tracking-tighter">Prospects</h1>
+          <div className="eyebrow">outreach.discovery</div>
+          <h1 className="mt-3 text-4xl font-bold tracking-tight leading-[1.15]">Prospects</h1>
           <p className="text-soft mt-1 max-w-2xl">
             Businesses found in authorised sources, scored from verifiable signals. Nothing is contacted until a person approves it.
           </p>
