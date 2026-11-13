@@ -17,7 +17,7 @@ const MAX = 100;
 // Campagne de messages individuels : 100 établissements distincts, un brouillon personnalisé et relu par destinataire, un plan d'envoi,
 // un suivi honnête. Cet écran ne génère rien au rendu et n'envoie rien : chaque action est un bouton, chaque envoi passe les
 // portes du serveur au moment où il part.
-export default function Launch() {
+export default function Launch({ embedded = false }) {
   const { user } = useAuth();
   const [params, setParams] = useSearchParams();
   const id = params.get("id") || "";
@@ -29,15 +29,15 @@ export default function Launch() {
   const list = useAsync(() => launchApi.list(), [version], { key: "launch:list", intervalMs: 20000 });
 
   return (
-    <div className="p-6 md:p-10 space-y-6" data-testid="launch-page">
-      <div>
+    <div className={embedded ? "space-y-6" : "p-6 md:p-10 space-y-6"} data-testid="launch-page">
+      {!embedded && <div>
         <div className="mono-accent">// outreach.launch</div>
         <h1 className="text-4xl font-black tracking-tighter">Campagne individuelle</h1>
         <p className="text-soft mt-1 max-w-3xl">
           Jusqu&apos;à {MAX} établissements distincts, un message personnalisé et relu pour chacun, planifié puis envoyé un par un.
           Un message n&apos;est jamais copié à plusieurs destinataires, et rien ne part avant que vous ne le planifiiez.
         </p>
-      </div>
+      </div>}
       {gates.error && !gates.data && <ErrorBlock message={gates.error} onRetry={gates.reload} />}
       {gates.data && <ProviderPanel gates={gates.data} />}
       {!id && <Home decide={decide} list={list} gates={gates.data} onOpen={(next) => setParams({ id: next })} onChanged={refresh} />}

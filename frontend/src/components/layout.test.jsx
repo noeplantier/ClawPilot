@@ -82,7 +82,7 @@ test("each entry leads to its section and the current one is marked", async () =
 test("the current section lists its screens right under it, and the current screen is marked", async () => {
   await render("/app/prospects/review");
   const screens = [...byId("subnav").querySelectorAll("a")];
-  expect(screens.map((a) => a.textContent)).toEqual(["CRM", "Pipeline", "Prospects", "À vérifier", "À enrichir"]);
+  expect(screens.map((a) => a.textContent)).toEqual(["CRM", "Pipeline", "Prospects", "À traiter"]);
   expect(byId("tab-review").getAttribute("aria-current")).toBe("page");
   expect(byId("nav-leads").getAttribute("aria-current")).toBe("true"); // the section holds the current page
   expect(byId("subnav").getAttribute("aria-label")).toBe("Leads : écrans");

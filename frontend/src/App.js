@@ -9,9 +9,9 @@ import Layout from "@/components/Layout";
 import { LogoMark } from "@/components/Logo";
 import { pages } from "@/lib/routes";
 const Dashboard = lazy(pages.dashboard);
-const Campaigns = lazy(pages.campaigns);
+const CampaignsHub = lazy(pages.campaigns);
 const Leads = lazy(pages.leads);
-const Agents = lazy(pages.agents);
+const AutomationsHub = lazy(pages.agents);
 const Messages = lazy(pages.messages);
 const Analytics = lazy(pages.analytics);
 const Settings = lazy(pages.settings);
@@ -20,16 +20,12 @@ const MapSearch = lazy(pages.map);
 const Sources = lazy(pages.sources);
 const SystemHealth = lazy(pages.system);
 const ProspectDetail = lazy(pages.prospectDetail);
-const ReviewQueue = lazy(pages.review);
+const QualifyHub = lazy(pages.review);
 const Sending = lazy(pages.sending);
 const ProspectImport = lazy(pages.prospectImport);
-const ToEnrich = lazy(pages.toEnrich);
 const Offer = lazy(pages.offer);
 const Batches = lazy(pages.batches);
 const Drafts = lazy(pages.drafts);
-const Launch = lazy(pages.launch);
-const Journey = lazy(pages.journey);
-const AutomationMax = lazy(pages.automationMax);
 const Legal = lazy(() => import("@/pages/legal/Legal"));
 const Privacy = lazy(() => import("@/pages/legal/Privacy"));
 const Terms = lazy(() => import("@/pages/legal/Terms"));
@@ -65,27 +61,27 @@ function App() {
             <Route path="/app" element={<Protected><Layout /></Protected>}>
               <Route index element={<Navigate to="dashboard" replace />} />
               <Route path="dashboard" element={<Dashboard />} />
-              <Route path="campaigns" element={<Campaigns />} />
+              <Route path="campaigns" element={<CampaignsHub tab="campaigns" />} />
               <Route path="leads" element={<Leads />} />
               <Route path="prospects" element={<Prospects />} />
               <Route path="map" element={<MapSearch />} />
               <Route path="sources" element={<Sources />} />
               <Route path="system" element={<SystemHealth />} />
               <Route path="prospects/import" element={<ProspectImport />} />
-              <Route path="prospects/review" element={<ReviewQueue />} />
-              <Route path="prospects/to-enrich" element={<ToEnrich />} />
+              <Route path="prospects/review" element={<QualifyHub tab="review" />} />
+              <Route path="prospects/to-enrich" element={<QualifyHub tab="to-enrich" />} />
               <Route path="prospects/:id" element={<ProspectDetail />} />
               <Route path="sending" element={<Sending />} />
-              <Route path="agents" element={<Agents />} />
+              <Route path="agents" element={<AutomationsHub tab="agents" />} />
               <Route path="messages" element={<Messages />} />
               <Route path="analytics" element={<Analytics />} />
               <Route path="settings" element={<Settings />} />
               <Route path="settings/offer" element={<Offer />} />
               <Route path="batches" element={<Batches />} />
               <Route path="drafts" element={<Drafts />} />
-              <Route path="launch" element={<Launch />} />
-              <Route path="journey" element={<Journey />} />
-              <Route path="automation-max" element={<AutomationMax />} />
+              <Route path="launch" element={<CampaignsHub tab="launch" />} />
+              <Route path="journey" element={<CampaignsHub tab="journey" />} />
+              <Route path="automation-max" element={<AutomationsHub tab="max" />} />
             </Route>
             <Route path="*" element={<Navigate to="/app/dashboard" replace />} />
           </Routes>

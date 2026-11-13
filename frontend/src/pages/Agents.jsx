@@ -11,7 +11,7 @@ const STATUS_STYLE = {
   error: { color: "#EF4444", label: "ERROR" },
 };
 
-export default function Agents() {
+export default function Agents({ embedded = false }) {
   const [list, setList] = useState([]);
   const [logs, setLogs] = useState({});
   const [showCreate, setShowCreate] = useState(false);
@@ -51,11 +51,11 @@ export default function Agents() {
   };
 
   return (
-    <div className="p-6 md:p-10 space-y-6">
+    <div className={embedded ? "space-y-6" : "p-6 md:p-10 space-y-6"}>
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
-          <div className="mono-accent">// orchestrator.outreachos</div>
-          <h1 className="text-4xl font-black tracking-tighter">Agents</h1>
+          {!embedded && <div className="mono-accent">// orchestrator.outreachos</div>}
+          {!embedded && <h1 className="text-4xl font-black tracking-tighter">Agents</h1>}
           <p className="text-soft mt-1">{list.filter((a) => a.status === "running").length} active · {list.length} total</p>
         </div>
         <button onClick={() => setShowCreate(true)} className="btn-primary" data-testid="spawn-agent-button"><Plus size={14} weight="bold" /> SPAWN AGENT</button>

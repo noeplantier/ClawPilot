@@ -11,13 +11,17 @@ export const ACTIONS = [
 // One command per screen (grouped by section, in the order of the sidebar), then the actions.
 export function buildCommands(sections = SECTIONS) {
   const screens = sections.flatMap((section) =>
-    section.tabs.map((tab) => ({
-      id: `go-${tab.testId}`,
-      group: section.label,
-      label: tab.label,
-      to: tab.to,
-      keywords: [section.label], // not the section's blurb: it names sibling screens, so every screen of a section would match them
-    })),
+    section.tabs.flatMap((tab) => [
+      {
+        id: `go-${tab.testId}`,
+        group: section.label,
+        label: tab.label,
+        to: tab.to,
+        keywords: [section.label], // not the section's blurb: it names sibling screens, so every screen of a section would match them
+      },
+      // The screens merged into this tab stay reachable by their own name (an onglet of the same page).
+      ...(tab.also || []).map((a) => ({ id: `go-${tab.testId}-${a.to.split("/").pop()}`, group: section.label, label: a.label, to: a.to, keywords: [section.label, tab.label] })),
+    ]),
   );
   return [...screens, ...ACTIONS.map((a) => ({ ...a, group: "Actions" }))];
 }

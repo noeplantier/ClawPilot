@@ -58,9 +58,14 @@ test("the current tab follows the path and the pipeline query", () => {
   expect(activeTab(leads, "/app/leads", "").label).toBe("CRM");
   expect(activeTab(leads, "/app/leads", "?view=kanban").label).toBe("Pipeline");
   expect(activeTab(leads, "/app/prospects/p1", "").label).toBe("Prospects"); // a sheet keeps its list highlighted
-  expect(activeTab(leads, "/app/prospects/review", "").label).toBe("À vérifier");
+  expect(activeTab(leads, "/app/prospects/review", "").label).toBe("À traiter");
+  expect(activeTab(leads, "/app/prospects/to-enrich", "").label).toBe("À traiter"); // a merged screen lights its page
+  const outreach = SECTIONS.find((s) => s.id === "outreach");
+  for (const p of ["/app/journey", "/app/launch", "/app/campaigns"]) expect(activeTab(outreach, p, "").label).toBe("Campagnes");
   const control = SECTIONS.find((s) => s.id === "control");
   expect(activeTab(control, "/app/settings/offer", "").label).toBe("Offre");
   expect(activeTab(control, "/app/settings", "").label).toBe("Intégrations et réglages");
+  expect(activeTab(control, "/app/agents", "").label).toBe("Automatisations");
+  expect(activeTab(control, "/app/automation-max", "").label).toBe("Automatisations");
   expect(activeTab(null, "/x")).toBeNull();
 });

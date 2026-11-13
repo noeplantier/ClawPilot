@@ -11,7 +11,7 @@ import { launchError } from "@/lib/launchFormat";
 
 // « Automatisation max » : un mandat explicite, borné (zone, message, expéditeur, plafonds, durée, arrêts), désactivé par défaut sur le
 // serveur. Un mandat n'élargit jamais rien : pas de nouvelle zone, pas de nouveau message, pas de découverte automatique.
-export default function AutomationMax() {
+export default function AutomationMax({ embedded = false }) {
   const { user } = useAuth();
   const decide = canDecide(user);
   const owner = user && user.role === "owner";
@@ -46,6 +46,7 @@ export default function AutomationMax() {
   const o = overview.data;
   return (
     <PageShell
+      embedded={embedded}
       testId="max-page"
       kicker="outreach.automatisation-max"
       title="Automatisation max"

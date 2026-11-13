@@ -18,7 +18,7 @@ import { EmptyBlock, ErrorBlock, LoadingBlock } from "@/components/outreach/Stat
 // One pending prospect at a time, hottest first (real information + score), with the evidence needed to decide.
 // The queue refreshes in the background; the card you are reading stays put, new arrivals join the lanes.
 // Approve/reject records a human decision (audited); skip just moves on without deciding.
-export default function ReviewQueue() {
+export default function ReviewQueue({ embedded = false }) {
   const { user } = useAuth();
   const [skipped, setSkipped] = useState([]);
   const [lane, setLane] = useState("all"); // all | top | hot | warm | cold
@@ -60,14 +60,14 @@ export default function ReviewQueue() {
   };
 
   return (
-    <div className="p-6 md:p-10 space-y-6 max-w-5xl" data-testid="review-queue">
-      <div>
+    <div className={embedded ? "space-y-6" : "p-6 md:p-10 space-y-6 max-w-5xl"} data-testid="review-queue">
+      {!embedded && <div>
         <div className="mono-accent">// human.review</div>
         <h1 className="text-4xl font-black tracking-tighter">Review queue</h1>
         <p className="text-soft mt-1">
           Decide on each prospect from its evidence. An approval makes it eligible for a draft; it does not send anything.
         </p>
-      </div>
+      </div>}
 
       {queue.loading && !queue.data && <LoadingBlock label="Loading the queue…" />}
       {queue.error && <ErrorBlock message={queue.error} onRetry={queue.reload} />}

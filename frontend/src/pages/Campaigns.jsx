@@ -18,7 +18,7 @@ const STATUS_CHIP = {
   completed: "chip-cyan",
 };
 
-export default function Campaigns() {
+export default function Campaigns({ embedded = false }) {
   // Live: the last answer at once, refreshed every few seconds while the tab is visible.
   const campaigns = useAsync(() => api.get("/campaigns").then((r) => r.data), [], { key: "campaigns", intervalMs: LIVE_MS });
   const list = campaigns.data || [];
@@ -61,13 +61,13 @@ export default function Campaigns() {
   };
 
   return (
-    <div className="p-6 md:p-10 space-y-6">
-      <div className="flex items-start justify-between flex-wrap gap-4">
-        <div>
+    <div className={embedded ? "space-y-6" : "p-6 md:p-10 space-y-6"}>
+      <div className={`flex items-start flex-wrap gap-4 ${embedded ? "justify-end" : "justify-between"}`}>
+        {!embedded && <div>
           <div className="mono-accent">// outreach.campaigns</div>
           <h1 className="text-4xl font-black tracking-tighter">Campaigns</h1>
           <p className="text-soft mt-1">Multi-step automations dispatched by OutreachOS under the send limits.</p>
-        </div>
+        </div>}
         <button onClick={() => { setEditing(null); setOpen(true); }} className="btn-primary" data-testid="new-campaign-button">
           <Plus size={16} weight="bold" /> NEW CAMPAIGN
         </button>
