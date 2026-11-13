@@ -493,7 +493,7 @@ function MapView({ canImport }) {
         <aside className={`absolute z-[500] top-14 left-3 right-3 md:top-3 md:bottom-8 md:right-auto md:w-[27rem] max-h-[calc(100%-4rem)] md:max-h-none flex flex-col overflow-hidden ${GLASS}`} aria-label="Prospection" data-testid="map-search-card">
           <div className="flex items-center justify-between gap-2 px-4 pt-3 pb-2 border-b border-border">
             <div>
-              <div className="mono-accent">// prospection</div>
+              <div className="eyebrow">prospection</div>
               <h1 className="text-2xl font-black tracking-tighter leading-none">Prospection</h1>
             </div>
             <button className="btn-ghost !px-2" onClick={() => setSearchOpen(false)} aria-label="Réduire le panneau Prospection" aria-expanded="true" data-testid="map-search-minimise">
@@ -666,8 +666,8 @@ export default function MapSearch() {
   return (
     <div className="p-6 md:p-10 space-y-6 max-w-6xl" data-testid="map-page">
       <div>
-        <div className="mono-accent">// live.map</div>
-        <h1 className="text-4xl font-black tracking-tighter">Map search</h1>
+        <div className="eyebrow">live.map</div>
+        <h1 className="mt-3 text-4xl font-bold tracking-tight leading-[1.15]">Map search</h1>
         <p className="text-soft mt-1 max-w-3xl">
           Find real local businesses on the map, with the phone, e-mail and website their OpenStreetMap contributors published.
           Free, no key. <Link to="/app/prospects/import" className="underline">Import a list instead</Link>

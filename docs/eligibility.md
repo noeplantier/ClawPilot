@@ -45,3 +45,10 @@ Déclencheurs (jamais au rendu d'un composant) : un import, un ajout depuis la c
   mauvais référencement. La réponse est contrôlée (chiffre, lien, contact, affirmation non mesurée, « vous n'avez pas de site ») et **écartée** au moindre doute.
 - Les faits envoyés au fournisseur : nom, activité, ville, observations avec preuve, offre. Jamais l'e-mail ni le téléphone. Le contenu d'un site est une donnée, pas une instruction.
 - Le brouillon est créé en `draft` (jamais approuvé), avec le pied de page obligatoire (identité, origine des données, lien de désinscription). **Aucun envoi.**
+
+
+## Sélection automatique (`routes/auto_selection.py`)
+`GET /api/prospects/auto/selection` liste les prospects **en attente de relecture** que cette même politique qualifie, le plus chaud d'abord
+(`prospect_repo.list_positions(review_status="pending")`). `POST /api/prospects/auto/review` (propriétaire ou administrateur, 500 au plus) applique la décision
+de la personne à toute la sélection : seuls les prospects encore `pending` sont décidés, la liste d'opposition est vérifiée pour chacun, chaque décision est
+écrite dans le journal d'audit (`via: auto_selection`). Rien n'est envoyé.

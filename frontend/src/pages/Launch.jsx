@@ -31,8 +31,8 @@ export default function Launch({ embedded = false }) {
   return (
     <div className={embedded ? "space-y-6" : "p-6 md:p-10 space-y-6"} data-testid="launch-page">
       {!embedded && <div>
-        <div className="mono-accent">// outreach.launch</div>
-        <h1 className="text-4xl font-black tracking-tighter">Campagne individuelle</h1>
+        <div className="eyebrow">outreach.launch</div>
+        <h1 className="mt-3 text-4xl font-bold tracking-tight leading-[1.15]">Campagne individuelle</h1>
         <p className="text-soft mt-1 max-w-3xl">
           Jusqu&apos;à {MAX} établissements distincts, un message personnalisé et relu pour chacun, planifié puis envoyé un par un.
           Un message n&apos;est jamais copié à plusieurs destinataires, et rien ne part avant que vous ne le planifiiez.

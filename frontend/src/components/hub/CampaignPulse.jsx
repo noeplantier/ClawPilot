@@ -37,12 +37,12 @@ export default function CampaignPulse() {
       </div>
       <div className="grid gap-4 lg:grid-cols-5">
         <div className="lg:col-span-3">
-          <Widget title="Envois et réponses, 14 jours" kicker="// en direct" testId="pulse-activity">
+          <Widget title="Envois et réponses, 14 jours" kicker="En direct" testId="pulse-activity">
             <ActivityChart series={d.series} />
           </Widget>
         </div>
         <div className="lg:col-span-2">
-          <Widget title="Campagnes par messages envoyés" kicker="// en direct" testId="pulse-campaigns">
+          <Widget title="Campagnes par messages envoyés" kicker="En direct" testId="pulse-campaigns">
             {bars.length ? <HBarChart items={bars} label="Messages envoyés par campagne" /> : <p className="text-sm text-soft" data-testid="pulse-campaigns-empty">Aucune campagne n&apos;a encore envoyé de message.</p>}
           </Widget>
         </div>

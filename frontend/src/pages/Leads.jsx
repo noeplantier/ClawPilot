@@ -148,8 +148,8 @@ export default function Leads() {
     <div className="p-6 md:p-10 space-y-6">
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
-          <div className="mono-accent">// crm.pipeline</div>
-          <h1 className="text-4xl font-black tracking-tighter">Leads</h1>
+          <div className="eyebrow">crm.pipeline</div>
+          <h1 className="mt-3 text-4xl font-bold tracking-tight leading-[1.15]">Leads</h1>
           <p className="text-soft mt-1">
             {leads.length}{lane !== "all" ? ` ${LANE_LABEL[lane].toLowerCase()}` : ""} contact{leads.length === 1 ? "" : "s"} across the pipeline, hottest first.
           </p>

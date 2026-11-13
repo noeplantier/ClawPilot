@@ -54,8 +54,8 @@ export default function Agents({ embedded = false }) {
     <div className={embedded ? "space-y-6" : "p-6 md:p-10 space-y-6"}>
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
-          {!embedded && <div className="mono-accent">// orchestrator.outreachos</div>}
-          {!embedded && <h1 className="text-4xl font-black tracking-tighter">Agents</h1>}
+          {!embedded && <div className="eyebrow">orchestrator.outreachos</div>}
+          {!embedded && <h1 className="mt-3 text-4xl font-bold tracking-tight leading-[1.15]">Agents</h1>}
           <p className="text-soft mt-1">{list.filter((a) => a.status === "running").length} active · {list.length} total</p>
         </div>
         <button onClick={() => setShowCreate(true)} className="btn-primary" data-testid="spawn-agent-button"><Plus size={14} weight="bold" /> SPAWN AGENT</button>

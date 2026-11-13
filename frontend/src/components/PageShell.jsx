@@ -21,8 +21,8 @@ export default function PageShell({ title, kicker, lead, action, children, detai
     <div className={`mx-auto w-full ${width} px-4 py-6 md:px-8 md:py-8`} data-testid={testId}>
       <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3 border-b border-border pb-4">
         <div className="min-w-0">
-          {kicker && <div className="mono-accent">{`// ${kicker}`}</div>}
-          <h1 className="text-3xl font-black tracking-tighter leading-tight md:text-4xl">{title}</h1>
+          {kicker && <div className="eyebrow">{kicker}</div>}
+          <h1 className="mt-3 text-3xl font-bold tracking-tight leading-[1.15] md:text-4xl">{title}</h1>
           {lead && <p className="mt-1 max-w-2xl text-sm text-soft">{lead}</p>}
         </div>
         {action && <div className="flex shrink-0 flex-wrap items-center gap-2">{action}</div>}

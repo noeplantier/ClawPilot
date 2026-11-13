@@ -34,8 +34,8 @@ export default function SystemHealth() {
   return (
     <div className="p-6 md:p-10 space-y-6 max-w-4xl" data-testid="system-page">
       <div>
-        <div className="mono-accent">// system.health</div>
-        <h1 className="text-4xl font-black tracking-tighter">System health</h1>
+        <div className="eyebrow">system.health</div>
+        <h1 className="mt-3 text-4xl font-bold tracking-tight leading-[1.15]">System health</h1>
         <p className="text-soft mt-1">What this deployment can do right now, measured from the server, not assumed.</p>
       </div>
       {page.loading && !d && <LoadingBlock label="Checking…" />}

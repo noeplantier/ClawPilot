@@ -62,8 +62,8 @@ export default function ReviewQueue({ embedded = false }) {
   return (
     <div className={embedded ? "space-y-6" : "p-6 md:p-10 space-y-6 max-w-5xl"} data-testid="review-queue">
       {!embedded && <div>
-        <div className="mono-accent">// human.review</div>
-        <h1 className="text-4xl font-black tracking-tighter">Review queue</h1>
+        <div className="eyebrow">human.review</div>
+        <h1 className="mt-3 text-4xl font-bold tracking-tight leading-[1.15]">Review queue</h1>
         <p className="text-soft mt-1">
           Decide on each prospect from its evidence. An approval makes it eligible for a draft; it does not send anything.
         </p>

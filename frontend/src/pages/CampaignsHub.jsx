@@ -27,7 +27,7 @@ export default function CampaignsHub({ tab = "campaigns" }) {
       hint: "Des étapes successives, envoyées sous les limites d'envoi." },
   ];
   return (
-    <PageShell testId="campaigns-hub" kicker="outreach.campagnes" title="Campagnes" width="max-w-6xl"
+    <PageShell testId="campaigns-hub" kicker="Outreach" title="Campagnes" width="max-w-6xl"
       lead="Toutes vos campagnes au même endroit, avec ce qui part réellement, en direct. Chaque envoi repasse toutes les portes au moment où il part.">
       <CampaignPulse />
       <HubTabs tabs={tabs} label="Types de campagne" />

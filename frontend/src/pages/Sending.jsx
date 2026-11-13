@@ -328,8 +328,8 @@ export default function Sending() {
     <div className="p-6 md:p-10 space-y-6 max-w-5xl" data-testid="sending-page">
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
-          <div className="mono-accent">// controlled.sending</div>
-          <h1 className="text-4xl font-black tracking-tighter">Sending</h1>
+          <div className="eyebrow">controlled.sending</div>
+          <h1 className="mt-3 text-4xl font-bold tracking-tight leading-[1.15]">Sending</h1>
           <p className="text-soft mt-1 max-w-2xl">Limits, emergency stop and the history of dispatched messages. Dry-run by default; real e-mail leaves over SMTP only when live sending is enabled. A message stuck in “sending” has an unknown outcome: check the mailbox before sending again.</p>
         </div>
         <button className="btn-ghost" onClick={page.reload} data-testid="refresh"><ArrowsClockwise size={14} /> REFRESH</button>

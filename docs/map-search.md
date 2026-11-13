@@ -140,3 +140,10 @@ qu'un serveur public accepte l'adresse de Netlify : c'est une hypothèse à mesu
 ## Look de la carte
 Look « nuit » par défaut (filtre CSS sur les tuiles OpenStreetMap standard, HUD de position, balayage radar pendant la recherche), bouton soleil/lune pour revenir à la carte classique,
 préférence mémorisée dans le navigateur. Détails et règles de mouvement : `docs/design-system.md`, « Carte futuriste ».
+
+
+## Ajouter la sélection au CRM en un clic
+`POST /api/map/places/add-many` (jusqu'à 200 lieux par appel ; l'interface découpe une plus grande sélection) : le même import attesté que l'ajout d'un
+point (origine = la page OpenStreetMap de chaque lieu, base légale `legitimate_interest_b2b`, liste d'opposition, audit `via: map_bulk_add`). L'attestation
+est demandée une fois par navigateur puis mémorisée ; chaque requête la porte. Un prospect rejeté par une personne reste rejeté, un établissement de la liste
+d'opposition n'est ni ajouté ni approuvé. Rien n'est envoyé. Nécessite `FEATURE_PROSPECT_IMPORT`.

@@ -66,7 +66,7 @@ export default function DiscoveryMap() {
   };
 
   return <section className="surface p-5 space-y-4">
-    <div><div className="mono-accent">// public_sources.overpass</div><h2 className="text-2xl font-bold">Map discovery</h2><p className="text-sm text-faint">Search a small area. Results come from OpenStreetMap and are stored in your CRM workspace.</p></div>
+    <div><div className="eyebrow">public_sources.overpass</div><h2 className="text-2xl font-bold">Map discovery</h2><p className="text-sm text-faint">Search a small area. Results come from OpenStreetMap and are stored in your CRM workspace.</p></div>
     <form onSubmit={search} className="grid grid-cols-2 md:grid-cols-6 gap-2 items-end">
       <label className="text-xs">South<input aria-label="South latitude" className="neo-input w-full" type="number" step="any" value={bounds[0]} onChange={(e) => setBounds((v) => v.map((x, i) => i === 0 ? e.target.value : x))} /></label>
       <label className="text-xs">West<input aria-label="West longitude" className="neo-input w-full" type="number" step="any" value={bounds[1]} onChange={(e) => setBounds((v) => v.map((x, i) => i === 1 ? e.target.value : x))} /></label>

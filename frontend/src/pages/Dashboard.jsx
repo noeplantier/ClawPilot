@@ -65,7 +65,7 @@ export default function Dashboard() {
           <div className="mono-accent inline-flex items-center gap-2">
             <span className="pos-live-dot" aria-hidden="true" /> // plantiers.outreachos · live command center
           </div>
-          <h1 className="text-4xl font-black tracking-tighter">Dashboard</h1>
+          <h1 className="mt-3 text-4xl font-bold tracking-tight leading-[1.15]">Dashboard</h1>
           <p className="text-soft mt-1 max-w-2xl">
             Commercial intelligence and operational overview. Every figure comes from your own verified data.
           </p>

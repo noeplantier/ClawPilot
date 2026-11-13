@@ -24,8 +24,8 @@ export default function ToEnrich({ embedded = false }) {
     <div className={embedded ? "space-y-6" : "p-6 md:p-10 space-y-6"} data-testid="to-enrich-page">
       <div className={`flex items-start flex-wrap gap-4 ${embedded ? "justify-end" : "justify-between"}`}>
         {!embedded && <div>
-          <div className="mono-accent">// outreach.qualification</div>
-          <h1 className="text-4xl font-black tracking-tighter">To enrich</h1>
+          <div className="eyebrow">outreach.qualification</div>
+          <h1 className="mt-3 text-4xl font-bold tracking-tight leading-[1.15]">To enrich</h1>
           <p className="text-soft mt-1 max-w-2xl">
             Prospects that lack something to be qualified. They are kept, not contactable, and join the map as soon as they have an e-mail, a phone, an address and
             a position from a fresh source.

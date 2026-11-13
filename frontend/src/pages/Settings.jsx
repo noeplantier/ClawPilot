@@ -31,8 +31,8 @@ export default function Settings() {
   return (
     <div className="p-6 md:p-10 max-w-6xl space-y-8" data-testid="settings-page">
       <div>
-        <div className="mono-accent">// control.panel</div>
-        <h1 className="text-4xl font-black tracking-tighter">Settings</h1>
+        <div className="eyebrow">control.panel</div>
+        <h1 className="mt-3 text-4xl font-bold tracking-tight leading-[1.15]">Settings</h1>
         <p className="text-soft mt-1">Organization profile and the live status of every integration of this server.</p>
       </div>
 

@@ -187,8 +187,8 @@ export default function Sources() {
   return (
     <div className="p-6 md:p-10 space-y-6 max-w-6xl" data-testid="sources-page">
       <div>
-        <div className="mono-accent">// discovery.sources</div>
-        <h1 className="text-4xl font-black tracking-tighter flex items-center gap-3"><Database size={32} /> Sources</h1>
+        <div className="eyebrow">discovery.sources</div>
+        <h1 className="mt-3 text-4xl font-bold tracking-tight leading-[1.15] flex items-center gap-3"><Database size={32} /> Sources</h1>
         <p className="text-soft mt-1 max-w-3xl">One place to discover businesses from open and official data. Each result keeps its source and licence; signals say why, and “unknown” is never a verdict. Nothing is sent from here.</p>
       </div>
       <div className="grid md:grid-cols-3 gap-3">{providers.map((p) => <ProviderCard key={p.name} provider={p} active={p.name === provider.name} onPick={pick} />)}</div>

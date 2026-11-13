@@ -64,8 +64,8 @@ export default function Campaigns({ embedded = false }) {
     <div className={embedded ? "space-y-6" : "p-6 md:p-10 space-y-6"}>
       <div className={`flex items-start flex-wrap gap-4 ${embedded ? "justify-end" : "justify-between"}`}>
         {!embedded && <div>
-          <div className="mono-accent">// outreach.campaigns</div>
-          <h1 className="text-4xl font-black tracking-tighter">Campaigns</h1>
+          <div className="eyebrow">outreach.campaigns</div>
+          <h1 className="mt-3 text-4xl font-bold tracking-tight leading-[1.15]">Campaigns</h1>
           <p className="text-soft mt-1">Multi-step automations dispatched by OutreachOS under the send limits.</p>
         </div>}
         <button onClick={() => { setEditing(null); setOpen(true); }} className="btn-primary" data-testid="new-campaign-button">

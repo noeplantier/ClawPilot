@@ -17,7 +17,7 @@ export default function AutomationsHub({ tab = "max" }) {
       hint: "Les tâches de fond supervisées par un opérateur." },
   ];
   return (
-    <PageShell testId="automations-hub" kicker="pilotage.automatisations" title="Automatisations"
+    <PageShell testId="automations-hub" kicker="Pilotage" title="Automatisations"
       lead="Ce qui agit sans vous, dans les limites que vous avez écrites, et ce que vous pouvez arrêter à tout instant.">
       <HubTabs tabs={tabs} label="Automatisations" />
       {tab === "agents" ? <Agents embedded /> : <AutomationMax embedded />}

@@ -20,7 +20,7 @@ export default function QualifyHub({ tab = "review" }) {
       hint: "Ce qui manque à chacun pour être qualifié : ils rejoignent la carte dès que tout est connu." },
   ];
   return (
-    <PageShell testId="qualify-hub" kicker="leads.a-traiter" title="À traiter"
+    <PageShell testId="qualify-hub" kicker="Leads" title="À traiter"
       lead="Les prospects qui attendent une décision ou une information, dans une seule file.">
       <HubTabs tabs={tabs} label="Files de qualification" />
       {tab !== "to-enrich" && <AutoSelection onDecided={pending.reload} />}

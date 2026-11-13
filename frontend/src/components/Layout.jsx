@@ -6,6 +6,7 @@ import Footer from "@/components/Footer";
 import Logo from "@/components/Logo";
 import { usageApi, useAsync } from "@/lib/outreach";
 import { tightest } from "@/lib/creditsFormat";
+import { installCardGlow } from "@/lib/cardGlow";
 import Sidebar, { FOCUS } from "@/components/shell/Sidebar";
 import { isTypingTarget, readPref, writePref } from "@/lib/uiPrefs";
 import { prefetchAll, whenIdle } from "@/lib/routes";
@@ -33,6 +34,7 @@ export default function Layout() {
 
   useEffect(() => writePref("sidebar.folded", folded), [folded]);
   useEffect(() => { whenIdle(prefetchAll); }, []); // every screen is warm before it is asked for
+  useEffect(() => installCardGlow(), []); // the light under the pointer on every card, as on plantiers.com
   useEffect(() => {
     if (!mobileOpen) {
       if (restoreMobileFocusRef.current) {
