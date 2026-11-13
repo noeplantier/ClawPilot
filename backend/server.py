@@ -37,6 +37,7 @@ from routes.system import router as system_router
 from routes.tags import router as tags_router
 from routes.tasks import router as tasks_router
 from routes.unsubscribe import router as unsubscribe_router
+from routes.usage import router as usage_router
 from routes.webhooks import router as webhooks_router
 
 # Delayed campaign steps run as Celery tasks in a separate worker process now
@@ -83,6 +84,7 @@ api_router.include_router(mandates_router)
 api_router.include_router(unsubscribe_router)
 api_router.include_router(prospecting_router)
 api_router.include_router(suggestions_router)
+api_router.include_router(usage_router)
 
 app.include_router(api_router)
 

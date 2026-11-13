@@ -180,12 +180,14 @@ def parse_answer(raw: str) -> dict[str, Optional[str]]:
     return {"subject": None, "body": text, "whatsapp": None}
 
 
-def _generate_sync(cfg: AIConfig, messages: list[dict[str, str]]) -> str:
+def _generate_sync(
+    cfg: AIConfig, messages: list[dict[str, str]], max_tokens: Optional[int] = None, temperature: Optional[float] = None
+) -> str:
     payload: dict[str, Any] = {
         "model": cfg.model,
         "messages": messages,
-        "temperature": 0.7,
-        "max_tokens": MAX_TOKENS,
+        "temperature": 0.7 if temperature is None else temperature,
+        "max_tokens": max_tokens or MAX_TOKENS,
         "response_format": {"type": "json_object"},
     }
     response = _post(cfg, payload)
@@ -204,7 +206,9 @@ def _generate_sync(cfg: AIConfig, messages: list[dict[str, str]]) -> str:
     return content
 
 
-async def complete(messages: list[dict[str, str]]) -> dict[str, Optional[str]]:
+async def complete(
+    messages: list[dict[str, str]], *, max_tokens: Optional[int] = None, temperature: Optional[float] = None
+) -> dict[str, Optional[str]]:
     """The provider's answer to `messages` as {"subject", "body"}, or `AIUnavailable` saying why (not configured,
     rejected, limit, unreachable). The one place that talks to the provider, for the composer and the automatic drafts.
     """
@@ -215,7 +219,7 @@ async def complete(messages: list[dict[str, str]]) -> dict[str, Optional[str]]:
             f"The AI composer is off: {reason}. Write the message yourself, or set it up in Settings > Integrations.",
         )
     try:
-        raw = await asyncio.to_thread(_generate_sync, cfg, messages)  # blocking socket: never on the event loop
+        raw = await asyncio.to_thread(_generate_sync, cfg, messages, max_tokens, temperature)  # never on the event loop
     except AIUnavailable:
         raise
     except requests.Timeout:
@@ -234,9 +238,20 @@ async def generate_message(
     channel: str = "email",
     goal: str | None = None,
     company: str | None = None,
+    style: Any = None,
 ) -> dict:
-    """A message from the provider, or `AIUnavailable` saying why (not configured, rejected, limit, unreachable)."""
-    answer = await complete(build_messages(recipient_name, product, language, tone, channel, goal, company))
+    """A message from the provider, or `AIUnavailable` saying why (not configured, rejected, limit, unreachable).
+    `style`: the outreach model (services/outreach_os/credits.py) whose length and tone are asked for."""
+    messages = build_messages(recipient_name, product, language, tone, channel, goal, company)
+    if style is not None:
+        from services.outreach_os.credits import with_instruction
+
+        messages = with_instruction(messages, style)
+    answer = await complete(
+        messages,
+        max_tokens=getattr(style, "max_tokens", None),
+        temperature=getattr(style, "temperature", None),
+    )
     return {
         "subject": answer.get("subject") if channel == "email" else None,
         "body": answer.get("body") or "",

@@ -889,7 +889,7 @@ class MapAddIn(BaseModel):
 
 
 class MapAddManyIn(BaseModel):
-    """One click on the map's selection: every place joins the CRM (or the review queue), with the same attested import."""
+    """One click on the map's selection: every place joins the CRM (or the review queue), same attested import."""
 
     places: List[MapPlaceIn] = Field(min_length=1, max_length=200)
     attestation: bool = False  # "I may use these professional contact details for B2B prospecting"

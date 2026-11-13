@@ -11,7 +11,7 @@ describe("the go-to palette replaces nothing that the top bar offered", () => {
     expect(screens.every((c) => c.group && c.label)).toBe(true);
   });
   it("keeps the former top-bar action (the AI composer), the fold and the sign-out", () => {
-    expect(commands.filter((c) => c.action).map((c) => c.action).sort()).toEqual(["compose", "fold", "logout"]);
+    expect(commands.filter((c) => c.action).map((c) => c.action).sort()).toEqual(["compose", "fold", "logout", "usage"]);
     expect(ACTIONS.find((a) => a.action === "compose").label).toBe("Composer IA");
   });
   it("groups by section then actions, and a screen added to a section appears without further work", () => {

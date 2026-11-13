@@ -358,19 +358,23 @@ async def add_place(payload: MapAddIn, user: dict = Depends(decider), session: A
 
 
 @router.post("/places/add-many", response_model=MapAddManyOut)
-async def add_places(payload: MapAddManyIn, user: dict = Depends(decider), session: AsyncSession = Depends(get_db_session)):
+async def add_places(
+    payload: MapAddManyIn, user: dict = Depends(decider), session: AsyncSession = Depends(get_db_session)
+):
     """One click on the selection of the map: every place becomes a prospect and, by default, joins the CRM.
 
-    Exactly the attested import of the single click, for up to 200 places at once: same origin (the OpenStreetMap page of
-    each place), same legal basis, suppression list and audit. `approve` is the person's own decision for the selection
-    they see; a prospect a person REJECTED before is left rejected, and a suppressed business is never added or approved.
+    Exactly the attested import of the single click, for up to 200 places at once: same origin (the OpenStreetMap page
+    of each place), same legal basis, suppression list and audit. `approve` is the person's own decision for the
+    selection they see; a prospect a person REJECTED before stays rejected, a suppressed business is never added.
     Nothing is sent: contacting still needs an approved draft and the send rules.
     """
     account_id = uuid.UUID(user["org_id"])
     if not feature_flags.is_enabled("prospect_import"):
         raise _refuse(403, "feature_disabled", "Adding places needs FEATURE_PROSPECT_IMPORT (off by default)")
     if payload.check_website and not feature_flags.is_enabled("external_sources"):
-        raise _refuse(409, "external_sources_disabled", "Reading the businesses' websites needs FEATURE_EXTERNAL_SOURCES")
+        raise _refuse(
+            409, "external_sources_disabled", "Reading the businesses' websites needs FEATURE_EXTERNAL_SOURCES"
+        )
     if not payload.attestation:
         raise _refuse(
             422,

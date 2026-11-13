@@ -1,4 +1,4 @@
-import { ATTEST_TEXT, describeAdded, quickAddBody } from "@/lib/mapQuickAdd";
+import { ATTEST_TEXT, MAX_PER_REQUEST, addManyBodies, describeAdded, describeAddedMany, quickAddBody, sumAdded } from "@/lib/mapQuickAdd";
 
 const PLACE = {
   external_id: "node/1", name: "Chez Test", lat: 45.76, lon: 4.83, category: "restaurants", address: "1 rue X", postcode: "69002",
@@ -60,7 +60,6 @@ describe("describeAdded", () => {
 });
 
 describe("one click on the whole selection", () => {
-  const { addManyBodies, sumAdded, describeAddedMany, MAX_PER_REQUEST } = require("@/lib/mapQuickAdd");
   const place = (i, over = {}) => ({ external_id: `node/${i}`, name: `P${i}`, lat: 45, lon: 4, source_url: `https://www.openstreetmap.org/node/${i}`, email: "", phone: "+33 4", ...over });
 
   it("sends only what the map published, in slices the server accepts", () => {

@@ -87,6 +87,12 @@ export const offerApi = {
   put: (body) => api.put("/settings/offer", body).then((r) => r.data),
 };
 
+// Credits and outreach models (GET /usage/credits, PUT /usage/model): the AI work left today and in this session.
+export const usageApi = {
+  credits: () => api.get("/usage/credits").then((r) => r.data),
+  setModel: (model) => api.put("/usage/model", { model }).then((r) => r.data),
+};
+
 export const prospectsApi = {
   // The "to enrich" queue: prospects not qualified yet, with what is missing (server pagination).
   drafts: (params) => api.get("/prospects/drafts", { params }).then((r) => r.data),

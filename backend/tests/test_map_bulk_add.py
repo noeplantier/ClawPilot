@@ -1,7 +1,7 @@
 """One click on the map's selection: every place joins the CRM through the same attested import as the single click.
 
-Called in-process with the import flag set (the test server keeps it off, like production defaults); the results are read
-back over HTTP. No network: websites are not fetched (`check_website=False`).
+Called in-process with the import flag set (the test server keeps it off, like production defaults); the results are
+read back over HTTP. No network: websites are not fetched (`check_website=False`).
 """
 
 import os

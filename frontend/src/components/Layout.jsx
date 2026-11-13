@@ -4,11 +4,14 @@ import { List } from "@phosphor-icons/react";
 import { useAuth } from "@/contexts/AuthContext";
 import Footer from "@/components/Footer";
 import Logo from "@/components/Logo";
+import { usageApi, useAsync } from "@/lib/outreach";
+import { tightest } from "@/lib/creditsFormat";
 import Sidebar, { FOCUS } from "@/components/shell/Sidebar";
 import { isTypingTarget, readPref, writePref } from "@/lib/uiPrefs";
 import { prefetchAll, whenIdle } from "@/lib/routes";
 const AIComposerModal = lazy(() => import("@/components/AIComposerModal")); // only fetched when the composer is opened
 const CommandPalette = lazy(() => import("@/components/CommandPalette")); // idem: cmdk is not part of the first load
+const UsageDialog = lazy(() => import("@/components/usage/UsageDialog")); // credits and outreach models, on demand
 
 // The application frame. No global top bar: the six entries and their screens are in the sidebar, the tools (go-to palette,
 // AI composer) at its foot, and each page owns its title. This component only holds the state and the keyboard.
@@ -17,6 +20,10 @@ export default function Layout() {
   const navigate = useNavigate();
   const [aiOpen, setAiOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [usageOpen, setUsageOpen] = useState(false);
+  // The credits left (session of 5 h, day), refreshed every minute: the sidebar shows the tightest one.
+  const usage = useAsync(() => usageApi.credits(), [usageOpen], { key: "usage:credits", intervalMs: 60000 });
+  const meterOf = usage.data ? tightest(usage.data.windows) : null;
   const [folded, setFolded] = useState(() => readPref("sidebar.folded", false));
   const [mobileOpen, setMobileOpen] = useState(false);
   const mobileToggleRef = useRef(null);
@@ -66,8 +73,10 @@ export default function Layout() {
     else if (command.action === "compose") setAiOpen(true);
     else if (command.action === "fold") toggleFold();
     else if (command.action === "logout") logout();
+    else if (command.action === "usage") setUsageOpen(true);
   }, [navigate, toggleFold, logout]);
-  const common = { user, org, onCompose: () => { setMobileOpen(false); setAiOpen(true); }, onPalette: () => { setMobileOpen(false); setPaletteOpen(true); }, onLogout: logout };
+  const common = { user, org, onCompose: () => { setMobileOpen(false); setAiOpen(true); }, onPalette: () => { setMobileOpen(false); setPaletteOpen(true); }, onLogout: logout,
+    onUsage: () => { setMobileOpen(false); setUsageOpen(true); }, usage: meterOf };
 
   return (
     <div className="min-h-screen md:h-screen flex bg-sidebar text-foreground">
@@ -93,6 +102,7 @@ export default function Layout() {
       )}
       {paletteOpen && <Suspense fallback={null}><CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} onRun={run} /></Suspense>}
       {aiOpen && <Suspense fallback={null}><AIComposerModal open={aiOpen} onClose={() => setAiOpen(false)} /></Suspense>}
+      {usageOpen && <Suspense fallback={null}><UsageDialog open={usageOpen} onOpenChange={setUsageOpen} /></Suspense>}
     </div>
   );
 }

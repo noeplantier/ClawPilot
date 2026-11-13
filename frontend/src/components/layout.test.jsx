@@ -5,6 +5,7 @@ import { MemoryRouter } from "react-router-dom";
 
 jest.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: { email: "me@example.test", role: "owner" }, org: { name: "Acme", plan: "pro" }, logout: jest.fn() }) }));
 jest.mock("@/components/AIComposerModal", () => () => null);
+jest.mock("@/lib/api", () => ({ api: { get: jest.fn(() => Promise.reject(new Error("offline in tests"))) } }));
 jest.mock("@/components/Footer", () => () => null);
 
 import Layout from "@/components/Layout";

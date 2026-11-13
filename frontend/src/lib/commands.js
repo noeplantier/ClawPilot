@@ -4,6 +4,7 @@ import { SECTIONS } from "@/lib/sections";
 
 export const ACTIONS = [
   { id: "action-compose", label: "Composer IA", action: "compose", keywords: ["brouillon", "message", "ia", "écrire"] },
+  { id: "action-usage", label: "Crédits et modèles d'outreach", action: "usage", keywords: ["utilisation", "limite", "modèle", "crédit"] },
   { id: "action-fold", label: "Replier ou déplier la navigation", action: "fold", keywords: ["menu", "barre latérale", "sidebar"] },
   { id: "action-logout", label: "Se déconnecter", action: "logout", keywords: ["quitter", "sortir", "logout"] },
 ];
