@@ -67,7 +67,7 @@ export default function Dashboard() {
           </div>
           <h1 className="mt-3 text-4xl font-bold tracking-tight leading-[1.15]">Dashboard</h1>
           <p className="text-soft mt-1 max-w-2xl">
-            Commercial intelligence and operational overview. Every figure comes from your own verified data.
+            Ce qui aide à décider, par sujet. Chaque chiffre vient de vos données ; un tiret veut dire « pas encore connu ».
           </p>
         </div>
 
@@ -121,57 +121,49 @@ export default function Dashboard() {
         <>
           <KpiStrip kpis={d.kpis} limits={d.limits} />
 
-          <div className="grid xl:grid-cols-3 gap-4">
-            <div className="xl:col-span-2 space-y-4">
-              <Widget title="Sends and replies" kicker={`// last ${selectedRange} days`} testId="widget-activity">
-                <ActivityChart series={d.series} />
-              </Widget>
+          {/* 1 · Pipeline: from discovered to replied, then where the review stands */}
+          <section aria-label="Pipeline" className="space-y-3" data-testid="dash-pipeline">
+            <h2 className="eyebrow">Pipeline</h2>
+            <div className="grid md:grid-cols-2 gap-4">
+              <Widget title="De la découverte à la réponse" testId="widget-funnel"><ConversionFunnel kpis={d.kpis} /></Widget>
+              <Widget title="Revue des prospects" testId="widget-qualification"><QualificationBreakdown kpis={d.kpis} /></Widget>
+            </div>
+          </section>
 
-              <div className="grid md:grid-cols-2 gap-4">
-                <Widget title="Conversion funnel" kicker="// lead pipeline" testId="widget-funnel">
-                  <ConversionFunnel kpis={d.kpis} />
-                </Widget>
-                <Widget title="Lead qualification" kicker="// tiers breakdown" testId="widget-qualification">
-                  <QualificationBreakdown kpis={d.kpis} />
-                </Widget>
+          {/* 2 · Discovery and qualification: what was just found, and the signals that justify it */}
+          <section aria-label="Découverte et qualification" className="space-y-3" data-testid="dash-discovery">
+            <h2 className="eyebrow">Découverte et qualification</h2>
+            <div className="grid xl:grid-cols-3 gap-4">
+              <div className="xl:col-span-2">
+                <Widget title="Dernières découvertes" testId="widget-signals"><LiveSignals prospects={d.latest_prospects} signals={d.latest_signals} /></Widget>
               </div>
-
-              <Widget title="Live discoveries" kicker="// latest prospects and detected signals" testId="widget-signals">
-                <LiveSignals prospects={d.latest_prospects} signals={d.latest_signals} />
-              </Widget>
-
-              <Widget title="Campaign health" kicker="// per campaign" testId="widget-campaigns">
-                <CampaignHealth campaigns={d.campaigns} />
-              </Widget>
+              <Widget title="Signaux les plus fréquents" testId="widget-top-signals"><TopSignals items={d.top_signals} /></Widget>
             </div>
+          </section>
 
-            <div className="space-y-4">
-              <Widget
-                title="Limits & compliance"
-                kicker="// quotas · kill switch · pause · allowlist"
-                testId="widget-limits"
-              >
-                <LimitsCompliance
-                  limits={d.limits}
-                  canEdit={canDecide(user)}
-                  busy={busy}
-                  onTogglePause={togglePause}
-                />
-              </Widget>
-
-              <Widget title="Top signals" kicker="// prospects per detected signal" testId="widget-top-signals">
-                <TopSignals items={d.top_signals} />
-              </Widget>
-
-              <Widget title="Geographic distribution" kicker="// where your prospects are" testId="widget-geo">
-                <GeoDistribution geo={d.geography} />
-              </Widget>
-
-              <Widget title="Inbox" kicker="// latest replies" testId="widget-inbox">
-                <Inbox items={d.inbox} />
-              </Widget>
+          {/* 3 · Campaigns and replies */}
+          <section aria-label="Campagnes et réponses" className="space-y-3" data-testid="dash-campaigns">
+            <h2 className="eyebrow">Campagnes et réponses</h2>
+            <Widget title="Envois et réponses" kicker={`${selectedRange} derniers jours`} testId="widget-activity"><ActivityChart series={d.series} /></Widget>
+            <div className="grid md:grid-cols-2 gap-4">
+              <Widget title="Santé des campagnes" testId="widget-campaigns"><CampaignHealth campaigns={d.campaigns} /></Widget>
+              <Widget title="Dernières réponses" testId="widget-inbox"><Inbox items={d.inbox} /></Widget>
             </div>
-          </div>
+          </section>
+
+          {/* 4 · Channel health: limits, pause, kill switch, sandbox */}
+          <section aria-label="Santé des canaux" className="space-y-3" data-testid="dash-channels">
+            <h2 className="eyebrow">Santé des canaux</h2>
+            <Widget title="Limites et conformité" testId="widget-limits">
+              <LimitsCompliance limits={d.limits} canEdit={canDecide(user)} busy={busy} onTogglePause={togglePause} />
+            </Widget>
+          </section>
+
+          {/* Details on demand: they do not compete with the decisions above */}
+          <details className="rounded-xl border border-border bg-card/60 px-4 py-3 text-sm" data-testid="dash-details">
+            <summary className="cursor-pointer select-none font-mono text-xs uppercase tracking-[0.18em] text-soft">Détails : répartition géographique</summary>
+            <div className="mt-3"><Widget title="Où sont vos prospects" testId="widget-geo"><GeoDistribution geo={d.geography} /></Widget></div>
+          </details>
         </>
       )}
     </div>

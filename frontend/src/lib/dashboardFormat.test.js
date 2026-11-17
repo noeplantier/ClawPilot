@@ -7,18 +7,21 @@ test("null means unknown and is never shown as zero", () => {
   expect(pct(null)).toBe(DASH);
   expect(pct(0)).toBe("0%");
   expect(pct(0.256)).toBe("25.6%");
-  const empty = kpiCards({ ...K, prospects: 0, pending_review: 0, approved: 0, scored: 0, avg_score: null, messages: 0, reply_rate: null, bounce_rate: null }, L);
+  const empty = kpiCards({ ...K, prospects: 0, pending_review: 0, approved: 0, scored: 0, avg_score: null, messages: 0, reply_rate: null, bounce_rate: null, hot_leads: undefined }, L);
   const byKey = Object.fromEntries(empty.map((c) => [c.key, c]));
-  expect(byKey.avg_score.value).toBe(DASH);
-  expect(byKey.avg_score.hint).toBe("nothing scored yet");
-  expect(byKey.replies.hint).toBe("no message sent yet");
+  expect(byKey.hot_leads.value).toBe(DASH); // not known: a dash, never 0
+  expect(byKey.replies.hint).toBe("aucun message envoyé");
 });
 
-test("cards carry the real counts and the remaining quota", () => {
-  const byKey = Object.fromEntries(kpiCards(K, L).map((c) => [c.key, c]));
-  expect(byKey.sent_today.hint).toBe("18 left of 20 allowed");
-  expect(byKey.replies.hint).toBe("25% of 4 sent");
-  expect(byKey.prospects.hint).toBe("2 pending review · 1 approved");
+test("five cards that help decide, the real counts and the remaining quota", () => {
+  const cards = kpiCards({ ...K, hot_leads: 2 }, L);
+  expect(cards.map((c) => c.key)).toEqual(["prospects", "hot_leads", "sent_today", "replies", "unsubscribed"]);
+  const byKey = Object.fromEntries(cards.map((c) => [c.key, c]));
+  expect(byKey.sent_today.hint).toBe("18 restant(s) sur 20");
+  expect(byKey.replies.hint).toBe("25% de 4 envoyé(s)");
+  expect(byKey.prospects.hint).toBe("2 à relire · 1 approuvés");
+  expect(byKey.hot_leads.hint).toMatch(/intention commerciale observée/); // never "high score"
+  expect(JSON.stringify(cards)).not.toMatch(/€|pipeline|verified/i); // no estimated money value, no unverified claim
 });
 
 test("the most restrictive sending state wins", () => {

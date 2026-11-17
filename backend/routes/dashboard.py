@@ -48,7 +48,6 @@ async def overview(
             "qualified_leads": prospects.get("qualified_leads", 0),
             "emails_available": prospects.get("emails_available", 0),
             "phones_available": prospects.get("phones_available", 0),
-            "pipeline_value": prospects.get("pipeline_value", 0),
             "sent_today": status.sent_today,
             "messages": out["messages"],
             "replies": out["replied"],
