@@ -110,8 +110,9 @@ async def record_jobs(
     `only` restricts it to those prospects (the recipients of one campaign)."""
     created = {"queued": 0, "offer_required": 0}
     async with session_factory() as session:
-        offer = ai_draft.valid_offer(await draft_job_repo.offer_of(session, account_id))
-        offer_key = ai_draft.offer_hash(offer)
+        found = ai_draft.valid_offers(await draft_job_repo.offer_of(session, account_id))
+        offer = {"language": found["language"]} if found else None
+        offer_key = ai_draft.offer_hash(found)  # any change to any of the offers prepares the drafts again
         for lead_id in await draft_job_repo.candidates(session, account_id, offer_key, CANDIDATES, now, only):
             lead = await session.get(Lead, lead_id)
             if lead is None:
@@ -157,10 +158,12 @@ async def run_job(
 
     try:
         async with session_factory() as session:
-            offer = ai_draft.valid_offer(await draft_job_repo.offer_of(session, account_id))
+            raw_offer = await draft_job_repo.offer_of(session, account_id)
+            found = ai_draft.valid_offers(raw_offer)
             lead = await prospect_repo.get(session, account_id, str(lead_id))
-            if offer is None:
+            if found is None:
                 return await end("offer_required", error_code="offer_required", error="Configure your offer first.")
+            offer = {"language": found["language"]}
             if lead is None:
                 return await end("failed", error_code="prospect_gone", error="The prospect is no longer available.")
             ctx, _, _, latest = await _context(session, lead, offer)
@@ -182,7 +185,9 @@ async def run_job(
                 reply_to=sender.reply_to,
                 whatsapp=sender.whatsapp,
             )
-            business, messages = lead.full_name, ai_draft.build_messages(ctx, offer)
+            # the offer of THIS prospect, from what is known of its web presence (never a guess)
+            chosen_offer = ai_draft.offer_for(raw_offer, ctx.state) or offer
+            business, messages = lead.full_name, ai_draft.build_messages(ctx, chosen_offer)
             try:
                 chosen, cost = await credit_gate.reserve(session, account_id, 1, now())
             except credit_gate.CreditsExhausted as exc:

@@ -75,7 +75,7 @@ test("complete journey: discovery → review → draft → dry-run dispatch → 
   await register(page);
 
   // 1. A new organisation sees honest empty states, not invented figures.
-  await expect(page.getByTestId("kpi-avg_score-value")).toHaveText("—");
+  await expect(page.getByTestId("funnel-score")).toContainText("rien de scoré"); // the average score: unknown, not 0
   await expect(page.getByTestId("kpi-prospects-value")).toHaveText("0");
   await expect(page.getByTestId("chart-empty")).toBeVisible();
   await expect(page.getByTestId("limits-mode")).toHaveText("DRY-RUN");

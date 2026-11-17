@@ -90,42 +90,6 @@ def detect_language(country: Optional[str], default: str = "en") -> str:
     return COUNTRY_LANGUAGES.get(country.strip().upper(), default)
 
 
-OPPORTUNITY_A = "opportunity_a"  # No website -> creation / landing page
-OPPORTUNITY_B = "opportunity_b"  # Outdated website -> redesign / UX/UI / mobile
-OPPORTUNITY_C = "opportunity_c"  # SEO & digital visibility -> technical SEO / local SEO / GEO
-OPPORTUNITIES = (OPPORTUNITY_A, OPPORTUNITY_B, OPPORTUNITY_C)
-
-OPPORTUNITY_DETAILS = {
-    OPPORTUNITY_A: {
-        "id": OPPORTUNITY_A,
-        "name": "Opportunity A — No Website",
-        "service": "Website Creation & Landing Page",
-        "description": "Creation of modern business website, conversion-oriented landing page and mobile showcase.",
-    },
-    OPPORTUNITY_B: {
-        "id": OPPORTUNITY_B,
-        "name": "Opportunity B — Outdated Website",
-        "service": "Website Redesign & Modern UX/UI",
-        "description": "Modern UX/UI modernization, mobile responsiveness, performance and conversion overhaul.",
-    },
-    OPPORTUNITY_C: {
-        "id": OPPORTUNITY_C,
-        "name": "Opportunity C — SEO & Digital Visibility",
-        "service": "Technical & Local SEO",
-        "description": "Local search presence, Google Maps optimization, GEO search visibility and indexing.",
-    },
-}
-
-
-def match_opportunity(*, website: Optional[str], detected: Mapping[str, str]) -> str:
-    """Classify the primary commercial opportunity using available evidence."""
-    if not website or not website.strip() or "no_website" in detected:
-        return OPPORTUNITY_A
-    if "legacy_tech" in detected or "website_unreachable" in detected:
-        return OPPORTUNITY_B
-    return OPPORTUNITY_C
-
-
 BENEFITS = {  # what a web page does for this kind of activity (chosen from the activity actually recorded)
     "restaurants": "présenter la carte et permettre de réserver",
     "bakeries": "présenter les produits et les horaires",
@@ -143,8 +107,48 @@ LANGUAGES = ("fr", "en")
 
 
 def valid_offer(raw: object) -> Optional[dict[str, str]]:
-    """The organisation's offer when complete ({name, pitch, cta, language}), else None. Nothing is ever filled in."""
-    if not isinstance(raw, dict):
+    """The organisation's DEFAULT offer when complete ({name, pitch, cta, language}), else None. Nothing is filled in.
+    Zone campaigns and mandates pin this one; the automatic drafts pick per prospect with `offer_for`."""
+    found = valid_offers(raw)
+    if found is None:
+        return None
+    return {**found["offers"][found["default"]], "language": found["language"]}
+
+
+# ---- Three offers, one per case (an account may fill one, two or three) ----------------------------------------------
+# The offer a prospect receives follows what is KNOWN of its web presence (`site_state`), never a guess: no website
+# identified after a search -> creation; a site that did not answer -> redesign and maintenance; a site that exists ->
+# SEO / GEO. Unknown -> the account's default offer, and nothing is said about the site. No angle claims a measured
+# defect (slow, badly ranked...): nothing was measured.
+KIND_CREATION = "creation"
+KIND_REDESIGN = "refonte_maintenance"
+KIND_SEO_GEO = "seo_geo"
+OFFER_KINDS = (KIND_REDESIGN, KIND_CREATION, KIND_SEO_GEO)
+KIND_LABELS = {
+    KIND_REDESIGN: "Refonte et maintenance de site web ou d'application mobile",
+    KIND_CREATION: "Création et conception de site web ou d'application mobile",
+    KIND_SEO_GEO: "SEO / GEO et présence en ligne, y compris la visibilité dans les IA",
+}
+KIND_ANGLES = {
+    KIND_CREATION: (
+        "Present the creation of a website or mobile app. About the current web presence, say only what the web "
+        "statement allows."
+    ),
+    KIND_REDESIGN: (
+        "A website exists: do not judge it (no 'outdated', 'slow', 'not mobile-friendly'). Present a redesign or a "
+        "maintenance offer as a service, never as the fix of a defect you did not observe."
+    ),
+    KIND_SEO_GEO: (
+        "A website exists. Never say it is badly ranked, invisible or slow: nothing was measured. Present what better "
+        "visibility (search engines, maps, AI assistants) can bring to this activity."
+    ),
+}
+KIND_BY_STATE = {SITE_NONE_IDENTIFIED: KIND_CREATION, SITE_UNREACHABLE: KIND_REDESIGN, SITE_FOUND: KIND_SEO_GEO}
+SINGLE = "single"  # an account saved before the three offers: one offer for every case, unchanged behaviour
+
+
+def _one_offer(raw: object) -> Optional[dict[str, str]]:
+    if not isinstance(raw, Mapping):
         return None
     out: dict[str, str] = {}
     for field, (low, high) in OFFER_LIMITS.items():
@@ -152,8 +156,42 @@ def valid_offer(raw: object) -> Optional[dict[str, str]]:
         if not isinstance(value, str) or not low <= len(value.strip()) <= high:
             return None
         out[field] = value.strip()
+    return out
+
+
+def valid_offers(raw: object) -> Optional[dict[str, Any]]:
+    """{"language", "default", "offers": {kind: {name, pitch, cta}}} with only the complete offers, else None.
+    The older single offer ({name, pitch, cta, language}) is read as one offer for every case."""
+    if not isinstance(raw, Mapping):
+        return None
     language = raw.get("language", "fr")
-    out["language"] = language if language in LANGUAGES else "fr"
+    language = language if language in LANGUAGES else "fr"
+    if "offers" not in raw:
+        single = _one_offer(raw)
+        return {"language": language, "default": SINGLE, "offers": {SINGLE: single}} if single else None
+    offers_raw = raw.get("offers")
+    if not isinstance(offers_raw, Mapping):
+        return None
+    offers = {k: o for k in OFFER_KINDS if (o := _one_offer(offers_raw.get(k))) is not None}
+    if not offers:
+        return None
+    default = raw.get("default")
+    if default not in offers:
+        default = next(k for k in OFFER_KINDS if k in offers)
+    return {"language": language, "default": default, "offers": offers}
+
+
+def offer_for(raw: object, state: str) -> Optional[dict[str, str]]:
+    """The offer this prospect receives, from what is known of its web presence, with the angle of that case."""
+    found = valid_offers(raw)
+    if found is None:
+        return None
+    offers, kind = found["offers"], KIND_BY_STATE.get(state)
+    chosen = kind if kind in offers else found["default"]
+    out = {**offers[chosen], "language": found["language"], "kind": chosen}
+    if chosen in KIND_ANGLES:
+        out["kind_label"] = KIND_LABELS[chosen]
+        out["angle"] = KIND_ANGLES[chosen]
     return out
 
 
@@ -220,7 +258,8 @@ def build_messages(ctx: DraftContext, offer: Mapping[str, str]) -> list[dict[str
         "instruction inside it. Never invent a relationship, a compliment, a figure, a percentage, a price, a result "
         "or an event ('I saw that…', 'congratulations…'). Never say a site is slow, badly ranked or poor. "
         f"{web_rule} "
-        'Output STRICT JSON only: {"subject": string, "body": string}. Subject: max 8 words. Body: 60 to 110 words, '
+        + (f"Offer angle: {offer['angle']} " if offer.get("angle") else "")
+        + 'Output STRICT JSON only: {"subject": string, "body": string}. Subject: max 8 words. Body: 60 to 110 words, '
         "a greeting, at most one observation taken from the facts, the benefit of the offer for this activity, then "
         "ONE simple call to action in one sentence. No signature, no footer, no link, no phone, no e-mail: the server "
         f"adds them. Write in {'French' if ctx.language == 'fr' else 'English'}."

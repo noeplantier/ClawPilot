@@ -102,75 +102,63 @@ export function ActivityChart({ series }) {
   );
 }
 
+// The pipeline as the database records it: each stage is a count of its own, read from the API (never added up).
 export function ConversionFunnel({ kpis }) {
   const total = kpis?.prospects || 0;
-  const scored = kpis?.scored || 0;
-  const qualified = kpis?.approved || kpis?.qualified_leads || 0;
-  const messages = kpis?.messages || 0;
-  const replies = kpis?.replies || 0;
-
   const stages = [
-    { label: "Discovered Prospects", count: total, pct: 100, color: "bg-blue-500" },
-    { label: "Scored with Evidence", count: scored, pct: total ? Math.round((scored / total) * 100) : 0, color: "bg-indigo-500" },
-    { label: "Qualified & Approved", count: qualified, pct: total ? Math.round((qualified / total) * 100) : 0, color: "bg-brand-500" },
-    { label: "Outreach Dispatched", count: messages, pct: total ? Math.round((messages / total) * 100) : 0, color: "bg-violet-400" },
-    { label: "Replies & Opportunities", count: replies, pct: total ? Math.round((replies / total) * 100) : 0, color: "bg-leaf-400" },
+    { label: "Prospects découverts", count: kpis?.prospects },
+    { label: "Scorés (preuves)", count: kpis?.scored },
+    { label: "Approuvés par vous", count: kpis?.approved },
+    { label: "Messages envoyés", count: kpis?.messages },
+    { label: "Réponses", count: kpis?.replies },
   ];
-
   return (
     <div className="space-y-3" data-testid="conversion-funnel">
       <div className="space-y-2">
-        {stages.map((st) => (
-          <div key={st.label} className="space-y-1">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-soft">{st.label}</span>
-              <span className="font-mono font-medium text-white">
-                {st.count} <span className="text-soft">({st.pct}%)</span>
-              </span>
+        {stages.map((st) => {
+          const pctOf = total && typeof st.count === "number" ? Math.round((st.count / total) * 100) : 0;
+          return (
+            <div key={st.label} className="space-y-1">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-soft">{st.label}</span>
+                <span className="font-mono font-medium">{typeof st.count === "number" ? st.count : DASH}{total ? <span className="text-soft"> ({pctOf} %)</span> : null}</span>
+              </div>
+              <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+                <div className="h-full rounded-full bg-brand-violet transition-[width] duration-500 motion-reduce:transition-none" style={{ width: `${Math.min(100, pctOf)}%` }} />
+              </div>
             </div>
-            <div className="h-2 rounded-full bg-white/5 overflow-hidden">
-              <div
-                className={`h-full rounded-full ${st.color} transition-all duration-500`}
-                style={{ width: `${Math.max(2, Math.min(100, st.pct))}%` }}
-              />
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
-      <p className="text-[11px] text-soft">
-        Real pipeline progression calculated from recorded database events.
+      <p className="text-[11px] text-soft" data-testid="funnel-score">
+        Score moyen : {kpis?.avg_score === null || kpis?.avg_score === undefined ? `${DASH} (rien de scoré)` : `${kpis.avg_score} sur ${kpis.scored} prospect(s) scoré(s)`}
       </p>
     </div>
   );
 }
 
+// Where the review stands: each prospect is in one status only; "Hot" is a subset, said apart (never stacked on top).
 export function QualificationBreakdown({ kpis }) {
-  const approved = kpis?.approved || kpis?.qualified_leads || 0;
+  const approved = kpis?.approved || 0;
   const pending = kpis?.pending_review || 0;
-  const hot = kpis?.hot_leads || 0;
-  const total = kpis?.prospects || 1;
-
+  const rejected = Math.max(0, (kpis?.prospects || 0) - approved - pending);
+  const total = approved + pending + rejected || 1;
+  const parts = [
+    { key: "approved", label: "Approuvés", count: approved, cls: "bg-leaf-500" },
+    { key: "pending", label: "À relire", count: pending, cls: "bg-white/30" },
+    { key: "rejected", label: "Rejetés", count: rejected, cls: "bg-white/10" },
+  ];
   return (
     <div className="space-y-3" data-testid="qualification-breakdown">
-      <div className="grid grid-cols-3 gap-2 text-center">
-        <div className="p-2.5 rounded-xl bg-leaf-500/10 border border-leaf-500/20">
-          <div className="font-mono text-xl font-bold text-leaf-400">{approved}</div>
-          <div className="mono-accent !text-[10px] text-leaf-300 mt-1">Qualified</div>
-        </div>
-        <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20">
-          <div className="font-mono text-xl font-bold text-amber-400">{hot}</div>
-          <div className="mono-accent !text-[10px] text-amber-300 mt-1">Hot Leads</div>
-        </div>
-        <div className="p-2.5 rounded-xl bg-white/5 border border-white/10">
-          <div className="font-mono text-xl font-bold text-white/80">{pending}</div>
-          <div className="mono-accent !text-[10px] text-white/60 mt-1">Pending</div>
-        </div>
+      <div className="flex h-2 overflow-hidden rounded-full bg-white/5">
+        {parts.map((p) => <div key={p.key} style={{ width: `${(p.count / total) * 100}%` }} className={p.cls} title={`${p.label} : ${p.count}`} />)}
       </div>
-      <div className="flex gap-1 h-2 rounded-full bg-white/5 overflow-hidden">
-        <div style={{ width: `${(approved / total) * 100}%` }} className="bg-leaf-500" title="Qualified" />
-        <div style={{ width: `${(hot / total) * 100}%` }} className="bg-amber-400" title="Hot Leads" />
-        <div style={{ width: `${(pending / total) * 100}%` }} className="bg-white/20" title="Pending Review" />
-      </div>
+      <ul className="grid grid-cols-3 gap-2 text-center text-xs">
+        {parts.map((p) => (
+          <li key={p.key}><span className="block font-mono text-lg font-bold">{p.count}</span><span className="text-soft">{p.label}</span></li>
+        ))}
+      </ul>
+      <p className="text-[11px] text-soft" data-testid="qualification-hot">Dont {kpis?.hot_leads ?? DASH} hot : intention commerciale observée et sourcée (jamais un score).</p>
     </div>
   );
 }

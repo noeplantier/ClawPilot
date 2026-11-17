@@ -54,8 +54,8 @@ afterEach(async () => { await act(async () => root.unmount()); container.remove(
 
 test("with no data, every widget shows an explicit empty state and no invented number", async () => {
   await show(EMPTY);
-  expect(byId("kpi-avg_score-value").textContent).toBe("—");
-  expect(byId("kpi-replies-hint").textContent).toBe("no message sent yet");
+  expect(byId("funnel-score").textContent).toContain("— (rien de scoré)");
+  expect(byId("kpi-replies-hint").textContent).toBe("aucun message envoyé");
   for (const id of ["chart-empty", "signals-empty", "campaigns-empty", "inbox-empty", "top-signals-empty", "geo-empty"]) expect(byId(id)).not.toBeNull();
   expect(byId("limits-mode").textContent).toBe("DRY-RUN");
 });
@@ -65,8 +65,10 @@ test("with data, the widgets show the real figures and link to the prospect", as
   expect(byId("dashboard-review-action").getAttribute("href")).toBe("/app/prospects/review");
   expect(byId("dashboard-review-action").textContent).toContain("2 prospects awaiting review");
   expect(byId("kpi-prospects-value").textContent).toBe("3");
-  expect(byId("kpi-avg_score-value").textContent).toBe("41.5");
-  expect(byId("kpi-replies-hint").textContent).toBe("50% of 2 sent");
+  expect(byId("funnel-score").textContent).toContain("41.5");
+  expect(byId("kpi-replies-hint").textContent).toBe("50% de 2 envoyé(s)");
+  for (const id of ["dash-pipeline", "dash-discovery", "dash-campaigns", "dash-channels"]) expect(byId(id)).not.toBeNull();
+  expect(byId("kpi-strip").querySelectorAll("[data-testid$='-value']")).toHaveLength(5);
   expect(byId("activity-chart").querySelector("svg").getAttribute("aria-label")).toContain("2 messages sent and 1 reply");
   expect(byId("latest-signals").textContent).toContain("No own website listed");
   expect(byId("campaign-open-rate").textContent).toBe("—"); // nothing sent: unknown, not 0%

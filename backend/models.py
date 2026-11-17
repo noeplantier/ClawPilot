@@ -978,6 +978,40 @@ class OfferOut(BaseModel):
     offer: Optional[OfferIn] = None
 
 
+OfferKind = Literal["refonte_maintenance", "creation", "seo_geo"]
+
+
+class OfferItemIn(BaseModel):
+    """One of the three offers, in the organisation's words (never invented)."""
+
+    name: str = Field(min_length=2, max_length=120)
+    pitch: str = Field(min_length=20, max_length=600)
+    cta: str = Field(min_length=3, max_length=160)
+
+
+class OffersIn(BaseModel):
+    """Up to three offers, one per case; at least one, and the default must be one of them."""
+
+    language: Literal["fr", "en"] = "fr"
+    default: OfferKind
+    offers: Dict[OfferKind, OfferItemIn] = Field(min_length=1, max_length=3)
+
+
+class OfferCaseOut(BaseModel):
+    kind: OfferKind
+    label: str
+    when: str  # which prospects receive it, in words (from what is known of their web presence)
+    configured: bool
+    offer: Optional[OfferItemIn] = None
+
+
+class OffersOut(BaseModel):
+    configured: bool
+    language: Literal["fr", "en"] = "fr"
+    default: Optional[str] = None  # a kind, or "single" for an older single offer used for every case
+    cases: List[OfferCaseOut]
+
+
 class DraftJobOut(BaseModel):
     """The state of the automatic draft of one prospect. A draft is a proposal: it is never sent by this flow."""
 
