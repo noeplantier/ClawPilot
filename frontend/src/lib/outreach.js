@@ -87,6 +87,12 @@ export const offerApi = {
   put: (body) => api.put("/settings/offer", body).then((r) => r.data),
 };
 
+// The three offers (refonte/maintenance, création, SEO/GEO), and who receives each (GET/PUT /settings/offers).
+export const offersApi = {
+  get: () => api.get("/settings/offers").then((r) => r.data),
+  put: (body) => api.put("/settings/offers", body).then((r) => r.data),
+};
+
 // Credits and outreach models (GET /usage/credits, PUT /usage/model): the AI work left today and in this session.
 export const usageApi = {
   credits: () => api.get("/usage/credits").then((r) => r.data),

@@ -68,7 +68,7 @@ test("every section opens its first screen and lists the others under it; the ol
     ["nav-leads", /\/app\/leads$/, ["tab-crm", "tab-pipeline", "tab-prospects", "tab-review"]], // « À traiter » holds à vérifier and à enrichir
     ["nav-batches", /\/app\/batches$/, ["tab-batches"]],
     ["nav-outreach", /\/app\/drafts$/, ["tab-drafts", "tab-campaigns", "tab-messages", "tab-sending"]], // « Campagnes » holds zone, individuelle, séquences
-    ["nav-control", /\/app\/settings$/, ["tab-offer", "tab-settings", "tab-automation-max", "tab-system"]], // « Automatisations » holds the mandate and the agents
+    ["nav-control", /\/app\/settings$/, ["tab-settings", "tab-automation-max", "tab-system"]], // « Automatisations » holds the mandate and the agents; the offers moved to Outreach
     ["nav-overview", /\/app\/dashboard$/, ["tab-dashboard", "tab-analytics"]],
   ];
   for (const [entry, url, tabs] of sections) {

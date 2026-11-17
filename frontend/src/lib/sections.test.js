@@ -46,7 +46,7 @@ test("a path lands in the section that holds it, the nested screen under its own
   expect(id("/app/batches")).toBe("batches");
   expect(id("/app/drafts")).toBe("outreach");
   expect(id("/app/campaigns")).toBe("outreach");
-  expect(id("/app/settings/offer")).toBe("control");
+  expect(id("/app/settings/offer")).toBe("outreach"); // the offers belong to the batch dispatch
   expect(id("/app/settings")).toBe("control");
   expect(id("/app/agents")).toBe("control");
   expect(id("/app/system")).toBe("control");
@@ -63,7 +63,6 @@ test("the current tab follows the path and the pipeline query", () => {
   const outreach = SECTIONS.find((s) => s.id === "outreach");
   for (const p of ["/app/journey", "/app/launch", "/app/campaigns"]) expect(activeTab(outreach, p, "").label).toBe("Campagnes");
   const control = SECTIONS.find((s) => s.id === "control");
-  expect(activeTab(control, "/app/settings/offer", "").label).toBe("Offre");
   expect(activeTab(control, "/app/settings", "").label).toBe("Intégrations et réglages");
   expect(activeTab(control, "/app/agents", "").label).toBe("Automatisations");
   expect(activeTab(control, "/app/automation-max", "").label).toBe("Automatisations");
