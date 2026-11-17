@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 import os
 import re
 from dataclasses import dataclass
@@ -33,6 +34,7 @@ PROVIDERS: dict[str, tuple[Optional[str], Optional[str]]] = {
     "custom": (None, None),
 }
 TIMEOUT = (5, 40)  # connect, read (seconds)
+RETRY_PAUSE = 1.0  # seconds before the one retry after a provider-side failure (HTTP 5xx)
 MAX_TOKENS = 700
 LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
 
@@ -120,6 +122,16 @@ def explain_http_error(status_code: int, retry_after: Optional[str] = None) -> t
     if status_code == 429:
         wait = f" Try again in {retry_after} s." if retry_after and retry_after.isdigit() else " Try again in a moment."
         return "ai_rate_limited", f"The AI provider's free limit is reached (HTTP 429).{wait}"
+    if status_code == 400:
+        return "ai_failed", (
+            "The AI provider refused the request (HTTP 400): the model may have been retired or a setting is not "
+            "accepted. Check AI_MODEL with the test in Settings > Integrations. Nothing was generated."
+        )
+    if status_code >= 500:
+        return "ai_failed", (
+            f"The AI provider is failing on its side (HTTP {status_code}), even after one retry. Nothing was "
+            "generated: try again later."
+        )
     return "ai_failed", f"The AI provider answered HTTP {status_code}. Nothing was generated."
 
 
@@ -194,7 +206,13 @@ def _generate_sync(
     if response.status_code == 400:  # a provider or model without JSON mode: ask again in plain mode, once
         payload.pop("response_format")
         response = _post(cfg, payload)
+    if response.status_code >= 500:  # the provider's own failure: one bounded retry (nothing is stored or spent before)
+        time.sleep(RETRY_PAUSE)
+        response = _post(cfg, payload)
     if response.status_code != 200:
+        # What the operator needs to fix it, in the server log: the provider, the model and the status (never the key
+        # nor the body, which can echo the request).
+        logger.warning("AI provider=%s model=%s answered HTTP %s", cfg.provider, cfg.model, response.status_code)
         code, message = explain_http_error(response.status_code, response.headers.get("Retry-After"))
         raise AIUnavailable(code, message)
     try:

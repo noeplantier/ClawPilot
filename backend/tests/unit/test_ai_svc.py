@@ -209,6 +209,7 @@ def test_a_provider_without_json_mode_is_asked_again_in_plain_mode_once(monkeypa
         (Reply(status=429, headers={"Retry-After": "7"}), "ai_rate_limited", "7 s"),
         (Reply(status=429), "ai_rate_limited", "in a moment"),
         (Reply(status=500), "ai_failed", "HTTP 500"),
+        (Reply(status=400), "ai_failed", "AI_MODEL"),
         (Reply(status=301), "ai_failed", "HTTP 301"),
         (Reply(body=ValueError("not json")), "ai_failed", "format"),
         (Reply(body={"choices": []}), "ai_failed", "format"),
@@ -217,7 +218,8 @@ def test_a_provider_without_json_mode_is_asked_again_in_plain_mode_once(monkeypa
 )
 def test_every_refusal_says_what_happened_and_never_repeats_the_key(monkeypatch, reply, code, words):
     configure(monkeypatch)
-    monkeypatch.setattr(requests, "post", answering(reply))
+    monkeypatch.setattr(ai_svc, "RETRY_PAUSE", 0)
+    monkeypatch.setattr(requests, "post", answering(reply, reply, reply))  # a 400 or a 5xx is asked again once
     with pytest.raises(ai_svc.AIUnavailable) as refused:
         write()
     assert refused.value.code == code and words in refused.value.message and KEY not in refused.value.message
@@ -252,3 +254,31 @@ def test_an_organisation_cannot_use_more_than_its_minute_of_model_calls(monkeypa
     assert int(refused.value.headers["Retry-After"]) >= 1
     other = {"org_id": "00000000-0000-4000-8000-000000000002"}
     ai_route._spend(other)  # another organisation has its own allowance
+
+
+def test_a_provider_side_failure_is_retried_once_then_answers(monkeypatch):
+    configure(monkeypatch)
+    monkeypatch.setattr(ai_svc, "RETRY_PAUSE", 0)
+    post = answering(Reply(status=503), Reply(text_content=GOOD))
+    monkeypatch.setattr(requests, "post", post)
+    assert write()["body"].startswith("Bonjour") and len(post.calls) == 2
+
+
+def test_a_failure_is_retried_only_once_and_logged_without_the_key(monkeypatch, caplog):
+    configure(monkeypatch)
+    monkeypatch.setattr(ai_svc, "RETRY_PAUSE", 0)
+    post = answering(Reply(status=502), Reply(status=502), Reply(text_content=GOOD))
+    monkeypatch.setattr(requests, "post", post)
+    with caplog.at_level("WARNING"), pytest.raises(ai_svc.AIUnavailable) as refused:
+        write()
+    assert len(post.calls) == 2 and "even after one retry" in refused.value.message
+    assert "answered HTTP 502" in caplog.text and KEY not in caplog.text
+
+
+def test_a_refused_key_is_not_retried(monkeypatch):
+    configure(monkeypatch)
+    post = answering(Reply(status=401), Reply(text_content=GOOD))
+    monkeypatch.setattr(requests, "post", post)
+    with pytest.raises(ai_svc.AIUnavailable):
+        write()
+    assert len(post.calls) == 1
