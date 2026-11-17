@@ -65,9 +65,12 @@ it("shows a newly persisted qualification score through the live refresh", async
     heat: { value: 20, tier: "cold", known: ["website"], missing: [], scored: false, top: false, has_contact: true },
     enrichment_status: "completed", fit_score: null, website_quality: null, digital_maturity: null, priority: null,
   };
-  api.get.mockReset()
-    .mockResolvedValueOnce({ data: [lead] })
-    .mockResolvedValueOnce({ data: [{ ...lead, fit_score: 82, website_quality: 75, digital_maturity: 70, priority: "high" }] });
+  let listCalls = 0;
+  api.get.mockReset().mockImplementation((url) => {
+    if (url === "/leads/count") return Promise.resolve({ data: { total: 1 } });
+    listCalls += 1;
+    return Promise.resolve({ data: [listCalls === 1 ? lead : { ...lead, fit_score: 82, website_quality: 75, digital_maturity: 70, priority: "high" }] });
+  });
 
   await act(async () => root.render(<MemoryRouter><Leads /></MemoryRouter>));
   expect(byId("qualification-lead-1").textContent).toContain("Scoring requis");
@@ -75,7 +78,7 @@ it("shows a newly persisted qualification score through the live refresh", async
   await act(async () => { jest.advanceTimersByTime(15000); await Promise.resolve(); });
   expect(byId("qualification-lead-1").textContent).toContain("Fit 82");
   expect(byId("qualification-lead-1").textContent).toContain("Website 75 · Digital 70");
-  expect(api.get).toHaveBeenCalledTimes(2);
+  expect(listCalls).toBe(2);
 });
 
 it("shows unavailable qualification fields as unknown rather than empty or negative", async () => {
@@ -90,4 +93,35 @@ it("shows unavailable qualification fields as unknown rather than empty or negat
   expect(qualification.textContent).toContain("Unknown");
   expect(qualification.textContent).toContain("Website Unknown · Digital Unknown");
   expect(qualification.querySelector(".chip").className).toContain("chip-ink");
+});
+
+const LEAD = (id, over = {}) => ({
+  id, full_name: `Lead ${id}`, company: "Co", country: "FR", stage: "new", score: 0, review_status: "approved",
+  heat: { value: 50, tier: "warm", known: ["email"], missing: [], scored: true, top: false, has_contact: true },
+  enrichment_status: "completed", fit_score: null, website_quality: null, digital_maturity: null, priority: null, email: `${id}@x.example`, ...over,
+});
+
+it("says when the list is cut, from the server's real total", async () => {
+  api.get.mockImplementation((url) => Promise.resolve({ data: url === "/leads/count" ? { total: 640 } : [LEAD("a"), LEAD("b")] }));
+  await act(async () => root.render(<MemoryRouter><Leads /></MemoryRouter>));
+  await act(async () => {});
+  expect(byId("leads-cut").textContent).toContain("2 leads affichés sur 640");
+  expect(byId("leads-cut").textContent).toContain("filtrez « Approuvés »");
+});
+
+it("filters the approved ones on the server, and says nothing when nothing is cut", async () => {
+  api.get.mockImplementation((url) => Promise.resolve({ data: url === "/leads/count" ? { total: 1 } : [LEAD("a")] }));
+  await act(async () => root.render(<MemoryRouter initialEntries={["/app/leads?review=approved"]}><Leads /></MemoryRouter>));
+  await act(async () => {});
+  expect(api.get).toHaveBeenCalledWith("/leads", { params: { search: "", sort: "heat", review_status: "approved" } });
+  expect(api.get).toHaveBeenCalledWith("/leads/count", { params: { search: "", review_status: "approved" } });
+  expect(byId("review-filter-approved").getAttribute("aria-pressed")).toBe("true");
+  expect(byId("leads-cut")).toBeNull();
+});
+
+it("opens the lead named in the address, wherever it ranks", async () => {
+  api.get.mockImplementation((url) => Promise.resolve({ data: url === "/leads/count" ? { total: 900 } : url === "/leads/far" ? LEAD("far") : [LEAD("a")] }));
+  await act(async () => root.render(<MemoryRouter initialEntries={["/app/leads?lead=far"]}><Leads /></MemoryRouter>));
+  await act(async () => {});
+  expect(api.get).toHaveBeenCalledWith("/leads/far");
 });
