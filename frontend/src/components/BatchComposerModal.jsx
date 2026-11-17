@@ -3,6 +3,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 import { blockText, describeApiError } from "@/lib/outreachFormat";
+import { Link } from "react-router-dom";
+import { offersApi, useAsync } from "@/lib/outreach";
+import { prefillFromOffer, usableOffers } from "@/lib/offersFormat";
+import OffersEditor from "@/components/outreach/OffersEditor";
 import {
   X, PaperPlaneTilt, Sparkle, Envelope, WhatsappLogo, CheckCircle, Warning, CircleNotch, Users,
 } from "@phosphor-icons/react";
@@ -14,10 +18,19 @@ export default function BatchComposerModal({ open, onClose, defaultChannel = "em
   const [leads, setLeads] = useState([]);
   const [selected, setSelected] = useState(new Set());
   const [search, setSearch] = useState("");
-  const [subject, setSubject] = useState("Quick idea for {{company}}");
-  const [body, setBody] = useState(
-    "Hi {{first_name}},\n\nI saw {{company}} is scaling fast — wanted to share how Plantiers - Software Engineering can help with your digital projects.\n\nWorth a 15-min chat this week?"
-  );
+  // No invented sentence: the message starts from the chosen offer's own words (step 1), or from what the person writes.
+  const [subject, setSubject] = useState("");
+  const [body, setBody] = useState("");
+  const offers = useAsync(() => (open ? offersApi.get() : Promise.resolve(null)), [open], { key: "settings:offers" });
+  const [offerKind, setOfferKind] = useState(null);
+  const [editOffers, setEditOffers] = useState(false);
+  const usable = usableOffers(offers.data);
+  const chosenOffer = usable.find((c) => c.kind === offerKind) || null;
+  const pickOffer = (c) => {
+    setOfferKind(c.kind);
+    const t = prefillFromOffer(c.offer, offers.data ? offers.data.language : "fr");
+    if (t) { setSubject(t.subject); setBody(t.body); }
+  };
   const [loading, setLoading] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [result, setResult] = useState(null);
@@ -59,6 +72,7 @@ export default function BatchComposerModal({ open, onClose, defaultChannel = "em
 
   const aiWrite = async () => {
     if (!leads.length) return;
+    if (!chosenOffer) { toast.error("Choisissez d'abord l'offre de ce lot (étape 1)."); return; }
     setAiLoading(true);
     try {
       // Use first selected (or first filtered) as personalization basis
@@ -66,11 +80,11 @@ export default function BatchComposerModal({ open, onClose, defaultChannel = "em
       const { data } = await api.post("/ai/generate", {
         recipient_name: sample?.full_name || "there",
         company: sample?.company || "",
-        product: "Plantiers - OutreachOS lead generation platform",
+        product: chosenOffer ? `${chosenOffer.offer.name} : ${chosenOffer.offer.pitch}` : "",
         language: sample?.language || "en",
         tone: "professional",
         channel,
-        goal: "book a 15-min discovery call",
+        goal: chosenOffer ? chosenOffer.offer.cta : "",
       });
       if (data.subject && channel === "email") setSubject(data.subject);
       // Replace name with token for reusability
@@ -150,7 +164,35 @@ export default function BatchComposerModal({ open, onClose, defaultChannel = "em
               {channel === "email" ? <Envelope size={22} weight="duotone" className="text-brand-lilac" /> : <WhatsappLogo size={22} weight="fill" className="text-brand-lilac" />}
               Batch {channel === "email" ? "Email" : "WhatsApp"} Dispatch
             </h2>
-            <p className="text-soft text-sm mt-1">Send personalized messages to multiple leads in one pass.</p>
+            <p className="text-soft text-sm mt-1">Un message par destinataire, avec les portes, limites et oppositions habituelles.</p>
+
+            {/* 1 · the offer of this batch: its own words fill the message, nothing is said about the prospect */}
+            <section className="mt-4 rounded-xl border border-border bg-white/[0.03] p-4 space-y-3" aria-label="Offre de ce lot" data-testid="batch-offer">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="eyebrow">1 · Offre de ce lot</h3>
+                <button type="button" className="btn-ghost !py-1 !px-2 text-xs" onClick={() => setEditOffers((v) => !v)} aria-expanded={editOffers} data-testid="batch-edit-offers">
+                  {editOffers ? "FERMER" : "MODIFIER LES OFFRES"}
+                </button>
+              </div>
+              {usable.length === 0 && !offers.loading && (
+                <p className="text-sm text-soft" data-testid="batch-offer-none">Aucune offre complète : remplissez-en une (« Modifier les offres »), ou écrivez votre message vous-même à l&apos;étape 3.</p>
+              )}
+              {usable.length > 0 && (
+                <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Offre">
+                  {usable.map((c) => (
+                    <button key={c.kind} type="button" role="radio" aria-checked={offerKind === c.kind} onClick={() => pickOffer(c)} data-testid={`batch-offer-${c.kind}`}
+                      className={`rounded-xl border px-3 py-1.5 text-left text-sm ${offerKind === c.kind ? "border-brand-violet bg-brand-violet/15" : "border-border hover:border-white/20"}`}>
+                      <span className="block font-semibold">{c.offer.name}</span>
+                      <span className="block text-[11px] text-soft">{c.when}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              <p className="text-xs text-soft">
+                Pour un message personnalisé par prospect, avec l&apos;offre choisie selon l&apos;état connu de son site : <Link to="/app/drafts" className="underline">Brouillons IA</Link>.
+              </p>
+              {editOffers && <OffersEditor compact onSaved={() => offers.reload()} />}
+            </section>
 
             <div className="flex items-center gap-2 mt-4">
               <button onClick={() => setChannel("email")} className={`chip ${channel === "email" ? "chip-red" : ""}`} data-testid="batch-channel-email">
@@ -166,7 +208,7 @@ export default function BatchComposerModal({ open, onClose, defaultChannel = "em
               <div className="lg:col-span-2 surface bg-white/[0.04] p-4 flex flex-col min-h-[380px]">
                 <div className="flex items-center justify-between mb-3">
                   <div>
-                    <div className="mono-accent">recipients</div>
+                    <div className="eyebrow">2 · Destinataires</div>
                     <div className="font-display font-bold flex items-center gap-1.5"><Users size={16} /> {selected.size} / {filtered.length}</div>
                   </div>
                   <button onClick={toggleAll} className="chip chip-red" data-testid="select-all-leads">
@@ -205,6 +247,7 @@ export default function BatchComposerModal({ open, onClose, defaultChannel = "em
 
               {/* Right — composer */}
               <div className="lg:col-span-3 space-y-3">
+                <div className="eyebrow">3 · Message et envoi</div>
                 {channel === "email" && (
                   <div>
                     <label className="mono-accent block mb-1.5">subject</label>

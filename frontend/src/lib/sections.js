@@ -55,12 +55,13 @@ export const SECTIONS = [
     label: "Outreach",
     to: "/app/drafts",
     icon: "PaperPlaneTilt",
-    blurb: "Brouillons IA, campagnes (par zone, individuelle, séquences), boîte de réception, canaux.",
+    blurb: "Brouillons IA, campagnes (par zone, individuelle, séquences), boîte de réception et offres, canaux.",
     tabs: [
       { to: "/app/drafts", label: "Brouillons IA", testId: "tab-drafts" },
       // Zone, individuelle, séquences : une seule page « Campagnes » (trois onglets et les graphiques en direct).
       { to: "/app/campaigns", label: "Campagnes", testId: "tab-campaigns", also: [{ to: "/app/journey", label: "Campagne par zone" }, { to: "/app/launch", label: "Campagne individuelle" }] },
-      { to: "/app/messages", label: "Boîte de réception", testId: "tab-messages" },
+      // The offers are step 1 of the batch dispatch, opened from the inbox: their page is part of it.
+      { to: "/app/messages", label: "Boîte de réception", testId: "tab-messages", also: [{ to: "/app/settings/offer", label: "Offres" }], keywords: ["offre", "envoi par lots"] },
       { to: "/app/sending", label: "Canaux", testId: "tab-sending" },
     ],
   },
@@ -69,9 +70,8 @@ export const SECTIONS = [
     label: "Pilotage",
     to: "/app/settings",
     icon: "Gear",
-    blurb: "Offre, intégrations, automatisations (agents et mandat), santé et réglages.",
+    blurb: "Intégrations, automatisations (agents et mandat), santé et réglages.",
     tabs: [
-      { to: "/app/settings/offer", label: "Offre", testId: "tab-offer" },
       { to: "/app/settings", label: "Intégrations et réglages", testId: "tab-settings" },
       // Agents et mandat « Automatisation max » : une seule page « Automatisations ».
       { to: "/app/automation-max", label: "Automatisations", testId: "tab-automation-max", also: [{ to: "/app/agents", label: "Agents" }], keywords: ["Automatisation max", "mandat"] },
