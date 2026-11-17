@@ -125,3 +125,17 @@ it("opens the lead named in the address, wherever it ranks", async () => {
   await act(async () => {});
   expect(api.get).toHaveBeenCalledWith("/leads/far");
 });
+
+it("has one map only: the CRM's map view opens Prospection › Carte", async () => {
+  const { Routes, Route } = jest.requireActual("react-router-dom");
+  await act(async () => root.render(
+    <MemoryRouter initialEntries={["/app/leads?view=map"]}>
+      <Routes>
+        <Route path="/app/leads" element={<Leads />} />
+        <Route path="/app/map" element={<p data-testid="the-map">map</p>} />
+      </Routes>
+    </MemoryRouter>,
+  ));
+  await act(async () => {});
+  expect(byId("the-map")).not.toBeNull();
+});

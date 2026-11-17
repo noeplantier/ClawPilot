@@ -167,3 +167,27 @@ export function classifyProspect(p) {
 
   return { tier: tierKey, ...tier, label, site, siteKey, reasons };
 }
+
+// What a finished search found, split the way the panel explains it (counted, never estimated):
+// the places already held as prospects are not offered again, and a place is reachable only with a phone AND an e-mail.
+export function resultBreakdown(rawPlaces, known) {
+  const seen = new Set();
+  const out = { total: 0, alreadyKnown: 0, reachable: 0, noContact: 0 };
+  for (const p of rawPlaces || []) {
+    if (!p || seen.has(p.external_id)) continue;
+    seen.add(p.external_id);
+    out.total += 1;
+    if (known && known.has(p.external_id)) out.alreadyKnown += 1;
+    else if (reachablePlace(p)) out.reachable += 1;
+    else out.noContact += 1;
+  }
+  return out;
+}
+
+export function breakdownText(b) {
+  if (!b || b.total === 0) return "";
+  const parts = [`${b.reachable} joignable${b.reachable === 1 ? "" : "s"} (téléphone et e-mail publiés)`];
+  if (b.noContact) parts.push(`${b.noContact} exclu${b.noContact === 1 ? "" : "s"} : téléphone ou e-mail non publié`);
+  if (b.alreadyKnown) parts.push(`${b.alreadyKnown} déjà dans vos prospects`);
+  return `${b.total} lieu${b.total === 1 ? "" : "x"} trouvé${b.total === 1 ? "" : "s"} · ${parts.join(" · ")}.`;
+}

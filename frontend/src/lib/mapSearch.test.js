@@ -1,4 +1,4 @@
-import { areaTooLarge, importRows, summarize, summaryText, markerColor, panelPadding, reachablePlace, isHot, readyOnly, readySummary, zoneOf, zoneSummary, journeyLink, classifyProspect, mapSiteState } from "@/lib/mapSearch";
+import { areaTooLarge, importRows, summarize, summaryText, markerColor, panelPadding, reachablePlace, isHot, readyOnly, readySummary, zoneOf, zoneSummary, journeyLink, classifyProspect, mapSiteState, resultBreakdown, breakdownText } from "@/lib/mapSearch";
 
 const A = { external_id: "node/1", name: "A", lat: 45.7, lon: 4.8, email: "a@a.fr", phone: "+33 1", website: "https://a.fr", source_url: "u" };
 const B = { external_id: "node/2", name: "B", lat: 45.7, lon: 4.8, email: null, phone: "+33 2", website: null, source_url: "u" };
@@ -150,5 +150,18 @@ describe("the map says only what the API returned", () => {
     expect(classifyProspect({ ...ready, priority: "hot" }).label).toBe("Hot — intention observée");
     expect(classifyProspect({ ...ready, priority_label: "Qualifié prioritaire (serveur)" }).label).toBe("Qualifié prioritaire (serveur)");
     expect(classifyProspect({ email: "a@b.example", phone: "+33 4 78 12 34 56" })).toMatchObject({ tier: "NEEDS_REVIEW", label: "À compléter" });
+  });
+});
+
+describe("what a search found, explained", () => {
+  const P = (id, over = {}) => ({ external_id: id, name: id, phone: "+33 4", email: `${id}@x.example`, ...over });
+  it("counts reachable, excluded and already known places, each place once", () => {
+    const b = resultBreakdown([P("a"), P("a"), P("b", { email: null }), P("c", { phone: "" }), P("d")], new Set(["d"]));
+    expect(b).toEqual({ total: 4, alreadyKnown: 1, reachable: 1, noContact: 2 });
+    expect(breakdownText(b)).toBe("4 lieux trouvés · 1 joignable (téléphone et e-mail publiés) · 2 exclus : téléphone ou e-mail non publié · 1 déjà dans vos prospects.");
+  });
+  it("says nothing when nothing was found, and leaves a zero line out", () => {
+    expect(breakdownText(resultBreakdown([], new Set()))).toBe("");
+    expect(breakdownText(resultBreakdown([P("a")], new Set()))).toBe("1 lieu trouvé · 1 joignable (téléphone et e-mail publiés).");
   });
 });

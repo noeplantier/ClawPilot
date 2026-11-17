@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 import {
@@ -17,7 +17,6 @@ import { LANES, LANE_LABEL, inLane, laneCounts, splitEmpty } from "@/lib/heat";
 import { LIVE_MS, useLive } from "@/lib/live";
 import { useAsync } from "@/lib/outreach";
 import { readPref, writePref } from "@/lib/uiPrefs";
-import DiscoveryMap from "@/components/DiscoveryMap";
 
 // Where a prospect from discovery (map, sources, import) stands in the human review; a CRM lead has none.
 const REVIEW_LABEL = { pending: "to review", approved: "approved", rejected: "rejected" };
@@ -73,7 +72,9 @@ export default function Leads() {
     return result;
   }, [reachable, lane, priorityFilter, fitSort]);
   const toggleEmpty = () => setShowEmpty((v) => { writePref("leads.showEmpty", !v); return !v; });
+  const navigate = useNavigate();
   const setCrmView = (next) => {
+    if (next === "map") { navigate("/app/map"); return; } // one map only: Prospection › Carte
     const params = next === "table" ? {} : { view: next };
     if (review) params.review = review;
     setSearchParams(params, { replace: true });
@@ -168,6 +169,7 @@ export default function Leads() {
     setAiOpen(true);
   };
 
+  if (view === "map") return <Navigate to="/app/map" replace />;
   return (
     <div className="p-6 md:p-10 space-y-6">
       <div className="flex items-start justify-between flex-wrap gap-4">
@@ -266,7 +268,7 @@ export default function Leads() {
 
       {live.error && <div role="alert" className="text-sm text-red-300" data-testid="leads-error">{live.error}</div>}
 
-      {view === "map" ? <DiscoveryMap /> : view === "table" ? (
+      {view === "table" ? (
         <div className="surface overflow-hidden overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-white/[0.04] border-b border-border">
