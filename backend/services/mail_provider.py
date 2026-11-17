@@ -2,8 +2,9 @@
 
 Never a pretend success: when nothing is configured the answer is `failed` and says what to configure.
 
-    e-mail    SMTP (the real channel: needs FEATURE_LIVE_SENDING and SMTP_*, recipients limited to the sandbox allowlist
-              while OUTREACH_SANDBOX is on) → else SendGrid (SENDGRID_API_KEY + SENDGRID_FROM_EMAIL) → else refused
+    e-mail    Brevo's HTTP API (BREVO_API_KEY, port 443: works where SMTP ports are closed) → else SMTP (SMTP_*);
+              both real channels need FEATURE_LIVE_SENDING, recipients limited to the sandbox allowlist while
+              OUTREACH_SANDBOX is on → else SendGrid (SENDGRID_API_KEY + SENDGRID_FROM_EMAIL) → else refused
     WhatsApp  Twilio (account SID starting with AC + token; recipients limited to OUTREACH_LIVE_PHONES while the sandbox
               is on) → else refused
 
@@ -19,14 +20,14 @@ import logging
 import uuid
 from typing import Optional
 
-from services import feature_flags, sendgrid_svc, smtp_svc, twilio_svc
+from services import brevo_svc, feature_flags, sendgrid_svc, smtp_svc, twilio_svc
 from services.outreach_os import channels
 from services.outreach_os.drafts import SenderIdentity
 
 logger = logging.getLogger(__name__)
 
 NOT_CONFIGURED = {
-    "email": "No e-mail provider is configured: set SMTP_HOST, SMTP_USERNAME and SMTP_PASSWORD (with "
+    "email": "No e-mail provider is configured: set BREVO_API_KEY, or SMTP_HOST, SMTP_USERNAME and SMTP_PASSWORD (with "
     "FEATURE_LIVE_SENDING=true), or SENDGRID_API_KEY and SENDGRID_FROM_EMAIL. Nothing was sent.",
     "whatsapp": "No WhatsApp provider is configured: set TWILIO_ACCOUNT_SID (starting with AC), TWILIO_AUTH_TOKEN and "
     "TWILIO_WHATSAPP_FROM. Nothing was sent.",
@@ -34,9 +35,11 @@ NOT_CONFIGURED = {
 
 
 def email_provider() -> Optional[str]:
-    """Which provider an e-mail would go through right now: "sink", "smtp", "sendgrid" or None."""
+    """Which provider an e-mail would go through right now: "sink", "brevo", "smtp", "sendgrid" or None."""
     if feature_flags.test_sink():
         return "sink"
+    if not feature_flags.dry_run() and brevo_svc.is_configured():
+        return "brevo"
     if not feature_flags.dry_run() and smtp_svc.is_configured():
         return "smtp"
     if sendgrid_svc.is_configured():
@@ -79,8 +82,8 @@ def send_email(
             "provider": "sink",
             "ambiguous": False,
         }
-    if provider == "smtp":
-        return {**_send_smtp(to_email, subject, body, headers or {}), "provider": "smtp"}
+    if provider in ("brevo", "smtp"):
+        return {**_send_live(to_email, subject, body, headers or {}), "provider": provider}
     if provider == "sendgrid":
         result = sendgrid_svc.send_email(to_email, subject, body, from_email=from_email, headers=headers)
         return {**result, "provider": "sendgrid", "ambiguous": False}
@@ -93,14 +96,24 @@ def send_email(
     }
 
 
-def _send_smtp(to_email: str, subject: str, body: str, headers: dict[str, str]) -> dict:
+def live_adapter(extra_allowed: tuple[str, ...] = ()) -> Optional[channels.ChannelAdapter]:
+    """The real e-mail channel for every path that sends a message: Brevo when its key is set (HTTPS, port 443), else
+    SMTP, else None (the caller refuses: fail closed). The sandbox applies to both."""
+    adapter: Optional[channels.ChannelAdapter] = brevo_svc.adapter_from_env(extra_allowed)
+    if adapter is None:
+        adapter = smtp_svc.adapter_from_env(extra_allowed)
+    return adapter
+
+
+def _send_live(to_email: str, subject: str, body: str, headers: dict[str, str]) -> dict:
     sender = SenderIdentity.from_env()
-    adapter = smtp_svc.adapter_from_env()
+    adapter = live_adapter()
     if sender is None or adapter is None:
         return {
             "status": "failed",
             "provider_id": None,
-            "error": "Sender identity (OUTREACH_SENDER_*) or SMTP settings are incomplete: nothing was sent",
+            "error": "Sender identity (OUTREACH_SENDER_*) or the e-mail provider settings are incomplete: "
+            "nothing was sent",
             "ambiguous": False,
         }
     message = channels.ChannelMessage(
@@ -117,7 +130,7 @@ def _send_smtp(to_email: str, subject: str, body: str, headers: dict[str, str]) 
         return {"status": "sent", "provider_id": result.provider_id, "error": None, "ambiguous": False}
     # "unknown" (connection lost after the message was handed over) is reported as a failure, flagged ambiguous: the
     # server may have accepted it, so no path may send it again by itself
-    error = result.error or "the SMTP server did not accept the message"
+    error = result.error or "the e-mail provider did not accept the message"
     return {"status": "failed", "provider_id": None, "error": error, "ambiguous": result.status == "unknown"}
 
 
