@@ -408,6 +408,10 @@ test("the last finished search comes back from the database after a reload, with
   await page.goto("/app/map");
   await expect(page.getByTestId("map-job")).toContainText("1 place saved from OpenStreetMap in 0.5 s");
   await expect(page.getByTestId("map-summary")).toContainText("1 place");
+  // one panel, in four steps, and what was left out is said with its reason
+  for (const step of ["map-step-zone", "map-step-search", "map-step-results", "map-step-campaign"]) await expect(page.getByTestId(step)).toBeVisible();
+  await expect(page.getByTestId("map-breakdown")).toContainText("1 lieu trouvé");
+  await expect(page.getByTestId("map-breakdown")).toContainText("1 exclu : téléphone ou e-mail non publié");
   await expect(page.getByTestId("map-cat-bakeries")).toHaveAttribute("aria-pressed", "true");
   await page.reload();
   await expect(page.getByTestId("map-job")).toContainText("1 place saved");
@@ -458,6 +462,8 @@ test("the sidebar folds and remembers it; the map has one real basemap and every
   await page.getByTestId("map-search-minimise").click();
   await expect(page.getByTestId("map-search-card")).toHaveCount(0);
   await expect(page.getByTestId("map-search-pill")).toBeVisible();
+  await expect(page.getByTestId("map-pill-status")).toBeVisible(); // the status stays in the pill, not in a second overlay
+  await expect(page.getByTestId("map-job")).toHaveCount(0);
   await page.getByTestId("map-search-expand").click();
   await expect(page.getByTestId("map-search-card")).toBeVisible();
   await expect(page.getByTestId("map-results")).toBeVisible(); // the results come back with the panel, not separately

@@ -145,6 +145,34 @@ class BulkResult:
     lead_ids: list[str] = field(default_factory=list)
 
 
+def _filtered(  # type: ignore[no-untyped-def]
+    stmt, *, stage: Optional[str], search: Optional[str], review_status: Optional[str]
+):
+    """The CRM filters, shared by the list and its count so the two always agree."""
+    if stage:
+        stmt = stmt.where(Lead.stage == stage)
+    if search:
+        pattern = f"%{search}%"
+        stmt = stmt.where(or_(Lead.full_name.ilike(pattern), Lead.email.ilike(pattern), Lead.company.ilike(pattern)))
+    if review_status:
+        stmt = stmt.where(Lead.review_status == review_status)
+    return stmt
+
+
+async def count_listed(
+    session: AsyncSession,
+    account_id: uuid.UUID,
+    *,
+    stage: Optional[str] = None,
+    search: Optional[str] = None,
+    review_status: Optional[str] = None,
+) -> int:
+    """How many leads the CRM holds for these filters: the list is capped, this number is not."""
+    stmt = select(func.count()).select_from(Lead).where(Lead.account_id == account_id, ACTIVE)
+    stmt = _filtered(stmt, stage=stage, search=search, review_status=review_status)
+    return int((await session.execute(stmt)).scalar_one())
+
+
 async def list_leads(
     session: AsyncSession,
     account_id: uuid.UUID,
@@ -153,6 +181,7 @@ async def list_leads(
     search: Optional[str] = None,
     sort: str = "heat",
     limit: int = 500,
+    review_status: Optional[str] = None,
 ) -> list[tuple[Lead, LeadExtra]]:
     """`sort`: "heat" (hottest first: real information and score; a CRM score of 0 means not scored, a discovery
     prospect is ranked on its latest prospect score) or "recent"."""
@@ -163,11 +192,7 @@ async def list_leads(
         .options(selectinload(Lead.contacts))
         .where(Lead.account_id == account_id, ACTIVE)
     )
-    if stage:
-        stmt = stmt.where(Lead.stage == stage)
-    if search:
-        pattern = f"%{search}%"
-        stmt = stmt.where(or_(Lead.full_name.ilike(pattern), Lead.email.ilike(pattern), Lead.company.ilike(pattern)))
+    stmt = _filtered(stmt, stage=stage, search=search, review_status=review_status)
     if sort == "recent":
         stmt = stmt.order_by(Lead.created_at.desc(), Lead.id)
     else:

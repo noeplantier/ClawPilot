@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { ArrowRight, Check, SkipForward, X } from "@phosphor-icons/react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -20,6 +20,7 @@ import { EmptyBlock, ErrorBlock, LoadingBlock } from "@/components/outreach/Stat
 // Approve/reject records a human decision (audited); skip just moves on without deciding.
 export default function ReviewQueue({ embedded = false }) {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [skipped, setSkipped] = useState([]);
   const [lane, setLane] = useState("all"); // all | top | hot | warm | cold
   const [showEmpty, setShowEmpty] = useState(() => readPref("review.showEmpty", false)); // prospects with no e-mail, phone or website
@@ -48,7 +49,12 @@ export default function ReviewQueue({ embedded = false }) {
     setError(null);
     try {
       await prospectsApi.review(current.id, decision, note);
-      toast.success(decision === "approve" ? `${current.name} approved` : `${current.name} rejected`);
+      if (decision === "approve") {
+        const id = current.id;
+        toast.success(`${current.name} approuvé : il est dans votre CRM.`, { action: { label: "Voir dans le CRM", onClick: () => navigate(`/app/leads?lead=${id}`) } });
+      } else {
+        toast.success(`${current.name} rejeté.`);
+      }
       setNote("");
       queue.reload();
       counts.reload();

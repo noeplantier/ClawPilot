@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 import {
@@ -15,8 +15,8 @@ import HeatBadge from "@/components/outreach/HeatBadge";
 import EmptyToggle from "@/components/outreach/EmptyToggle";
 import { LANES, LANE_LABEL, inLane, laneCounts, splitEmpty } from "@/lib/heat";
 import { LIVE_MS, useLive } from "@/lib/live";
+import { useAsync } from "@/lib/outreach";
 import { readPref, writePref } from "@/lib/uiPrefs";
-import DiscoveryMap from "@/components/DiscoveryMap";
 
 // Where a prospect from discovery (map, sources, import) stands in the human review; a CRM lead has none.
 const REVIEW_LABEL = { pending: "to review", approved: "approved", rejected: "rejected" };
@@ -51,8 +51,16 @@ export default function Leads() {
   const [scoringJob, setScoringJob] = useState(null);
   const [scoringError, setScoringError] = useState(null);
 
-  // Real leads, hottest first (real information + score), refreshed in the background.
-  const live = useLive(() => api.get("/leads", { params: { search, sort: "heat" } }).then((r) => r.data), [search], { key: `leads:${search || ""}` });
+  // Only the approved ones (?review=approved, the link shown after an approval), or every lead.
+  const review = searchParams.get("review") === "approved" ? "approved" : "";
+  // Real leads, hottest first (real information + score), refreshed in the background. The list is capped by the server:
+  // its real total is asked for separately, so a cut list says so instead of hiding the rest.
+  const live = useLive(() => api.get("/leads", { params: { search, sort: "heat", ...(review ? { review_status: review } : {}) } }).then((r) => r.data), [search, review], { key: `leads:${search || ""}:${review}` });
+  const total = useAsync(() => api.get("/leads/count", { params: { search, ...(review ? { review_status: review } : {}) } }).then((r) => r.data.total), [search, review], { key: `leads:count:${search || ""}:${review}`, intervalMs: LIVE_MS });
+  const cut = typeof total.data === "number" && live.data ? Math.max(0, total.data - live.data.length) : 0;
+  // A lead named in the address (?lead=<id>, the link « Voir dans le CRM ») opens at once, wherever it ranks in the list.
+  const leadParam = searchParams.get("lead");
+  useEffect(() => { if (leadParam) setDetailLeadId(leadParam); }, [leadParam]);
   const liveReload = live.reload;
   const everyLead = useMemo(() => live.data || [], [live.data]);
   const { shown: reachable, empty } = useMemo(() => splitEmpty(everyLead, showEmpty), [everyLead, showEmpty]);
@@ -64,8 +72,25 @@ export default function Leads() {
     return result;
   }, [reachable, lane, priorityFilter, fitSort]);
   const toggleEmpty = () => setShowEmpty((v) => { writePref("leads.showEmpty", !v); return !v; });
+  const navigate = useNavigate();
   const setCrmView = (next) => {
-    setSearchParams(next === "table" ? {} : { view: next }, { replace: true });
+    if (next === "map") { navigate("/app/map"); return; } // one map only: Prospection › Carte
+    const params = next === "table" ? {} : { view: next };
+    if (review) params.review = review;
+    setSearchParams(params, { replace: true });
+  };
+  const setReview = (next) => {
+    const params = view === "table" ? {} : { view };
+    if (next) params.review = next;
+    setSearchParams(params, { replace: true });
+  };
+  const closeDetail = () => {
+    setDetailLeadId(null);
+    if (leadParam) {
+      const params = new URLSearchParams(searchParams);
+      params.delete("lead");
+      setSearchParams(params, { replace: true });
+    }
   };
 
   const allVisible = leads.map((l) => l.id);
@@ -144,6 +169,7 @@ export default function Leads() {
     setAiOpen(true);
   };
 
+  if (view === "map") return <Navigate to="/app/map" replace />;
   return (
     <div className="p-6 md:p-10 space-y-6">
       <div className="flex items-start justify-between flex-wrap gap-4">
@@ -186,12 +212,26 @@ export default function Leads() {
             </button>
           ))}
         </div>
+        <div className="flex gap-1" role="group" aria-label="Revue" data-testid="leads-review-filter">
+          {[["", "Tous"], ["approved", "Approuvés"]].map(([key, label]) => (
+            <button key={key || "all"} type="button" onClick={() => setReview(key)} aria-pressed={review === key} data-testid={`review-filter-${key || "all"}`}
+              className={`px-3 py-1.5 rounded-md text-sm border font-display ${review === key ? "bg-brand-violet text-white border-white/20" : "bg-card text-soft border-border hover:border-white/20"}`}>
+              {label}
+            </button>
+          ))}
+        </div>
         <div className="flex items-center gap-2 px-3 py-1.5 border border-border rounded-md bg-card">
           <MagnifyingGlass size={14} className="text-faint" />
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, email, company" className="bg-transparent outline-none text-sm w-40 sm:w-56 font-mono" data-testid="leads-search" />
         </div>
       </div>
 
+      {cut > 0 && (
+        <p role="status" className="rounded-xl border border-amber-400/30 bg-amber-500/10 p-3 text-sm" data-testid="leads-cut">
+          {live.data.length} leads affichés sur {total.data} (les plus chauds d&apos;abord) : {cut} ne sont pas dans cette liste. Cherchez un nom
+          {review ? "" : " ou filtrez « Approuvés »"} pour les retrouver.
+        </p>
+      )}
       <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filter by heat" data-testid="leads-lanes">
         {LANES.map((k) => [k, `${LANE_LABEL[k]} ${k === "all" ? counts.total : counts[k]}`]).map(([key, label]) => (
           <button key={key} onClick={() => setLane(key)} aria-pressed={lane === key} data-testid={`lane-${key}`}
@@ -228,7 +268,7 @@ export default function Leads() {
 
       {live.error && <div role="alert" className="text-sm text-red-300" data-testid="leads-error">{live.error}</div>}
 
-      {view === "map" ? <DiscoveryMap /> : view === "table" ? (
+      {view === "table" ? (
         <div className="surface overflow-hidden overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-white/[0.04] border-b border-border">
@@ -388,7 +428,7 @@ export default function Leads() {
       <BulkLeadsModal open={showBulk} onClose={() => setShowBulk(false)} onDone={load} />
       <BatchComposerModal open={showBatch} onClose={() => setShowBatch(false)} />
       <AIComposerModal open={aiOpen} onClose={() => setAiOpen(false)} defaults={aiDefaults} />
-      <LeadDetailDrawer open={!!detailLeadId} leadId={detailLeadId} onClose={() => setDetailLeadId(null)} onUpdate={load} />
+      <LeadDetailDrawer open={!!detailLeadId} leadId={detailLeadId} onClose={closeDetail} onUpdate={load} />
       <LeadsBulkBar
         selectedIds={Array.from(selected)}
         onCleared={() => setSelected(new Set())}

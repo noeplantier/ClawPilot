@@ -53,7 +53,9 @@ class Campaign(Base, UUIDPKMixin, TimestampMixin, SoftDeleteMixin):
     # The perimeter of a "zone -> draft -> approval" campaign: {kind: "bbox", south, west, north, east, category,
     # label}.
     # NULL for every other campaign. Only prospects positioned inside it are candidates.
-    zone: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    zone: Mapped[dict | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )  # None is SQL NULL, never JSON null
     channels: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=False, server_default=text("'{email}'"))
     agent_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("agents.id", ondelete="SET NULL"), nullable=True

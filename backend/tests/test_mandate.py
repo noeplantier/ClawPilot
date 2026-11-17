@@ -209,7 +209,8 @@ def test_a_campaign_has_one_mandate_at_a_time_and_a_non_zone_campaign_has_none()
     assert _create(org, jid).status_code == 409
     other = requests.post(f"{API}/campaigns", headers=org["headers"], json={"name": "Séquence", "channels": ["email"]})
     if other.status_code == 200:
-        assert _create(org, other.json()["id"]).status_code == 404  # no zone: not a journey
+        refused = _create(org, other.json()["id"])  # no zone: not a journey, and the answer says so
+        assert refused.status_code == 422 and refused.json()["detail"]["code"] == "not_a_zone_campaign"
 
 
 # ================================================================== the explicit authorisation

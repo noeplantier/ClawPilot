@@ -13,7 +13,7 @@ import { describeApiError } from "@/lib/outreachFormat";
 import { isTypingTarget, readPref, writePref } from "@/lib/uiPrefs";
 import {
   CATEGORY_LABELS, MAX_SITES_CHECKED, STATUS_LABEL, areaTooLarge, classifyProspect, markerColor,
-  journeyLink, panelPadding, reachablePlace, readyOnly, readySummary, summaryText, zoneOf, zoneSummary,
+  breakdownText, journeyLink, panelPadding, reachablePlace, readyOnly, readySummary, resultBreakdown, summaryText, zoneOf, zoneSummary,
 } from "@/lib/mapSearch";
 import { fetchOverpass } from "@/lib/overpassBrowser";
 import { ATTEST_PREF, ATTEST_TEXT, addManyBodies, describeAddedMany, sumAdded } from "@/lib/mapQuickAdd";
@@ -357,6 +357,7 @@ function MapView({ canImport }) {
     return [...unique.values()];
   }, [result, known]);
   const found = useMemo(() => (showAllFound ? places : places.filter(reachablePlace)), [places, showAllFound]);
+  const breakdown = useMemo(() => resultBreakdown(result?.places || [], known), [result, known]);
   const toggle = useCallback((id) => setSelected((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; }), []);
 
   useEffect(() => {
@@ -482,12 +483,12 @@ function MapView({ canImport }) {
           <button className="btn-ink !rounded-full !px-3 !py-1 text-xs" onClick={search} disabled={busy || tooLarge} data-testid="map-search">
             <MagnifyingGlass size={14} /> {busy ? "RECHERCHE…" : "RECHERCHER"}
           </button>
+          {job && (
+            <span className="max-w-[14rem] truncate pr-2 text-[11px] text-soft" role="status" aria-live="polite" data-testid="map-pill-status">
+              {job.status === "failed" ? "Recherche échouée : ouvrez le panneau" : jobLine(job)}
+            </span>
+          )}
         </div>
-      )}
-      {!overlaysHidden && !searchOpen && job && (
-        <p className={`absolute z-[499] top-[3.9rem] left-3 text-xs px-3 py-1 ${GLASS} !rounded-full`} role="status" aria-live="polite" data-testid="map-job">
-          {job.status === "failed" ? `${job.error_code} : ouvrez le panneau pour le détail.` : jobLine(job)}
-        </p>
       )}
       {!overlaysHidden && searchOpen && (
         <aside className={`absolute z-[500] top-14 left-3 right-3 md:top-3 md:bottom-8 md:right-auto md:w-[27rem] max-h-[calc(100%-4rem)] md:max-h-none flex flex-col overflow-hidden ${GLASS}`} aria-label="Prospection" data-testid="map-search-card">
@@ -503,6 +504,7 @@ function MapView({ canImport }) {
           <div className="flex-1 min-h-0 overflow-y-auto">
             {/* 1 · the zone and the essential criteria */}
             <section className="p-4 space-y-3" aria-label="Zone et critères">
+              <h2 className="eyebrow" data-testid="map-step-zone">1 · Zone</h2>
               <CityBox stats={cityStats} positions={positions} onPick={goTo} />
               <div className="flex gap-1.5 flex-wrap" role="group" aria-label="Business category">
                 {Object.entries(CATEGORY_LABELS).map(([k, v]) => (
@@ -543,6 +545,7 @@ function MapView({ canImport }) {
                   </p>
                 </div>
               )}
+              <h2 className="eyebrow pt-1" data-testid="map-step-search">2 · Recherche</h2>
               <button className="btn-ink w-full justify-center" onClick={search} disabled={busy || tooLarge} data-testid="map-search">
                 <MagnifyingGlass size={14} /> {busy ? "RECHERCHE…" : "RECHERCHER DANS CETTE ZONE"}
               </button>
@@ -563,35 +566,7 @@ function MapView({ canImport }) {
               {error && <div role="alert" className="text-sm text-red-300" data-testid="map-error">{error}</div>}
             </section>
 
-            {/* 3 · the results: the qualified prospects already held, then what the search found */}
-            {mine.length > 0 && showMine && (
-              <section className="p-4 border-t border-border" data-testid="map-mine-list" aria-label="Prospects qualifiés">
-                <div className="flex items-center justify-between gap-2">
-                  <h2 className="font-display text-lg font-bold">{group ? `Cluster · ${group.length} qualified prospects` : "Qualified prospects"}</h2>
-                  {group && <button className="underline text-xs" onClick={() => setGroup(null)} data-testid="cluster-close">All</button>}
-                </div>
-                {list.length === 0 && <p className="text-sm text-soft mt-1" data-testid="mine-none">{ready.length === 0 ? "No hot lead with a phone and an e-mail yet." : "No hot lead matches the filters."}</p>}
-                <ul className="divide-y divide-border">
-                  {list.map((p) => (
-                    <li key={p.id} className="py-1.5 flex gap-2 items-start text-sm" data-testid="mine-row">
-                      <input type="checkbox" checked={picked.has(p.id)} onChange={() => togglePick(p.id)} aria-label={`Select ${p.name}`} className="mt-1" />
-                      <button className="text-left min-w-0 flex-1" onClick={() => map.current.flyTo([p.lat, p.lon], 17, { duration: 1 })}>
-                        <span className="font-medium block truncate">{p.name}</span>
-                        <span className="block text-xs text-soft truncate">{p.heat ? `${p.heat.tier} ${p.heat.value} · ` : ""}{STATUS_LABEL[p.review_status]} · {p.score === null || p.score === undefined ? "not scored" : `score ${p.score}`}{p.city ? ` · ${p.city}` : ""}</span>
-                      </button>
-                      <Link to={`/app/prospects/${p.id}`} className="text-xs underline shrink-0">open</Link>
-                    </li>
-                  ))}
-                </ul>
-                {!group && shown.length > list.length && <p className="text-xs text-soft mt-1">Showing the first {list.length} of {shown.length}: click a cluster or filter to narrow.</p>}
-                <button className="btn-ink w-full justify-center mt-2" disabled={starting || pickInfo.ids.length === 0} onClick={startCampaign} data-testid="start-campaign">
-                  {starting ? "CREATING…" : `START CAMPAIGN (${pickInfo.ids.length})`}
-                </button>
-                <p className="text-[11px] text-soft mt-1" data-testid="start-campaign-note">
-                  {picked.size === 0 ? "Tick prospects to start a campaign. Only approved ones can join; nothing is sent until you add steps and launch." : pickInfo.excluded > 0 ? `${pickInfo.excluded} selected prospect${pickInfo.excluded === 1 ? " is" : "s are"} not approved and will be left out.` : "Creates a draft campaign: nothing is sent."}
-                </p>
-              </section>
-            )}
+            {/* 3 · the results of the search: what was found, what is reachable, what was left out and why */}
             {!result ? (
               <section className="p-4 border-t border-border" data-testid="map-empty">
                 <h2 className="font-display text-lg font-bold">Nothing searched yet</h2>
@@ -600,6 +575,8 @@ function MapView({ canImport }) {
             ) : (
               <section className="border-t border-border" data-testid="map-results" aria-label="Résultats de la recherche">
                 <div className="p-4 pb-2 space-y-2">
+                  <h2 className="eyebrow" data-testid="map-step-results">3 · Résultats</h2>
+                  {breakdown.total > 0 && <p className="text-sm font-medium" data-testid="map-breakdown">{breakdownText(breakdown)}</p>}
                   <p className="text-sm" data-testid="map-summary">{summaryText(places, result.truncated)}</p>
                   <label className="flex items-center gap-2 text-xs" data-testid="map-found-toggle">
                     <input type="checkbox" checked={showAllFound} onChange={(e) => setShowAllFound(e.target.checked)} />
@@ -632,9 +609,39 @@ function MapView({ canImport }) {
               </div>
             )}
             {!canImport && result && <p className="p-3 text-xs text-amber-300 border-t border-border" data-testid="map-import-off">Importing is off: set FEATURE_PROSPECT_IMPORT=true to import the selection.</p>}
+            {/* your qualified prospects on the map (squares), with their filters and the quick campaign */}
+            {mine.length > 0 && showMine && (
+              <section className="p-4 border-t border-border" data-testid="map-mine-list" aria-label="Prospects qualifiés">
+                <div className="flex items-center justify-between gap-2">
+                  <h2 className="font-display text-lg font-bold">{group ? `Cluster · ${group.length} qualified prospects` : "Qualified prospects"}</h2>
+                  {group && <button className="underline text-xs" onClick={() => setGroup(null)} data-testid="cluster-close">All</button>}
+                </div>
+                {list.length === 0 && <p className="text-sm text-soft mt-1" data-testid="mine-none">{ready.length === 0 ? "No hot lead with a phone and an e-mail yet." : "No hot lead matches the filters."}</p>}
+                <ul className="divide-y divide-border">
+                  {list.map((p) => (
+                    <li key={p.id} className="py-1.5 flex gap-2 items-start text-sm" data-testid="mine-row">
+                      <input type="checkbox" checked={picked.has(p.id)} onChange={() => togglePick(p.id)} aria-label={`Select ${p.name}`} className="mt-1" />
+                      <button className="text-left min-w-0 flex-1" onClick={() => map.current.flyTo([p.lat, p.lon], 17, { duration: 1 })}>
+                        <span className="font-medium block truncate">{p.name}</span>
+                        <span className="block text-xs text-soft truncate">{p.heat ? `${p.heat.tier} ${p.heat.value} · ` : ""}{STATUS_LABEL[p.review_status]} · {p.score === null || p.score === undefined ? "not scored" : `score ${p.score}`}{p.city ? ` · ${p.city}` : ""}</span>
+                      </button>
+                      <Link to={`/app/prospects/${p.id}`} className="text-xs underline shrink-0">open</Link>
+                    </li>
+                  ))}
+                </ul>
+                {!group && shown.length > list.length && <p className="text-xs text-soft mt-1">Showing the first {list.length} of {shown.length}: click a cluster or filter to narrow.</p>}
+                <button className="btn-ink w-full justify-center mt-2" disabled={starting || pickInfo.ids.length === 0} onClick={startCampaign} data-testid="start-campaign">
+                  {starting ? "CREATING…" : `START CAMPAIGN (${pickInfo.ids.length})`}
+                </button>
+                <p className="text-[11px] text-soft mt-1" data-testid="start-campaign-note">
+                  {picked.size === 0 ? "Tick prospects to start a campaign. Only approved ones can join; nothing is sent until you add steps and launch." : pickInfo.excluded > 0 ? `${pickInfo.excluded} selected prospect${pickInfo.excluded === 1 ? " is" : "s are"} not approved and will be left out.` : "Creates a draft campaign: nothing is sent."}
+                </p>
+              </section>
+            )}
           </div>
           {/* 4 · the way to the campaign: the perimeter that was really searched, then the three decisions */}
           <footer className="border-t border-border p-3 space-y-2 bg-white/[0.02]" data-testid="map-campaign">
+            <h2 className="eyebrow" data-testid="map-step-campaign">4 · Campagne</h2>
             {zoneOf(job) ? (
               <>
                 <p className="text-[11px] text-soft" data-testid="map-zone">{zoneSummary(zoneOf(job))}</p>
@@ -666,8 +673,8 @@ export default function MapSearch() {
   return (
     <div className="p-6 md:p-10 space-y-6 max-w-6xl" data-testid="map-page">
       <div>
-        <div className="eyebrow">live.map</div>
-        <h1 className="mt-3 text-4xl font-bold tracking-tight leading-[1.15]">Map search</h1>
+        <div className="eyebrow">Prospection</div>
+        <h1 className="mt-3 text-4xl font-bold tracking-tight leading-[1.15]">Carte</h1>
         <p className="text-soft mt-1 max-w-3xl">
           Find real local businesses on the map, with the phone, e-mail and website their OpenStreetMap contributors published.
           Free, no key. <Link to="/app/prospects/import" className="underline">Import a list instead</Link>

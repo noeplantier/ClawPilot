@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { formDefaults, toPayload, validateForm } from "@/lib/mandateFormat";
 
 const FIELD = "neo-input w-full";
@@ -18,6 +18,10 @@ function Num({ form, set, errors, name, label, hint, min, max, step = 1 }) {
 export default function MandateForm({ limits, journeys, busy, onCreate }) {
   const [campaignId, setCampaignId] = useState(journeys[0] ? journeys[0].id : "");
   const campaign = journeys.find((j) => j.id === campaignId);
+  // The list is refreshed in the background: a campaign that left it is never sent, the first remaining one is chosen.
+  useEffect(() => {
+    if (!journeys.some((j) => j.id === campaignId)) setCampaignId(journeys[0] ? journeys[0].id : "");
+  }, [journeys, campaignId]);
   const [form, setForm] = useState(() => formDefaults(limits, journeys[0]));
   const [shown, setShown] = useState(false);
   const errors = useMemo(() => validateForm(form, limits), [form, limits]);

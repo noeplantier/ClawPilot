@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Lightning, Sparkle } from "@phosphor-icons/react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -11,6 +12,7 @@ import { describeApiError } from "@/lib/outreachFormat";
 // each decision is audited, the suppression list is checked for each, and nothing is sent.
 export default function AutoSelection({ onDecided }) {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const decide = canDecide(user);
   const sel = useAsync(() => autoSelectionApi.selection(200), [], { key: "auto:selection", intervalMs: LIVE_MS });
   const [open, setOpen] = useState(false);
@@ -24,7 +26,9 @@ export default function AutoSelection({ onDecided }) {
     try {
       const out = await autoSelectionApi.review(d.items.map((i) => i.id), "approve");
       const extra = [out.suppressed ? `${out.suppressed} sur la liste d'opposition` : "", out.skipped ? `${out.skipped} déjà décidé(s)` : ""].filter(Boolean).join(", ");
-      toast.success(`${out.approved} prospect(s) approuvé(s) et ajouté(s) au CRM${extra ? ` (${extra})` : ""}. Rien n'a été envoyé.`);
+      toast.success(`${out.approved} prospect(s) approuvé(s) et ajouté(s) au CRM${extra ? ` (${extra})` : ""}. Rien n'a été envoyé.`, {
+        action: { label: "Voir dans le CRM", onClick: () => navigate("/app/leads?review=approved") },
+      });
       sel.reload();
       if (onDecided) onDecided();
     } catch (e) {
