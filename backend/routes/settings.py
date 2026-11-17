@@ -10,6 +10,7 @@ import os
 import time
 import uuid
 from datetime import datetime, timezone
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
@@ -18,7 +19,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from db.session import get_db_session
 from db.url import describe_database
 from deps import get_current_user, require_roles
-from models import AIStatus, IntegrationSettings, IntegrationTestOut, OfferIn, OfferOut, OutreachStatus, WebhookStatus
+from models import (
+    AIStatus,
+    IntegrationSettings,
+    IntegrationTestOut,
+    OfferCaseOut,
+    OfferIn,
+    OfferItemIn,
+    OfferOut,
+    OffersIn,
+    OffersOut,
+    OutreachStatus,
+    WebhookStatus,
+)
 from repositories import audit_repo, draft_job_repo
 from services import (
     ai_svc,
@@ -226,7 +239,16 @@ async def put_offer(payload: OfferIn, user: dict = Depends(decider), session: As
     offer = ai_draft.valid_offer(payload.model_dump())
     if offer is None:
         raise HTTPException(status_code=422, detail="The offer is incomplete")
-    await draft_job_repo.set_offer(session, account_id, offer)
+    stored = ai_draft.valid_offers(await draft_job_repo.offer_of(session, account_id))
+    if stored and stored["default"] != ai_draft.SINGLE:
+        # three offers are kept: this older screen edits the default one only, never erases the others
+        offers = {k: dict(v) for k, v in stored["offers"].items()}
+        offers[stored["default"]] = {k: offer[k] for k in ("name", "pitch", "cta")}
+        await draft_job_repo.set_offer(
+            session, account_id, {"language": offer["language"], "default": stored["default"], "offers": offers}
+        )
+    else:
+        await draft_job_repo.set_offer(session, account_id, offer)
     await audit_repo.log(
         session,
         account_id,
@@ -239,3 +261,69 @@ async def put_offer(payload: OfferIn, user: dict = Depends(decider), session: As
     await session.commit()
     draft_runner.kick(account_id)
     return OfferOut(configured=True, offer=OfferIn(**offer))
+
+
+WHEN = {
+    ai_draft.KIND_CREATION: "Prospects sans site identifié après recherche dans leur annuaire.",
+    ai_draft.KIND_REDESIGN: "Prospects dont le site n'a pas répondu à la dernière vérification.",
+    ai_draft.KIND_SEO_GEO: "Prospects dont le site existe.",
+}
+
+
+def _offers_out(found: Optional[dict]) -> OffersOut:
+    offers = (found or {}).get("offers", {})
+    default = (found or {}).get("default")
+    cases = []
+    for kind in ai_draft.OFFER_KINDS:
+        item = offers.get(kind) or (offers.get(ai_draft.SINGLE) if default == ai_draft.SINGLE else None)
+        when = WHEN[kind] + (" Et, par défaut, ceux dont le site est inconnu." if kind == default else "")
+        cases.append(
+            OfferCaseOut(
+                kind=kind,
+                label=ai_draft.KIND_LABELS[kind],
+                when=when,
+                configured=item is not None,
+                offer=OfferItemIn(**item) if item else None,
+            )
+        )
+    return OffersOut(
+        configured=found is not None, language=(found or {}).get("language", "fr"), default=default, cases=cases
+    )
+
+
+@router.get("/offers", response_model=OffersOut)
+async def get_offers(user: dict = Depends(get_current_user), session: AsyncSession = Depends(get_db_session)):
+    """The three offers and which prospects receive each one (from what is known of their web presence)."""
+    return _offers_out(ai_draft.valid_offers(await draft_job_repo.offer_of(session, uuid.UUID(user["org_id"]))))
+
+
+@router.put("/offers", response_model=OffersOut)
+async def put_offers(payload: OffersIn, user: dict = Depends(decider), session: AsyncSession = Depends(get_db_session)):
+    """Save one to three offers, then prepare again the drafts that change (in the background). Nothing is sent."""
+    account_id = uuid.UUID(user["org_id"])
+    raw = {
+        "language": payload.language,
+        "default": payload.default,
+        "offers": {k: v.model_dump() for k, v in payload.offers.items()},
+    }
+    found = ai_draft.valid_offers(raw)
+    if found is None or found["default"] != payload.default:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "offers_incomplete", "message": "L'offre par défaut doit être complète.", "retry_at": None},
+        )
+    await draft_job_repo.set_offer(
+        session, account_id, {"language": found["language"], "default": found["default"], "offers": found["offers"]}
+    )
+    await audit_repo.log(
+        session,
+        account_id,
+        action="offer.updated",
+        resource_type="account",
+        resource_id=account_id,
+        actor_user_id=uuid.UUID(user["id"]),
+        diff={"kinds": sorted(found["offers"]), "default": found["default"], "language": found["language"]},
+    )
+    await session.commit()
+    draft_runner.kick(account_id)
+    return _offers_out(found)

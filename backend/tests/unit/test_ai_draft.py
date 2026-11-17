@@ -137,3 +137,78 @@ def test_even_with_an_established_absence_the_message_may_not_say_you_have_no_si
     assert "web_presence_claim" in d.problems(msg(GOOD_BODY + " Vous n'avez pas de site."), ctx(d.SITE_NONE_IDENTIFIED))
     ok = GOOD_BODY + " Je n'ai pas identifié de site officiel pour votre établissement."
     assert d.problems(msg(ok), ctx(d.SITE_NONE_IDENTIFIED)) == []
+
+
+# ------------------------------------------------------------------------------------------- three offers, one per case
+THREE = {
+    "language": "fr",
+    "default": "seo_geo",
+    "offers": {
+        "creation": {
+            "name": "Création de site",
+            "pitch": "Un site clair qui présente votre activité et vos horaires.",
+            "cta": "Un appel de 15 minutes ?",
+        },
+        "refonte_maintenance": {
+            "name": "Refonte et maintenance",
+            "pitch": "Un site tenu à jour, sécurisé et simple à modifier.",
+            "cta": "Un appel de 15 minutes ?",
+        },
+        "seo_geo": {
+            "name": "SEO / GEO",
+            "pitch": "Être trouvé sur les moteurs, les cartes et les assistants IA.",
+            "cta": "Un appel de 15 minutes ?",
+        },
+    },
+}
+
+
+def test_the_offer_follows_what_is_known_of_the_site_never_a_guess():
+    assert d.offer_for(THREE, d.SITE_NONE_IDENTIFIED)["kind"] == "creation"
+    assert d.offer_for(THREE, d.SITE_UNREACHABLE)["kind"] == "refonte_maintenance"
+    assert d.offer_for(THREE, d.SITE_FOUND)["kind"] == "seo_geo"
+    unknown = d.offer_for(THREE, d.SITE_UNKNOWN)
+    assert unknown["kind"] == "seo_geo"  # the default: an empty field is never "no website"
+
+
+def test_a_missing_case_falls_back_to_the_default_and_incomplete_offers_are_left_out():
+    two = {**THREE, "offers": {**THREE["offers"], "creation": {"name": "x", "pitch": "short", "cta": ""}}}
+    assert set(d.valid_offers(two)["offers"]) == {"refonte_maintenance", "seo_geo"}
+    assert d.offer_for(two, d.SITE_NONE_IDENTIFIED)["kind"] == "seo_geo"
+    assert d.valid_offers({"offers": {}}) is None and d.valid_offers(None) is None
+    bad_default = {**THREE, "default": "casino"}
+    assert d.valid_offers(bad_default)["default"] == "refonte_maintenance"  # first complete one, in order
+
+
+def test_an_older_single_offer_still_serves_every_case_unchanged():
+    single = {
+        "name": "Site vitrine",
+        "pitch": "Un site clair qui présente votre activité et vos horaires.",
+        "cta": "On en parle ?",
+        "language": "en",
+    }
+    for state in d.STATES:
+        out = d.offer_for(single, state)
+        assert out["name"] == "Site vitrine" and out["language"] == "en" and "angle" not in out
+    assert d.valid_offer(single) == {
+        "name": "Site vitrine",
+        "pitch": single["pitch"],
+        "cta": "On en parle ?",
+        "language": "en",
+    }
+
+
+def test_the_default_offer_is_what_zone_campaigns_and_mandates_pin():
+    assert d.valid_offer(THREE) == {**THREE["offers"]["seo_geo"], "language": "fr"}
+
+
+def test_no_angle_claims_a_measured_defect():
+    for kind in d.OFFER_KINDS:
+        angle = d.KIND_ANGLES[kind].lower()
+        assert "nothing was measured" in angle or "do not judge" in angle or "say only what" in angle
+
+
+def test_the_angle_of_the_chosen_offer_reaches_the_provider():
+    ctx = d.DraftContext(name="Chez A", activity="bakeries", city="Lyon", state=d.SITE_FOUND, facts=(), language="fr")
+    system = d.build_messages(ctx, d.offer_for(THREE, ctx.state))[0]["content"]
+    assert "Never say it is badly ranked" in system
