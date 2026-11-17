@@ -212,3 +212,18 @@ def test_the_angle_of_the_chosen_offer_reaches_the_provider():
     ctx = d.DraftContext(name="Chez A", activity="bakeries", city="Lyon", state=d.SITE_FOUND, facts=(), language="fr")
     system = d.build_messages(ctx, d.offer_for(THREE, ctx.state))[0]["content"]
     assert "Never say it is badly ranked" in system
+
+
+def test_a_targeted_batch_message_carries_the_offer_of_its_case_in_the_organisation_s_words_only():
+    found = d.targeted_template(THREE, d.SITE_FOUND)
+    assert found == {
+        "kind": "seo_geo",
+        "subject": "SEO / GEO · {{company}}",
+        "body": "Bonjour {{first_name}},\n\nÊtre trouvé sur les moteurs, les cartes et les assistants IA.\n\n"
+        "Un appel de 15 minutes ?",
+    }
+    assert d.targeted_template(THREE, d.SITE_UNREACHABLE)["kind"] == "refonte_maintenance"
+    assert d.targeted_template(THREE, d.SITE_NONE_IDENTIFIED)["kind"] == "creation"
+    unknown = d.targeted_template(THREE, d.SITE_UNKNOWN)
+    assert unknown["kind"] == THREE["default"] and "site" not in unknown["body"].split("\n\n")[0]
+    assert d.targeted_template({"language": "fr"}, d.SITE_FOUND) is None  # no complete offer: nothing is written

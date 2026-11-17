@@ -65,3 +65,39 @@ test("AI writing waits for an offer: it never presents another product", async (
   await act(async () => q("batch-ai-button").click());
   expect(api.post).toHaveBeenCalledWith("/ai/generate", expect.objectContaining({ product: `Création de site : ${OFFER.pitch}`, goal: OFFER.cta }));
 });
+
+const PLAN = { configured: true, counts: { seo_geo: 1 }, labels: { seo_geo: "SEO / GEO" }, items: [{ lead_id: "l1", state: "site_found", kind: "seo_geo" }], not_sendable: 0 };
+
+async function pickLead() {
+  await act(async () => q("batch-lead-l1").querySelector("input").click());
+  await act(async () => {});
+}
+
+test("nothing leaves on the first click: the batch asks for a confirmation first, and cancel sends nothing", async () => {
+  await show();
+  await act(async () => q("batch-offer-creation").click());
+  await pickLead();
+  await act(async () => q("batch-dispatch-button").click());
+  expect(api.post).not.toHaveBeenCalled();
+  expect(q("batch-confirm").textContent).toContain("1 message, un par destinataire");
+  await act(async () => q("batch-confirm-cancel").click());
+  expect(api.post).not.toHaveBeenCalled();
+  api.post.mockResolvedValue({ data: { sent: 1, failed: 0, skipped: 0, dispatched: 1 } });
+  await act(async () => q("batch-dispatch-button").click());
+  await act(async () => q("batch-confirm-go").click());
+  expect(api.post).toHaveBeenCalledWith("/messages/email/batch", expect.objectContaining({ lead_ids: ["l1"], subject: "Création de site · {{company}}" }));
+});
+
+test("a targeted batch shows the server's split by offer and sends each lead its own offer, with no shared text", async () => {
+  api.post.mockImplementation((url) => Promise.resolve({ data: url === "/messages/email/targeted-preview" ? PLAN : { sent: 1, failed: 0, skipped: 0 } }));
+  await show();
+  await act(async () => q("batch-offer-targeted").click());
+  expect(q("batch-subject")).toBeNull(); // no shared subject or body in a targeted batch
+  await pickLead();
+  expect(api.post).toHaveBeenCalledWith("/messages/email/targeted-preview", { lead_ids: ["l1"] });
+  expect(q("batch-targeted-breakdown").textContent).toBe("Répartition : 1 · SEO / GEO.");
+  await act(async () => q("batch-dispatch-button").click());
+  expect(q("batch-confirm").textContent).toContain("1 · SEO / GEO");
+  await act(async () => q("batch-confirm-go").click());
+  expect(api.post).toHaveBeenLastCalledWith("/messages/email/batch", { lead_ids: ["l1"], targeted: true });
+});
