@@ -14,7 +14,17 @@ from typing import Any, Callable, Optional
 
 import requests
 
-from services import ai_svc, feature_flags, imap_svc, overpass_svc, registry_svc, sendgrid_svc, smtp_svc, twilio_svc
+from services import (
+    ai_svc,
+    brevo_svc,
+    feature_flags,
+    imap_svc,
+    overpass_svc,
+    registry_svc,
+    sendgrid_svc,
+    smtp_svc,
+    twilio_svc,
+)
 
 
 def _result(outcome: str, detail: str, started: Optional[float] = None) -> dict[str, Any]:
@@ -101,6 +111,36 @@ def _twilio_client(sid: str, token: str) -> Any:
     from twilio.rest import Client
 
     return Client(sid, token)
+
+
+def brevo(get: Callable[..., Any] = requests.get) -> dict[str, Any]:
+    """Reads the account (GET /v3/account): proves the key without sending anything. The answer (company, e-mail,
+    plan) is never echoed: only the outcome."""
+    config = brevo_svc.BrevoConfig.from_env()
+    if config is None:
+        return _result("skipped", "BREVO_API_KEY is not set.")
+    started = time.monotonic()
+    try:
+        response = get(
+            f"{brevo_svc.API_ROOT}/account",
+            headers={"api-key": config.api_key, "accept": "application/json"},
+            timeout=(5, 15),
+            allow_redirects=False,
+        )
+    except requests.Timeout:
+        return _result("failed", "Brevo did not answer in time.", started)
+    except requests.RequestException as exc:
+        return _result("failed", f"Brevo could not be reached ({type(exc).__name__}).", started)
+    code = int(response.status_code)
+    if code in (401, 403):
+        return _result("failed", f"Brevo rejected the key (HTTP {code}). Check BREVO_API_KEY.", started)
+    if code != 200:
+        return _result("failed", f"Brevo answered HTTP {code}.", started)
+    return _result(
+        "passed",
+        "Brevo accepted the key. Nothing was sent: the sender must also be verified in Brevo for a message to leave.",
+        started,
+    )
 
 
 def sendgrid(client: Optional[Callable[[str], Any]] = None) -> dict[str, Any]:

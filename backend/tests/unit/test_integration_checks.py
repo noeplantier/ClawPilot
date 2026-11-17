@@ -347,3 +347,58 @@ def test_ai_failures_are_explained_without_the_key(ai_env, reply, words):
 def test_ai_passes_without_a_model_check_when_the_list_has_an_unexpected_shape(ai_env):
     assert checks.ai(get=lambda *a, **k: _Models(body=ValueError("not json")))["outcome"] == "passed"
     assert ai_svc.config() is not None
+
+
+BREVO_KEY = "xkeysib-" + "0" * 16  # a placeholder shape, never a real key
+
+
+class _Answer:
+    def __init__(self, status):
+        self.status_code = status
+
+    def json(self):
+        return {"email": "founder@plantiers.com", "companyName": "Plantiers"}
+
+
+def test_brevo_is_skipped_without_a_key_and_nothing_is_asked(monkeypatch):
+    monkeypatch.delenv("BREVO_API_KEY", raising=False)
+
+    def ask(*a, **k):
+        raise AssertionError("asked Brevo without a key")
+
+    assert checks.brevo(get=ask)["outcome"] == "skipped"
+
+
+def test_brevo_reads_the_account_sends_nothing_and_echoes_nothing_of_it(monkeypatch):
+    monkeypatch.setenv("BREVO_API_KEY", BREVO_KEY)
+    seen = {}
+
+    def get(url, **kwargs):
+        seen.update(url=url, **kwargs)
+        return _Answer(200)
+
+    out = checks.brevo(get=get)
+    assert out["outcome"] == "passed" and "Nothing was sent" in out["detail"]
+    assert seen["url"] == "https://api.brevo.com/v3/account" and seen["headers"]["api-key"] == BREVO_KEY
+    assert seen["allow_redirects"] is False
+    assert BREVO_KEY not in out["detail"] and "founder@" not in out["detail"] and "Plantiers" not in out["detail"]
+
+
+@pytest.mark.parametrize(
+    "reply,words",
+    [
+        (_Answer(401), "rejected the key (HTTP 401)"),
+        (_Answer(500), "answered HTTP 500"),
+        (requests.Timeout(), "in time"),
+    ],
+)
+def test_brevo_failures_are_explained_without_the_key(monkeypatch, reply, words):
+    monkeypatch.setenv("BREVO_API_KEY", BREVO_KEY)
+
+    def get(*a, **k):
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+
+    out = checks.brevo(get=get)
+    assert out["outcome"] == "failed" and words in out["detail"] and BREVO_KEY not in out["detail"]

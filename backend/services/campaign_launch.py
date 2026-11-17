@@ -38,7 +38,7 @@ from repositories import (
     send_policy_repo,
     suppression_repo,
 )
-from services import draft_runner, feature_flags, journey_gate, send_gate, sendgrid_svc, smtp_svc
+from services import brevo_svc, draft_runner, feature_flags, journey_gate, send_gate, sendgrid_svc, smtp_svc
 from services.outreach_os import ai_draft, campaign_plan, channels, dispatch, drafts, eligibility
 from services.outreach_os import heat as heat_rules
 from services.outreach_os import provider_policy
@@ -74,7 +74,9 @@ def provider_info() -> provider_policy.ProviderInfo:
     """The provider that would carry a real message, from the configuration (a host name only: never a secret)."""
     config = smtp_svc.SmtpConfig.from_env()
     return provider_policy.identify(
-        smtp_host=config.host if config else None, sendgrid_configured=sendgrid_svc.is_configured()
+        smtp_host=config.host if config else None,
+        sendgrid_configured=sendgrid_svc.is_configured(),
+        brevo_configured=brevo_svc.is_configured(),
     )
 
 

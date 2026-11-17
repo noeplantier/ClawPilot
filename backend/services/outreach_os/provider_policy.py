@@ -153,8 +153,21 @@ def _is_hostinger(host: str) -> bool:
     return "hostinger" in host or host == "titan.email" or host.endswith(".titan.email")
 
 
-def identify(*, smtp_host: Optional[str], sendgrid_configured: bool) -> ProviderInfo:
+def identify(*, smtp_host: Optional[str], sendgrid_configured: bool, brevo_configured: bool = False) -> ProviderInfo:
     host = (smtp_host or "").strip().lower() or None
+    if brevo_configured:  # Brevo's API carries the e-mail before SMTP (see mail_provider.live_adapter)
+        return ProviderInfo(
+            id="brevo_api",
+            label="Brevo (API HTTPS)",
+            host="api.brevo.com",
+            cold_outreach=UNVERIFIED,
+            restriction=(
+                "Brevo : service d'envoi dédié (API), pas une messagerie mutualisée. L'application ne lit pas ses "
+                "conditions : vérifiez qu'elles autorisent la prospection B2B pour votre usage (base légale, "
+                "désinscription, volume, expéditeur vérifié) avant tout envoi réel ; un quota disponible ne vaut pas "
+                "autorisation."
+            ),
+        )
     if host and _is_hostinger(host):
         return ProviderInfo(
             id="smtp_hostinger",
