@@ -248,7 +248,7 @@ AI_KEY = "k-" + secrets.token_hex(8)  # runtime-built, not a credential
 
 
 class _Models:
-    def __init__(self, status=200, ids=("llama-3.3-70b-versatile",), body=None):
+    def __init__(self, status=200, ids=("openai/gpt-oss-120b",), body=None):
         self.status_code = status
         self._body = body if body is not None else {"data": [{"id": i} for i in ids]}
 
@@ -302,6 +302,26 @@ def test_ai_reads_a_model_list_where_names_carry_a_prefix(monkeypatch, ai_env):
 def test_ai_fails_when_the_model_is_not_offered_and_says_which_variable_to_change(ai_env):
     out = checks.ai(get=lambda *a, **k: _Models(ids=("another-model",)))
     assert out["outcome"] == "failed" and "AI_MODEL" in out["detail"]
+
+
+def test_a_retired_model_is_answered_with_the_chat_models_the_key_can_really_use(monkeypatch, ai_env):
+    monkeypatch.setenv("AI_MODEL", "llama-3.3-70b-versatile")
+    listed = (
+        "whisper-large-v3",
+        "openai/gpt-oss-20b",
+        "meta-llama/llama-guard-4-12b",
+        "openai/gpt-oss-120b",
+        "playai-tts",
+    )
+    out = checks.ai(get=lambda *a, **k: _Models(ids=listed))
+    assert out["outcome"] == "failed" and "llama-3.3-70b-versatile" in out["detail"]
+    assert out["detail"].endswith("Set AI_MODEL to one it offers: openai/gpt-oss-120b, openai/gpt-oss-20b.")
+    assert AI_KEY not in out["detail"]
+
+
+def test_a_long_model_list_is_cut_and_counted():
+    ids = {f"model-{n:02d}" for n in range(12)} | {"whisper-1"}
+    assert checks.chat_models(ids)[:2] == ["model-00", "model-01"] and len(checks.chat_models(ids)) == 12
 
 
 @pytest.mark.parametrize(
