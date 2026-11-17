@@ -1,4 +1,4 @@
-import { detectedSignals, resultSummary, unknownCount, validateDiscover } from "@/lib/sourcesForm";
+import { RADII, defaultProvider, detectedSignals, isGem, opportunityOf, radiiFor, resultSummary, unknownCount, validateDiscover, zoneLine } from "@/lib/sourcesForm";
 
 const WORLD = { name: "world_fixture", kind: "local", verticals: ["restaurants", "hotels"], max_radius_m: 20000000 };
 const OSM = { name: "openstreetmap", kind: "network", verticals: ["restaurants"], max_radius_m: 10000 };
@@ -39,4 +39,33 @@ test("only detected signals are findings; unknown stays unknown", () => {
   const place = { signals: [{ key: "a", state: "detected" }, { key: "b", state: "unknown" }, { key: "c", state: "not_detected" }] };
   expect(detectedSignals(place).map((s) => s.key)).toEqual(["a"]);
   expect(unknownCount(place)).toBe(1);
+});
+
+describe("an automatic zone and justified opportunities", () => {
+  it("offers only the radii the source accepts", () => {
+    expect(radiiFor({ max_radius_m: 5000 })).toEqual([1000, 3000, 5000]);
+    expect(radiiFor({ max_radius_m: 50000 })).toEqual(RADII);
+  });
+  it("opens the first real source available, else the demo", () => {
+    const demo = { name: "world_fixture", kind: "local", available: true };
+    const osm = { name: "openstreetmap", kind: "network", available: true };
+    expect(defaultProvider([demo, osm]).name).toBe("openstreetmap");
+    expect(defaultProvider([demo, { ...osm, available: false }]).name).toBe("world_fixture");
+    expect(defaultProvider([])).toBeNull();
+  });
+  it("says the zone in words", () => {
+    expect(zoneLine({ city: "Lyon", lat: "45.76", lon: "4.83", radius_m: 3000 })).toBe("Lyon · rayon 3 km");
+    expect(zoneLine({ city: "", lat: "45.76", lon: "4.83", radius_m: 500 })).toBe("45.7600, 4.8300 · rayon 500 m");
+    expect(zoneLine({ city: "", lat: "", lon: "", radius_m: 3000 })).toBe("");
+  });
+  it("an opportunity is a detected gap with its evidence and source, never an unknown", () => {
+    const place = { source_name: "openstreetmap", signals: [
+      { key: "no_website", state: "detected", evidence: "No website listed in openstreetmap" },
+      { key: "incomplete_listing", state: "unknown", evidence: "?" },
+      { key: "public_contact_present", state: "detected", evidence: "phone" },
+    ] };
+    expect(opportunityOf(place)).toEqual([{ key: "no_website", label: "Aucun site propre déclaré par la source", evidence: "No website listed in openstreetmap", source: "openstreetmap" }]);
+    expect(isGem(place)).toBe(true);
+    expect(isGem({ source_name: "x", signals: [{ key: "no_website", state: "unknown", evidence: "" }] })).toBe(false);
+  });
 });
