@@ -195,6 +195,24 @@ def offer_for(raw: object, state: str) -> Optional[dict[str, str]]:
     return out
 
 
+HELLO = {"fr": "Bonjour {{first_name}},", "en": "Hello {{first_name}},"}
+
+
+def targeted_template(raw: object, state: str) -> Optional[dict[str, str]]:
+    """The subject and body a lead receives in a targeted batch: the offer of its case (from what is known of its site),
+    in the organisation's own words, with the recipient's tokens. Nothing is said about the lead itself: an unknown site
+    gets the default offer, never « you have no website »."""
+    chosen = offer_for(raw, state)
+    if chosen is None:
+        return None
+    hello = HELLO.get(chosen["language"], HELLO["fr"])
+    return {
+        "kind": chosen["kind"],
+        "subject": f"{chosen['name']} · {{{{company}}}}",
+        "body": f"{hello}\n\n{chosen['pitch']}\n\n{chosen['cta']}",
+    }
+
+
 def site_state(*, website: Optional[str], detected: Mapping[str, str]) -> str:
     """How the web presence is known. `detected` maps the keys of the signals detected now (a reviewer's dismissal
     applied) to their evidence. Listing without a site is stated only when the signal was really detected."""

@@ -405,6 +405,7 @@ async def get_leads_by_ids(session: AsyncSession, account_id: uuid.UUID, lead_id
                 "company": lead.company,
                 "title": lead.title,
                 "country": lead.country,
+                "website": lead.website,  # a targeted batch reads the known web presence to pick the offer
                 "source": source_names.get(lead.source_id) if lead.source_id else None,
                 "contact_id": str(contact_id) if contact_id else None,
                 "email_consent": email_consents.get(contact_id, "unknown") if contact_id else "unknown",
