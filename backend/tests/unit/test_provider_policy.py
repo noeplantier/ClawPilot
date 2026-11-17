@@ -79,3 +79,11 @@ def test_presets_carry_only_public_settings_and_one_is_recommended():
     assert sum(1 for p in pp.B2B_RELAYS if p.recommended) == 1
     for p in pp.B2B_RELAYS:
         assert p.port in (465, 587) and p.security in ("starttls", "ssl") and "." in p.host
+
+
+def test_brevo_carries_the_mail_before_smtp_and_is_unverified_never_an_authorization_by_quota():
+    info = pp.identify(smtp_host="smtp.hostinger.com", sendgrid_configured=False, brevo_configured=True)
+    assert (info.id, info.cold_outreach, info.host) == ("brevo_api", pp.UNVERIFIED, "api.brevo.com")
+    assert "quota" in info.restriction and "autorisation" in info.restriction
+    # without Brevo, the Hostinger mailbox keeps its opt-in rule
+    assert pp.identify(smtp_host="smtp.hostinger.com", sendgrid_configured=False).cold_outreach == pp.OPT_IN_REQUIRED

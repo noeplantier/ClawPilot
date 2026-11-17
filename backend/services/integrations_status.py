@@ -21,7 +21,7 @@ from urllib.parse import urlsplit
 
 STATUSES = ("ready", "unchecked", "partial", "missing", "blocked", "off")
 GROUPS = ("data", "sources", "sending", "inbound", "ai")
-TESTABLE = ("database", "osm", "registry", "smtp", "imap", "sendgrid", "twilio", "ai")  # run on the server
+TESTABLE = ("database", "osm", "registry", "brevo", "smtp", "imap", "sendgrid", "twilio", "ai")  # run on the server
 BROWSER_TESTS = ("geocoder",)  # the browser itself calls this service, so the browser is what must be tested
 DOCS = "docs/integrations.md"
 
@@ -45,6 +45,7 @@ TRACKED_ENV = (
     "OUTREACH_SENDER_ADDRESS",
     "OUTREACH_SENDER_EMAIL",
     "OUTREACH_SENDER_WHATSAPP",
+    "BREVO_API_KEY",
     "SMTP_HOST",
     "SMTP_USERNAME",
     "SMTP_PASSWORD",
@@ -98,6 +99,7 @@ class Facts:
     test_sink: bool = False  # automated tests only: sends are recorded in-process, never sent
     sender_configured: bool = False
     sender_email: Optional[str] = None
+    brevo_configured: bool = False
     smtp_configured: bool = False
     smtp_host: Optional[str] = None
     smtp_security: Optional[str] = None
@@ -402,6 +404,38 @@ def _sending_mode(f: Facts) -> dict[str, Any]:
     )
 
 
+def _brevo(f: Facts) -> dict[str, Any]:
+    names = ("BREVO_API_KEY",)
+    summary = (
+        "Sends e-mail through Brevo's HTTPS API (port 443), before SMTP when set: the real channel where outbound SMTP "
+        "ports are closed (a free Render instance). The sender is OUTREACH_SENDER_EMAIL, verified in Brevo."
+    )
+    if f.brevo_configured:
+        return _item(
+            "brevo",
+            "Brevo e-mail (API)",
+            "sending",
+            "unchecked",
+            "CONFIGURED · NOT TESTED",
+            summary,
+            env=names,
+            facts=[("sender.email", f.sender_email or "—"), ("used", "before SMTP" if f.live_sending else "dry-run")],
+            test="server",
+            hint="The test reads the account; it never sends a message.",
+        )
+    return _item(
+        "brevo",
+        "Brevo e-mail (API)",
+        "sending",
+        "off",
+        "OPTIONAL · NOT SET",
+        summary,
+        env=names,
+        needs=list(names),
+        test="server",
+    )
+
+
 def _smtp(f: Facts) -> dict[str, Any]:
     names = ("SMTP_HOST", "SMTP_USERNAME", "SMTP_PASSWORD")
     summary = "The real e-mail channel for prospects: TLS is mandatory, the certificate is verified."
@@ -503,13 +537,13 @@ def _sendgrid(f: Facts) -> dict[str, Any]:
             test="server",
             hint="The test only reads the key's scopes.",
         )
-    if f.smtp_configured:  # SMTP already carries the e-mail: SendGrid is an alternative, not a gap
+    if f.smtp_configured or f.brevo_configured:  # another channel already carries the e-mail: an alternative, not a gap
         return _item(
             "sendgrid",
             "SendGrid e-mail",
             "sending",
             "off",
-            "NOT NEEDED · SMTP IS USED",
+            "NOT NEEDED · BREVO IS USED" if f.brevo_configured else "NOT NEEDED · SMTP IS USED",
             summary,
             env=names,
             test="server",
@@ -688,6 +722,7 @@ def build(f: Facts) -> dict[str, Any]:
         _registry(f),
         _sender(f),
         _sending_mode(f),
+        _brevo(f),
         _smtp(f),
         _imap(f),
         _sendgrid(f),

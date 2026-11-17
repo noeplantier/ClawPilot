@@ -18,7 +18,7 @@ import { ErrorBlock, LoadingBlock } from "@/components/outreach/States";
 const SETTINGS_LIVE_MS = 30000;
 const ICONS = {
   database: Database, public_url: LinkIcon, osm: MapTrifold, geocoder: MapPin, registry: Buildings, sender: IdentificationCard,
-  sending_mode: PaperPlaneTilt, smtp: Envelope, imap: EnvelopeOpen, sendgrid: Envelope, twilio: WhatsappLogo,
+  sending_mode: PaperPlaneTilt, brevo: PaperPlaneTilt, smtp: Envelope, imap: EnvelopeOpen, sendgrid: Envelope, twilio: WhatsappLogo,
   twilio_webhook: ShieldCheck, sendgrid_webhook: ShieldCheck, ai: Sparkle,
 };
 

@@ -27,6 +27,7 @@ Tous en lecture seule : **aucun message n'est envoyé à une personne**. Un test
 | `database` | un aller-retour `SELECT 1`, latence mesurée |
 | `osm` | une requête d'état par serveur Overpass, l'un après l'autre (jamais en rafale) |
 | `registry` | une requête d'exemple au registre des entreprises ; ignoré si `FEATURE_EXTERNAL_SOURCES` est coupé |
+| `brevo` | lecture du compte (`GET /v3/account`), **sans envoi** ; la réponse (société, e-mail, offre) n'est jamais renvoyée |
 | `smtp` | connexion TLS + authentification, **sans envoi** (pas de `MAIL FROM`) |
 | `imap` | connexion TLS + ouverture du dossier **en lecture seule** ; aucun message lu, marqué ou modifié |
 | `sendgrid` | lecture des permissions de la clé |
@@ -80,6 +81,16 @@ autorisée ; le kill switch arrête tout. Procédure : `docs/go-live-email.md`.
 <a id="imap"></a>
 ### IMAP
 `IMAP_HOST`, `IMAP_USERNAME`, `IMAP_PASSWORD` (+ `IMAP_PORT`, `IMAP_FOLDER`). Lit réponses, rebonds et STOP dans la boîte d'envoi ; sans lui, tout se traite à la main.
+
+<a id="brevo"></a>
+### Brevo (API HTTPS, facultatif)
+`BREVO_API_KEY` (Brevo › SMTP & API › API Keys). Envoie l'e-mail par l'API transactionnelle de Brevo (`POST /v3/smtp/email`,
+port 443) **avant** SMTP quand la clé est posée et `FEATURE_LIVE_SENDING` actif : c'est le canal réel là où les ports SMTP
+sortants sont fermés (une instance Render gratuite bloque 25, 465 et 587). L'expéditeur est `OUTREACH_SENDER_EMAIL`, qui doit
+être **vérifié dans Brevo** (idéalement le domaine, SPF + DKIM), sinon Brevo refuse (HTTP 400/403, raison affichée).
+Mêmes règles que SMTP : un destinataire par message, en-têtes `List-Unsubscribe`, bac à sable, kill switch, limites ;
+une connexion perdue après l'envoi est une issue inconnue, jamais renvoyée. La politique fournisseur le classe « non vérifié » :
+lisez ses conditions avant toute prospection (base légale, désinscription, volume) ; un quota disponible ne vaut pas autorisation.
 
 <a id="sendgrid"></a>
 ### SendGrid (facultatif)

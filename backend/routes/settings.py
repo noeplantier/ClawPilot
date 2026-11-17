@@ -35,6 +35,7 @@ from models import (
 from repositories import audit_repo, draft_job_repo
 from services import (
     ai_svc,
+    brevo_svc,
     draft_runner,
     feature_flags,
     imap_svc,
@@ -98,6 +99,7 @@ async def integrations(user: dict = Depends(get_current_user), session: AsyncSes
             test_sink=feature_flags.test_sink(),
             sender_configured=sender is not None,
             sender_email=sender.reply_to if sender else None,
+            brevo_configured=brevo_svc.is_configured(),
             smtp_configured=smtp["configured"],
             smtp_host=smtp["host"],
             smtp_security=smtp["security"],
@@ -149,6 +151,7 @@ def _checks() -> dict:
     return {
         "osm": integration_checks.osm,
         "registry": integration_checks.registry,
+        "brevo": integration_checks.brevo,
         "smtp": integration_checks.smtp,
         "imap": integration_checks.imap,
         "sendgrid": integration_checks.sendgrid,

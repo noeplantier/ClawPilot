@@ -212,3 +212,13 @@ def test_no_value_can_leak_only_names_and_derived_facts():
     )
     assert secret not in repr(build(facts))
     assert "SMTP_PASSWORD" in repr(build(facts))  # the name is fine, it is what the user must set
+
+
+def test_brevo_is_optional_until_its_key_is_set_then_unchecked_until_its_read_only_test_and_sendgrid_is_not_needed():
+    bare = by_id(NOTHING)["brevo"]
+    assert bare["status"] == "off" and bare["needs"] == ["BREVO_API_KEY"] and bare["test"] == "server"
+    facts = Facts(**{**NOTHING.__dict__, "brevo_configured": True, "env_set": frozenset({"BREVO_API_KEY"})})
+    items = by_id(facts)
+    assert items["brevo"]["status"] == "unchecked" and "never sends" in items["brevo"]["hint"]
+    assert items["sendgrid"]["label"] == "NOT NEEDED · BREVO IS USED"
+    assert "brevo" in TESTABLE
