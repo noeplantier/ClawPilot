@@ -88,8 +88,13 @@ async def add_approval(session: AsyncSession, row: CampaignApproval) -> Campaign
 async def journeys(session: AsyncSession, account_id: uuid.UUID) -> list[Campaign]:
     result = await session.execute(
         select(Campaign)
-        .where(Campaign.account_id == account_id, Campaign.zone.is_not(None), Campaign.deleted_at.is_(None))
-        .order_by(Campaign.created_at.desc())
+        # A zone is a JSON object. `IS NOT NULL` alone is not enough: an older campaign without a zone can hold the JSON
+        # value `null`, which is not SQL NULL (an individual campaign showed up here, and a mandate on it got 404).
+        .where(
+            Campaign.account_id == account_id,
+            func.jsonb_typeof(Campaign.zone) == "object",
+            Campaign.deleted_at.is_(None),
+        ).order_by(Campaign.created_at.desc())
     )
     return list(result.scalars())
 

@@ -65,8 +65,25 @@ async def create(
 ):
     """Write a mandate down (a draft: nothing automatic happens). Unbounded or incoherent limits are refused."""
     campaign = await campaign_repo.get_campaign(session, _account(user), payload.campaign_id)
-    if campaign is None or campaign.zone is None:
-        raise HTTPException(status_code=404, detail="Journey not found")
+    if campaign is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "campaign_not_found",
+                "message": "Campagne introuvable dans votre compte.",
+                "retry_at": None,
+            },
+        )
+    if not isinstance(campaign.zone, dict):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "not_a_zone_campaign",
+                "message": "Un mandat repose sur une campagne par zone ; celle-ci n'a pas de zone (campagne "
+                "individuelle ou séquence). Choisissez une campagne par zone.",
+                "retry_at": None,
+            },
+        )
     try:
         created = await mandate.create(
             session,
