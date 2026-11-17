@@ -11,13 +11,13 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from celery_app import celery_app
-from services import campaign_launch, smtp_svc
+from services import campaign_launch, mail_provider
 from tasks._bridge import run_async
 
 
 async def _process_due_impl(session) -> dict:
     return await campaign_launch.process_due(
-        session, now=datetime.now(timezone.utc), live_adapter=smtp_svc.adapter_from_env()
+        session, now=datetime.now(timezone.utc), live_adapter=mail_provider.live_adapter()
     )
 
 

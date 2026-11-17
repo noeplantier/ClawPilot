@@ -159,7 +159,7 @@ async def dispatch(
             now=datetime.now(timezone.utc),
             user_id=uuid.UUID(user["id"]),
             idempotency_key=idempotency_key,
-            live_adapter=smtp_svc.adapter_from_env(),
+            live_adapter=mail_provider.live_adapter(),
         )
     except dispatch_svc.DispatchBlocked as blocked:
         raise await refusal(session, user, blocked, resource_id=draft.id)
