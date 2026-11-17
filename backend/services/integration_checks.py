@@ -146,6 +146,17 @@ def twilio(client: Optional[Callable[[str, str], Any]] = None) -> dict[str, Any]
     return _result("passed", "Twilio accepted the credentials.", started)
 
 
+MODELS_SHOWN = 8
+# Model families a provider lists that cannot write a message (speech, moderation, embeddings): never offered as
+# AI_MODEL.
+_NOT_CHAT = ("whisper", "tts", "guard", "embed", "orpheus", "playai", "moderation", "audio", "transcribe")
+
+
+def chat_models(ids: set[str]) -> list[str]:
+    """The listed models that can write a message, sorted: what AI_MODEL may be set to."""
+    return sorted(i for i in ids if i and not any(word in i.lower() for word in _NOT_CHAT))
+
+
 def ai(get: Callable[..., Any] = requests.get) -> dict[str, Any]:
     """Asks the provider which models the key can use: proves the key, the address and the model, and generates nothing
     (no token is used, no name or company is sent)."""
@@ -170,9 +181,11 @@ def ai(get: Callable[..., Any] = requests.get) -> dict[str, Any]:
     except (ValueError, AttributeError):
         ids = set()
     if ids and cfg.model not in ids:
-        return _result(
-            "failed", f"The key works but {cfg.host} does not list the model {cfg.model}: set AI_MODEL.", started
-        )
+        offered = chat_models(ids)
+        more = len(offered) - MODELS_SHOWN
+        names = ", ".join(offered[:MODELS_SHOWN]) + (f" (+{more} more)" if more > 0 else "")
+        hint = f" Set AI_MODEL to one it offers: {names}." if offered else " Set AI_MODEL."
+        return _result("failed", f"The key works but {cfg.host} does not list the model {cfg.model}.{hint}", started)
     return _result(
         "passed", f"{cfg.host} accepted the key and lists the model {cfg.model}. Nothing was generated.", started
     )

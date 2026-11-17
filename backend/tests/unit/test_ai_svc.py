@@ -142,7 +142,8 @@ def test_the_request_goes_to_the_provider_with_the_key_and_only_the_fields_of_th
     assert call["headers"]["Authorization"] == f"Bearer {KEY}"
     assert call["allow_redirects"] is False and call["timeout"] == ai_svc.TIMEOUT
     payload = call["json"]
-    assert payload["model"] == "llama-3.3-70b-versatile" and payload["response_format"] == {"type": "json_object"}
+    assert payload["model"] == "openai/gpt-oss-120b" and payload["response_format"] == {"type": "json_object"}
+    assert payload["reasoning_effort"] == "low"  # a reasoning model keeps its thinking short, the answer fits
     sent = json.dumps(payload["messages"], ensure_ascii=False)
     assert "Chez Marcel" in sent and "Marcel SARL" in sent and "OutreachOS" in sent and "réserver un appel" in sent
     assert "never invent a fact" in payload["messages"][0]["content"]

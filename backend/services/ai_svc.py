@@ -26,9 +26,11 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-# provider -> (API root, default model). Models change: AI_MODEL overrides; the Settings test checks the model exists.
+# provider -> (API root, default model). Models change: AI_MODEL overrides; the Settings test checks the model exists
+# and, when it does not, lists the ones the key can use. Groq retired its Llama chat models in 2026 (gpt-oss replaced
+# them).
 PROVIDERS: dict[str, tuple[Optional[str], Optional[str]]] = {
-    "groq": ("https://api.groq.com/openai/v1", "llama-3.3-70b-versatile"),
+    "groq": ("https://api.groq.com/openai/v1", "openai/gpt-oss-120b"),
     "gemini": ("https://generativelanguage.googleapis.com/v1beta/openai", "gemini-2.5-flash"),
     "mistral": ("https://api.mistral.ai/v1", "mistral-small-latest"),
     "custom": (None, None),
@@ -118,7 +120,10 @@ def explain_http_error(status_code: int, retry_after: Optional[str] = None) -> t
     if status_code in (401, 403):
         return "ai_failed", f"The AI provider rejected the key (HTTP {status_code}). Check AI_API_KEY."
     if status_code == 404:
-        return "ai_failed", "The AI provider does not know this model or address (HTTP 404). Check AI_MODEL."
+        return "ai_failed", (
+            "The AI provider does not know this model or address (HTTP 404). The test in Settings > Integrations "
+            "lists the models your key can use: set AI_MODEL to one of them."
+        )
     if status_code == 429:
         wait = f" Try again in {retry_after} s." if retry_after and retry_after.isdigit() else " Try again in a moment."
         return "ai_rate_limited", f"The AI provider's free limit is reached (HTTP 429).{wait}"
@@ -202,6 +207,8 @@ def _generate_sync(
         "max_tokens": max_tokens or MAX_TOKENS,
         "response_format": {"type": "json_object"},
     }
+    if "gpt-oss" in cfg.model:  # a reasoning model: keep its thinking short, so the answer fits in max_tokens
+        payload["reasoning_effort"] = "low"
     response = _post(cfg, payload)
     if response.status_code == 400:  # a provider or model without JSON mode: ask again in plain mode, once
         payload.pop("response_format")
