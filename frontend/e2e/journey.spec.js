@@ -595,7 +595,7 @@ test("campaign suggestions come from the real data, update on their own, and cre
   await page.clock.install();
   await register(page);
   await page.goto("/app/campaigns");
-  await expect(page.getByTestId("suggestions-empty")).toContainText("No suggestion yet"); // nothing invented for an empty organisation
+  await expect(page.getByTestId("suggestions-empty")).toContainText("Aucune suggestion pour l'instant"); // nothing invented for an empty organisation
 
   await apiPost(page, "/leads", { full_name: "Alice New", email: "alice@new.example", company: "Alice SAS" });
   await apiPost(page, "/leads", { full_name: "Bob New", phone: "+33 4 78 00 00 03", company: "Bob SAS" });
@@ -603,20 +603,26 @@ test("campaign suggestions come from the real data, update on their own, and cre
   const card = page.getByTestId("suggestion").first();
   await expect(card).toContainText("New leads still waiting for a first message");
   await expect(card.getByTestId("suggestion-new")).toBeVisible();
-  await expect(card.getByTestId("suggestion-ready")).toHaveText("2 of 2 can join a campaign today");
-  await expect(page.getByTestId("suggestions-basis")).toContainText("Computed from 0 prospects and 2 CRM leads");
+  await expect(card.getByTestId("suggestion-ready")).toHaveText("2 sur 2 peuvent rejoindre une campagne aujourd'hui");
+  await expect(page.getByTestId("suggestions-basis")).toContainText("Calculé à partir de 0 prospects et 2 leads du CRM");
 
   await apiPost(page, "/leads", { full_name: "Cleo New", email: "cleo@new.example", company: "Cleo SAS" });
   // Playwright's clock can apply a jump late, which leaves the next poll further away than one more jump (seen in ~10% of
   // runs): retry the jump until the page has polled, instead of assuming one jump equals one poll.
   await expect(async () => {
     await page.clock.fastForward(16000);
-    await expect(page.getByTestId("suggestion").first().getByTestId("suggestion-ready")).toHaveText("3 of 3 can join a campaign today", { timeout: 3000 });
+    await expect(page.getByTestId("suggestion").first().getByTestId("suggestion-ready")).toHaveText("3 sur 3 peuvent rejoindre une campagne aujourd'hui", { timeout: 3000 });
   }).toPass({ timeout: 30000 });
 
   await page.getByTestId("suggestion-create").first().click();
-  await expect(page.locator('[data-testid^="campaign-card-"]').first()).toContainText("New leads still waiting for a first message");
-  await expect(page.locator('[data-testid^="campaign-card-"]').first()).toContainText("draft");
+  // The draft opens at once, to write its first step: nothing is sent.
+  await expect(page).toHaveURL(/\/app\/campaigns\?campaign=/);
+  await expect(page.getByTestId("builder-note")).toContainText("3 destinataires assignés");
+  await page.getByTestId("close-campaign-builder").click();
+  const draft = page.getByTestId("campaigns-group-draft").locator('[data-testid^="campaign-card-"]').first();
+  await expect(draft).toContainText("New leads still waiting for a first message");
+  await expect(draft.getByTestId("campaign-status")).toHaveText("Brouillon");
+  await expect(draft.locator('[data-testid^="next-"]')).toHaveAttribute("data-action", "edit");
 });
 
 test("suggestions for discovery prospects say why no campaign can start yet instead of offering a dead button", async ({ page }) => {
@@ -627,7 +633,7 @@ test("suggestions for discovery prospects say why no campaign can start yet inst
   await expect(first).toBeVisible();
   await expect(first.getByTestId("suggestion-ready")).toContainText("dry-run");
   await expect(first.getByTestId("suggestion-create")).toBeDisabled();
-  await expect(first.getByTestId("suggestion-create")).toContainText("NOT READY");
+  await expect(first.getByTestId("suggestion-create")).toContainText("PAS ENCORE PRÊT");
 });
 
 test("settings lists every integration from the server, tests the database live and never fakes a configured key", async ({ page }) => {
