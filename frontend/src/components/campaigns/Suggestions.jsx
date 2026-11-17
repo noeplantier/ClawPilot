@@ -6,10 +6,10 @@ import { Lightbulb, Sparkle } from "@phosphor-icons/react";
 import { api } from "@/lib/api";
 import { LIVE_MS, useLive } from "@/lib/live";
 import { describeApiError } from "@/lib/outreachFormat";
-import { KIND_LABEL, basisLine, createLabel, emptyText, readyLine } from "@/lib/suggestions";
+import { KIND_LABEL, basisLine, createLabel, emptyText, highScoreLabel, readyLine } from "@/lib/suggestions";
 
-// Suggested campaigns, recomputed from your real leads and prospects every few seconds. Nothing is sent: "create"
-// makes a draft and assigns the people who can join today.
+// Suggested campaigns, recomputed from your real leads and prospects every few seconds. Nothing is sent: « Créer le brouillon »
+// makes a draft, assigns the people who can join today, and onCreated opens that draft at once.
 export default function Suggestions({ onCreated }) {
   const live = useLive(() => api.get("/campaigns/suggestions").then((r) => r.data), [], { itemsOf: (d) => d.items, key: "campaigns:suggestions" });
   const [busy, setBusy] = useState(null);
@@ -19,7 +19,7 @@ export default function Suggestions({ onCreated }) {
     setBusy(s.id);
     try {
       const { data } = await api.post(`/campaigns/suggestions/${s.id}/create`);
-      toast.success(`"${data.name}" created with ${data.assigned} ${data.assigned === 1 ? "person" : "people"}. ${data.note}`);
+      toast.success(`Brouillon « ${data.name} » créé avec ${data.assigned} destinataire${data.assigned === 1 ? "" : "s"}. Rien n'est envoyé : écrivez la première étape.`);
       live.reload();
       if (onCreated) onCreated(data);
     } catch (e) {
@@ -30,17 +30,17 @@ export default function Suggestions({ onCreated }) {
   };
 
   return (
-    <section className="surface p-5 space-y-4" data-testid="suggestions" aria-label="Suggested campaigns">
+    <section className="surface p-5 space-y-4" data-testid="suggestions" aria-label="Campagnes suggérées">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <div className="mono-accent inline-flex items-center gap-2"><Lightbulb size={14} weight="fill" /> // live.suggestions</div>
-          <h2 className="font-display text-xl font-bold">Suggested campaigns</h2>
-          <p className="text-xs text-soft" data-testid="suggestions-basis">{d ? basisLine(d.basis) : ""} Hottest first.</p>
+          <h2 className="font-display text-xl font-bold">Campagnes suggérées</h2>
+          <p className="text-xs text-soft" data-testid="suggestions-basis">{d ? basisLine(d.basis) : ""} Les scores les plus élevés d&apos;abord.</p>
         </div>
         <p className="text-xs inline-flex items-center gap-2 text-brand-lilac" role="status" aria-live="polite" data-testid="suggestions-live">
           <span className="pos-live-dot" aria-hidden="true" />
-          {live.stale ? "Refresh failed: showing the last data. " : ""}
-          {live.updatedAt ? `Live · updated ${live.updatedAt.toLocaleTimeString()} · every ${LIVE_MS / 1000} s` : "Loading…"}
+          {live.stale ? "Actualisation impossible : dernières données affichées. " : ""}
+          {live.updatedAt ? `En direct · mis à jour à ${live.updatedAt.toLocaleTimeString()} · toutes les ${LIVE_MS / 1000} s` : "Chargement…"}
         </p>
       </div>
 
@@ -59,22 +59,22 @@ export default function Suggestions({ onCreated }) {
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="chip chip-ink">{KIND_LABEL[s.kind]}</span>
-                    {live.fresh.has(s.id) && <span className="chip chip-cyan" data-testid="suggestion-new">new</span>}
-                    {s.hot > 0 && <span className="chip chip-hot">{s.hot} hot</span>}
+                    {live.fresh.has(s.id) && <span className="chip chip-cyan" data-testid="suggestion-new">nouveau</span>}
+                    {s.hot > 0 && <span className="chip" title="Chaleur d'au moins 80 : un score, pas une intention observée" data-testid="suggestion-high-score">{highScoreLabel(s.hot)}</span>}
                   </div>
                   <h3 className="font-display font-bold mt-1">{s.title}</h3>
                   {s.angle && <p className="text-xs text-brand-lilac">{s.angle}</p>}
                 </div>
-                <span className="font-mono text-xs text-soft shrink-0" title="Average heat of the hottest members">heat {s.avg_heat}</span>
+                <span className="font-mono text-xs text-soft shrink-0" title="Chaleur moyenne des membres les mieux notés">chaleur {s.avg_heat}</span>
               </div>
               <p className="text-sm text-soft">{s.rationale}</p>
-              <p className="text-xs text-faint">e.g. {s.examples.join(" · ")}</p>
+              <p className="text-xs text-faint">par ex. {s.examples.join(" · ")}</p>
               <p className={`text-xs ${s.eligible > 0 ? "text-emerald-300" : "text-amber-300"}`} data-testid="suggestion-ready">{readyLine(s)}</p>
               <div className="flex items-center gap-2 flex-wrap">
                 <button className="btn-ink !py-1.5" disabled={s.eligible === 0 || busy === s.id} onClick={() => create(s)} data-testid="suggestion-create">
                   <Sparkle size={13} weight="fill" /> {createLabel(s, busy === s.id)}
                 </button>
-                {s.pending_review > 0 && <Link to="/app/prospects/review" className="text-xs underline">review {s.pending_review} pending</Link>}
+                {s.pending_review > 0 && <Link to="/app/prospects/review" className="text-xs underline">{s.pending_review} à vérifier</Link>}
               </div>
             </motion.article>
           ))}

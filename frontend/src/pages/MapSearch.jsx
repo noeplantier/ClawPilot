@@ -319,7 +319,7 @@ function MapView({ canImport }) {
       const c = await campaignsApi.create({ name: `Map selection ${new Date().toISOString().slice(0, 10)}`, goal: "Prospects chosen on the map" });
       await campaignsApi.assign(c.id, ids);
       toast.success(`Campaign created with ${ids.length} approved prospect${ids.length === 1 ? "" : "s"}${excluded ? ` (${excluded} not approved, left out)` : ""}. Nothing is sent: open it to add steps.`);
-      navigate("/app/campaigns");
+      navigate(`/app/campaigns?campaign=${c.id}`); // the new draft opens at once
     } catch (e) {
       toast.error(`${describeApiError(e)} The campaign was created empty: nothing was assigned.`);
     } finally {
