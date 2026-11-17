@@ -16,6 +16,7 @@ EXPECTED = {
     "registry",
     "sender",
     "sending_mode",
+    "brevo",
     "smtp",
     "imap",
     "sendgrid",
