@@ -267,6 +267,11 @@ test("sources: discover from the world demo, see explained signals, page, add to
   const rows = page.locator('[data-testid^="place-wf-"]');
   await expect(rows.first()).toBeVisible();
   await expect(rows.first()).toContainText("unknown"); // signals are explained and "unknown" stays unknown
+  // « Pépites »: counted on the page, each one justified by a gap the source shows; the filter keeps only those rows
+  await expect(page.getByTestId("source-gems")).toContainText("Pépites seulement");
+  await page.getByTestId("source-gems-only").check();
+  for (const cell of await page.locator('[data-testid^="gem-"]').allInnerTexts()) expect(cell).toContain("source :");
+  await page.getByTestId("source-gems-only").uncheck();
   const firstPage = await rows.count();
   expect(firstPage).toBeGreaterThan(0);
 

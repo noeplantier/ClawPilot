@@ -60,3 +60,37 @@ export const detectedSignals = (place) => place.signals.filter((s) => s.state ==
 export const unknownCount = (place) => place.signals.filter((s) => s.state === "unknown").length;
 
 export const hasContact = (p) => Boolean(p.email || p.phone || p.website);
+
+// ---- A precise zone without coordinates to type: a town, then a radius among a few presets the source accepts ----
+export const RADII = [1000, 3000, 5000, 10000];
+export const radiiFor = (provider) => RADII.filter((r) => r <= ((provider && provider.max_radius_m) || 0));
+export const km = (m) => `${m >= 1000 ? `${m / 1000} km` : `${m} m`}`;
+
+// The source opened first: the first REAL source available (network), else whatever is available (the demo), else the first.
+export function defaultProvider(providers) {
+  const list = providers || [];
+  return list.find((p) => p.available && p.kind === "network") || list.find((p) => p.available) || list[0] || null;
+}
+
+export function zoneLine(values) {
+  if (values.lat === "" || values.lat === undefined || values.lon === "" || values.lon === undefined) return "";
+  const where = values.city ? values.city : `${Number(values.lat).toFixed(4)}, ${Number(values.lon).toFixed(4)}`;
+  return `${where} · rayon ${km(Number(values.radius_m))}`;
+}
+
+// ---- « Pépites »: an opportunity only where the source itself shows a gap, as a DETECTED signal with its evidence ----
+// The signals are computed from the listing alone (no website is visited here): only these gaps are offered, and an
+// "unknown" or "not detected" signal never makes an opportunity.
+export const OPPORTUNITY_RULES = {
+  no_website: "Aucun site propre déclaré par la source",
+  incomplete_listing: "Fiche incomplète dans la source",
+  stale_listing: "Fiche ancienne, non mise à jour",
+};
+
+export function opportunityOf(place) {
+  return (place.signals || [])
+    .filter((s) => s.state === "detected" && OPPORTUNITY_RULES[s.key])
+    .map((s) => ({ key: s.key, label: OPPORTUNITY_RULES[s.key], evidence: s.evidence, source: place.source_name }));
+}
+
+export const isGem = (place) => opportunityOf(place).length > 0;
