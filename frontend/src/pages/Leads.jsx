@@ -165,7 +165,8 @@ export default function Leads() {
   };
 
   const writeFor = (l) => {
-    setAiDefaults({ recipient_name: l.full_name, company: l.company || "", language: l.language || "en" });
+    // The lead travels with its id and e-mail: the composer can then send to this one recipient, through the server's gates.
+    setAiDefaults({ recipient_name: l.full_name, company: l.company || "", language: l.language || "fr", lead: { id: l.id, email: l.email || "" } });
     setAiOpen(true);
   };
 
