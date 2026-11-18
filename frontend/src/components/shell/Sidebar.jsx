@@ -27,7 +27,7 @@ const ENTRY = { roomy: "min-h-11", short: "min-h-10", tiny: "min-h-8" };
 const SCREEN = { roomy: "min-h-9", short: "min-h-8", tiny: "min-h-6" };
 
 function Nav({ folded, onNavigate, testPrefix, density }) {
-  const { pathname, search } = useLocation();
+  const { pathname } = useLocation();
   const current = sectionOf(pathname);
   return (
     <nav className={`min-h-0 flex-1 overflow-y-auto px-3 ${density === "tiny" ? "py-1.5" : "py-3"}`} aria-label="Navigation principale">
@@ -35,7 +35,7 @@ function Nav({ folded, onNavigate, testPrefix, density }) {
         {SECTIONS.map((section) => {
           const Icon = ICONS[section.icon];
           const active = current && current.id === section.id;
-          const tab = active ? activeTab(section, pathname, search) : null;
+          const tab = active ? activeTab(section, pathname) : null;
           return (
             <li key={section.id}>
               <Hint label={section.label} when={folded}>

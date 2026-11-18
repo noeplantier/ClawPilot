@@ -33,10 +33,9 @@ export const SECTIONS = [
     label: "Leads",
     to: "/app/leads",
     icon: "Users",
-    blurb: "CRM, pipeline, prospects, et la file « À traiter » (à vérifier, à enrichir).",
+    blurb: "CRM (avec l'étape de chaque lead), prospects, et la file « À traiter » (à vérifier, à enrichir).",
     tabs: [
       { to: "/app/leads", label: "CRM", testId: "tab-crm" },
-      { to: "/app/leads?view=kanban", label: "Pipeline", testId: "tab-pipeline" },
       { to: "/app/prospects", label: "Prospects", testId: "tab-prospects" },
       // « À vérifier » et « À enrichir » sont une seule page (deux onglets) : une seule entrée, les deux chemins y mènent.
       { to: "/app/prospects/review", label: "À traiter", testId: "tab-review", also: [{ to: "/app/prospects/to-enrich", label: "À enrichir" }] },
@@ -104,19 +103,15 @@ export function sectionOf(pathname) {
   return best;
 }
 
-// The tab that is current. /app/leads is "CRM" unless ?view=kanban asks for the pipeline; a prospect's sheet keeps "Prospects".
-export function activeTab(section, pathname, search = "") {
+// The tab that is current: the longest tab path the address starts with (a prospect's sheet keeps "Prospects").
+export function activeTab(section, pathname) {
   if (!section) return null;
   const path = pathOf(pathname);
-  const kanban = new URLSearchParams(search).get("view") === "kanban";
   let best = null;
   let bestLength = -1;
   for (const tab of section.tabs) {
-    const query = tab.to.split("?")[1];
     for (const p of tabPaths(tab)) {
       if (!(path === p || path.startsWith(`${p}/`))) continue;
-      if (query && !(path === p && kanban)) continue; // a tab with a query matches only that query
-      if (!query && path === p && p === "/app/leads" && kanban) continue; // the CRM tab yields to the pipeline
       if (p.length > bestLength) {
         best = tab;
         bestLength = p.length;

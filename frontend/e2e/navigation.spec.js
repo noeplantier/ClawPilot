@@ -65,7 +65,7 @@ test("every section opens its first screen and lists the others under it; the ol
   await page.goto("/app/dashboard");
   const sections = [
     ["nav-prospecting", /\/app\/map$/, ["tab-map", "tab-sources", "tab-import"]],
-    ["nav-leads", /\/app\/leads$/, ["tab-crm", "tab-pipeline", "tab-prospects", "tab-review"]], // « À traiter » holds à vérifier and à enrichir
+    ["nav-leads", /\/app\/leads$/, ["tab-crm", "tab-prospects", "tab-review"]], // « À traiter » holds à vérifier and à enrichir; no pipeline
     ["nav-batches", /\/app\/batches$/, ["tab-batches"]],
     ["nav-outreach", /\/app\/drafts$/, ["tab-drafts", "tab-campaigns", "tab-messages", "tab-sending"]], // « Campagnes » holds zone, individuelle, séquences
     ["nav-control", /\/app\/settings$/, ["tab-settings", "tab-automation-max", "tab-system"]], // « Automatisations » holds the mandate and the agents; the offers moved to Outreach
@@ -77,10 +77,9 @@ test("every section opens its first screen and lists the others under it; the ol
     await expect(page.getByTestId("subnav").locator("a")).toHaveCount(tabs.length); // these screens and no other
     for (const tab of tabs) await expect(page.getByTestId(tab)).toBeVisible();
   }
-  await page.getByTestId("nav-leads").click();
-  await page.getByTestId("tab-pipeline").click();
-  await expect(page).toHaveURL(/\/app\/leads\?view=kanban$/);
-  await expect(page.getByTestId("tab-pipeline")).toHaveAttribute("aria-current", "page");
+  await page.goto("/app/leads?view=kanban"); // an old pipeline link opens the CRM itself
+  await expect(page.getByTestId("tab-crm")).toHaveAttribute("aria-current", "page");
+  await expect(page.getByTestId("view-kanban")).toHaveCount(0);
   for (const route of ["/app/campaigns", "/app/messages", "/app/sending", "/app/agents", "/app/analytics", "/app/system", "/app/sources", "/app/prospects", "/app/prospects/review", "/app/prospects/import", "/app/prospects/to-enrich", "/app/settings/offer", "/app/launch", "/app/journey", "/app/automation-max"]) {
     await page.goto(route);
     await expect(page.locator('[data-testid="subnav"] a[aria-current="page"]')).toHaveCount(1); // a direct route lands inside its section, its screen marked

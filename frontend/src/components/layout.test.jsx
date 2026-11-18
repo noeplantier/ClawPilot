@@ -83,7 +83,7 @@ test("each entry leads to its section and the current one is marked", async () =
 test("the current section lists its screens right under it, and the current screen is marked", async () => {
   await render("/app/prospects/review");
   const screens = [...byId("subnav").querySelectorAll("a")];
-  expect(screens.map((a) => a.textContent)).toEqual(["CRM", "Pipeline", "Prospects", "À traiter"]);
+  expect(screens.map((a) => a.textContent)).toEqual(["CRM", "Prospects", "À traiter"]);
   expect(byId("tab-review").getAttribute("aria-current")).toBe("page");
   expect(byId("nav-leads").getAttribute("aria-current")).toBe("true"); // the section holds the current page
   expect(byId("subnav").getAttribute("aria-label")).toBe("Leads : écrans");
@@ -100,11 +100,10 @@ test("every screen of every section is reachable from the sidebar of its section
   }
 });
 
-test("Pipeline is a distinct screen and marks the Kanban route active, the CRM yields to it", async () => {
+test("there is no separate Pipeline screen: an old kanban link lights the CRM", async () => {
   await render("/app/leads?view=kanban");
-  expect(byId("tab-pipeline").getAttribute("href")).toBe("/app/leads?view=kanban");
-  expect(byId("tab-pipeline").getAttribute("aria-current")).toBe("page");
-  expect(byId("tab-crm").getAttribute("aria-current")).toBeNull();
+  expect(document.querySelector('[data-testid="tab-pipeline"]')).toBeNull();
+  expect(byId("tab-crm").getAttribute("aria-current")).toBe("page");
 });
 
 test("a prospect's sheet stays in Leads with its list marked", async () => {

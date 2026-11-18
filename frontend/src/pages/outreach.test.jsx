@@ -90,11 +90,12 @@ describe("Prospects list", () => {
     expect(byId("run-discovery")).toBeNull();
   });
 
-  it("offers the demo directory only when the server enables FEATURE_DEMO_DATA", async () => {
+  it("never offers the demo directory, even when the server enables FEATURE_DEMO_DATA", async () => {
     answer({ "/prospects": { items: [], total: 0 }, "/prospects/queues": QUEUES0, "/prospects/settings": { flags: { demo_data: true } } });
     await show(<Prospects />);
-    expect(byId("empty-run-discovery")).toBeTruthy();
-    expect(byId("run-discovery").textContent).toContain("DEMO");
+    expect(byId("empty-run-discovery")).toBeNull();
+    expect(byId("run-discovery")).toBeNull();
+    expect(text()).not.toMatch(/DEMO/);
   });
 
   it("lists real rows with score, review state and website", async () => {
@@ -141,11 +142,12 @@ describe("Prospects list", () => {
     expect(byId("error-retry")).toBeTruthy();
   });
 
-  it("disables discovery for a member (the API would refuse anyway)", async () => {
+  it("offers no demo discovery to a member either (the API would refuse it anyway)", async () => {
     global.__user = member;
     answer({ "/prospects": { items: [], total: 0 }, "/prospects/settings": { flags: { demo_data: true } } });
     await show(<Prospects />);
-    expect(byId("run-discovery").disabled).toBe(true);
+    expect(byId("run-discovery")).toBeNull();
+    expect(byId("open-map-search")).toBeTruthy(); // the way to real prospects stays
   });
 });
 

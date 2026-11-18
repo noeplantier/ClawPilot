@@ -174,7 +174,9 @@ export default function Sources() {
 
   if (page.loading && !page.data) return <div className="p-6 md:p-10"><LoadingBlock label="Loading sources…" /></div>;
   if (page.error) return <div className="p-6 md:p-10"><ErrorBlock message={page.error} onRetry={page.reload} /></div>;
-  const { providers, flags } = page.data;
+  // Real sources only: the built-in demo directory (fictional businesses) is never offered here, even when the server allows it.
+  const { flags } = page.data;
+  const providers = page.data.providers.filter((p) => p.kind !== "local");
   const provider = providers.find((p) => p.name === name) || defaultProvider(providers);
   const edit = canDecide(user);
   const set = (k) => (e) => setValues((v) => ({ ...v, [k]: e.target.value }));
