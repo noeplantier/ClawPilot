@@ -106,6 +106,12 @@ class CampaignLead(Base):
         UUID(as_uuid=True), ForeignKey("leads.id", ondelete="CASCADE"), primary_key=True
     )
     assigned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"), nullable=False)
+    # Removed by the person: the row stays (a top-up never picks the establishment again), it is never sent.
+    removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    removed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    removed_reason: Mapped[str | None] = mapped_column(String, nullable=True)
 
     campaign: Mapped["Campaign"] = relationship(back_populates="leads")
 

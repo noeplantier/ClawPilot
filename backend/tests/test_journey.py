@@ -19,8 +19,8 @@ if not os.environ.get("DATABASE_URL"):
 from sqlalchemy import select, update  # noqa: E402
 
 from db.models import Campaign, CampaignApproval, CampaignDispatch, CampaignTemplate, Lead, ProspectSignal  # noqa: E402
-from repositories import campaign_repo  # noqa: E402
-from services import journey  # noqa: E402
+from repositories import campaign_repo, launch_repo  # noqa: E402
+from services import campaign_launch, journey  # noqa: E402
 from services.outreach_os import signals as sig  # noqa: E402
 from tasks._bridge import run_async  # noqa: E402
 from tests.prospect_fixtures import insert_rows, row  # noqa: E402
@@ -704,3 +704,144 @@ def test_each_establishment_receives_the_offer_of_its_case_and_a_change_of_any_o
     }
     assert requests.put(f"{API}/settings/offers", headers=org["headers"], json=other).status_code == 200
     assert "offer_changed" in [r["code"] for r in _get(org, jid)["approval"]["reasons"]]  # not the default, still bound
+
+
+# ================================================================== removing a recipient (C3a)
+def _campaign_call(org, jid, fn):
+    async def go(session):
+        campaign = await campaign_repo.get_campaign(session, org["account_id"], jid)
+        return await fn(session, campaign)
+
+    return _call(go)
+
+
+def _remove(org, jid, lead_id, reason=None, now=None):
+    return _campaign_call(
+        org,
+        jid,
+        lambda s, c: journey.remove_recipient(
+            s, org["account_id"], org["user_id"], c, uuid.UUID(lead_id), reason=reason, now=now or _base()
+        ),
+    )
+
+
+def _restore(org, jid, lead_id, now=None):
+    return _campaign_call(
+        org,
+        jid,
+        lambda s, c: journey.restore_recipient(
+            s, org["account_id"], org["user_id"], c, uuid.UUID(lead_id), now=now or _base()
+        ),
+    )
+
+
+def _recipients(org, jid):
+    return _campaign_call(org, jid, lambda s, c: journey.recipients(s, org["account_id"], c, _base()))
+
+
+def _refused(fn):
+    with pytest.raises(journey.JourneyRefused) as caught:
+        fn()
+    return caught.value.code
+
+
+def test_every_recipient_is_listed_with_the_message_it_would_receive_and_its_offer():
+    org = _org()
+    _seed(org, 3)
+    listing = _recipients(org, _create(org).json()["data"]["id"])
+    assert listing["counts"] == {"will_receive": 3} and listing["approval_in_force"] is False
+    for item in listing["items"]:
+        assert item["message"]["subject"] == f"À propos de {item['name']}" and OFFER["pitch"] in item["message"]["body"]
+        assert item["message"]["offer_label"] == OFFER["name"] and item["can_remove"] and not item["can_restore"]
+
+
+def test_a_removed_recipient_is_excluded_not_replaced_and_never_picked_again_by_a_top_up():
+    org = _org()
+    ids = _seed(org, 5)
+    jid = _create(org, size=4).json()["data"]["id"]
+    first = _recipients(org, jid)["items"]
+    picked = [i["lead_id"] for i in first]
+    gone = picked[0]
+    assert _remove(org, jid, gone, reason="  Client déjà suivi  ") == {"removed": True, "changed": True, "cancelled": 0}
+    assert _remove(org, jid, gone)["changed"] is False  # idempotent
+    summary = _get(org, jid)
+    assert summary["audience"]["sendable"] == 3 and summary["audience"]["exclusions"] == {"removed_by_reviewer": 1}
+    assert summary["audience"]["exclusion_labels"]["removed_by_reviewer"] == "Retiré de cette campagne par vous"
+    assert first[0]["name"] not in {e["name"] for e in summary["examples"]}
+
+    async def top_up(session, campaign):
+        return await campaign_launch.top_up(session, org["account_id"], org["user_id"], campaign, size=10, now=_base())
+
+    added = _campaign_call(org, jid, top_up)
+    assert [str(lead.id) for lead in added.picked] == [i for i in ids if i not in picked]  # the fifth, not the removed
+    listing = {i["lead_id"]: i for i in _recipients(org, jid)["items"]}
+    assert listing[gone]["status"] == "removed" and listing[gone]["removed_reason"] == "Client déjà suivi"
+    assert listing[gone]["message"] is None and listing[gone]["can_restore"]
+    assert _restore(org, jid, gone) == {"removed": False, "changed": True}
+    assert _get(org, jid)["audience"]["sendable"] == 5
+
+
+def test_removing_after_the_approval_cancels_its_message_and_restoring_needs_a_new_approval():
+    org = _org()
+    _seed(org, 3)
+    jid = _create(org).json()["data"]["id"]
+    _approve(org, jid)
+    items = _recipients(org, jid)["items"]
+    assert {i["status"] for i in items} == {"planned"}
+    gone = items[0]
+    assert _remove(org, jid, gone["lead_id"])["cancelled"] == 1
+    assert _get(org, jid)["approval"]["valid"] is True  # fewer messages than approved: still covered
+    recorder = Recorder()
+    counts = _process(org, _base() + timedelta(minutes=10), recorder)
+    assert counts["accepted"] == 2 and gone["email"] not in {c.to for c in recorder.calls}
+    row = next(d for d in _dispatches(org, jid) if d["lead_id"] == gone["lead_id"])
+    assert row["status"] == "cancelled" and row["reason"] == "removed_by_reviewer"
+    assert _refused(lambda: _restore(org, jid, gone["lead_id"])) == "approval_in_force"
+
+    async def revoke(session, campaign):
+        return await journey.revoke(session, org["account_id"], org["user_id"], campaign, reason=None, now=_base())
+
+    _campaign_call(org, jid, revoke)
+    assert _restore(org, jid, gone["lead_id"])["changed"] is True
+    assert _get(org, jid)["approval"]["valid"] is False  # it goes out only after a new approval
+
+
+def test_a_message_that_left_cannot_be_removed_and_a_stranger_is_not_a_recipient():
+    org = _org()
+    _seed(org, 1)
+    jid = _create(org).json()["data"]["id"]
+    _approve(org, jid)
+    _process(org, _base() + timedelta(minutes=10), Recorder())
+    (item,) = _recipients(org, jid)["items"]
+    assert item["status"] == "sent" and item["can_remove"] is False
+    assert _refused(lambda: _remove(org, jid, item["lead_id"])) == "already_sent"
+    assert _refused(lambda: _remove(org, jid, str(uuid.uuid4()))) == "not_a_recipient"
+    assert _refused(lambda: _restore(org, jid, item["lead_id"])) == "not_removed"
+
+
+def test_a_recipient_marked_removed_while_its_message_waits_is_never_sent():
+    """Defence in depth: even if a planned message were left scheduled, the sender checks the removal itself."""
+    org = _org()
+    _seed(org, 2)
+    jid = _create(org).json()["data"]["id"]
+    _approve(org, jid)
+    target = _recipients(org, jid)["items"][0]
+
+    async def mark_only(session, campaign):
+        return await launch_repo.set_removed(
+            session,
+            org["account_id"],
+            campaign.id,
+            uuid.UUID(target["lead_id"]),
+            removed=True,
+            user_id=org["user_id"],
+            reason=None,
+            now=_base(),
+        )
+
+    assert _campaign_call(org, jid, mark_only) is True
+    recorder = Recorder()
+    _process(org, _base() + timedelta(minutes=10), recorder)
+    assert target["email"] not in {c.to for c in recorder.calls} and len(recorder.calls) == 1
+    row = next(d for d in _dispatches(org, jid) if d["lead_id"] == target["lead_id"])
+    assert row["reason"] == "removed_by_reviewer" and row["status"] != "accepted"

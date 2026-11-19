@@ -706,6 +706,144 @@ async def approve(
     }
 
 
+# ---------------------------------------------------------------------------------------------- recipients
+REMOVE_REASON_MAX = 200
+
+
+def _plan_left(plan: Any) -> bool:
+    """True when the message of this recipient has left, or may have (in flight, accepted, unknown): not recallable."""
+    return plan is not None and plan.status not in (*campaign_launch.REPLANNABLE, "scheduled")
+
+
+async def recipients(session: AsyncSession, account_id: uuid.UUID, campaign: Campaign, now: datetime) -> dict[str, Any]:
+    """Every recipient of the zone campaign, as it stands: the message it would receive (with its offer), why it is
+    held back or excluded, or that the person removed it. Read-only."""
+    template = await journey_repo.latest_template(session, account_id, campaign.id)
+    if template is None:
+        raise JourneyRefused("template_missing", "Ce parcours n'a pas encore de modèle.")
+    aud = await audience(session, account_id, campaign, now, template.subject, template.body)
+    removed = await launch_repo.removed_of(session, account_id, campaign.id)
+    approval, why = await journey_gate.reasons(session, campaign, now)
+    in_force = approval is not None and not why
+    rendered = {m.lead.id: m for m in aud.sendable}
+    held = {lead.id: found for lead, found in aud.unrenderable}
+    items: list[dict[str, Any]] = []
+    for state in aud.states:
+        lead = state.lead
+        item: dict[str, Any] = {
+            "lead_id": str(state.lead_id),
+            "name": lead.full_name if lead else None,
+            "city": lead.city if lead else None,
+            "email": lead.email if lead else None,
+            "stage": state.stage,
+            "exclusion": state.exclusion,
+            "exclusion_label": campaign_plan.exclusion_label(state.exclusion) if state.exclusion else None,
+            "message": None,
+            "problems": [p.label for p in held.get(state.lead_id, [])],
+            "removed_at": None,
+            "removed_reason": None,
+        }
+        material = rendered.get(state.lead_id)
+        if material is not None:
+            item["status"] = "planned" if state.stage == "planned" else "will_receive"
+            item["message"] = {
+                "subject": material.rendered.subject,
+                "body": material.rendered.body,
+                "facts": material.rendered.facts,
+                "site_state": material.rendered.site_state,
+                "offer_kind": material.offer.get("kind"),
+                "offer_label": offer_label(material.offer),
+            }
+        elif state.lead_id in removed:
+            at, _, reason = removed[state.lead_id]
+            item.update(status="removed", removed_at=at, removed_reason=reason)
+        elif state.stage == "launched":
+            item["status"] = "sent"
+        elif state.lead_id in held:
+            item["status"] = "held_back"
+        else:
+            item["status"] = "excluded"
+        item["can_remove"] = item["status"] in ("will_receive", "planned", "held_back", "excluded")
+        item["can_restore"] = item["status"] == "removed" and not in_force
+        items.append(item)
+    counts: dict[str, int] = {}
+    for item in items:
+        counts[item["status"]] = counts.get(item["status"], 0) + 1
+    return {"items": items, "counts": counts, "approval_in_force": in_force}
+
+
+async def remove_recipient(
+    session: AsyncSession,
+    account_id: uuid.UUID,
+    user_id: Optional[uuid.UUID],
+    campaign: Campaign,
+    lead_id: uuid.UUID,
+    *,
+    reason: Optional[str],
+    now: datetime,
+) -> dict[str, Any]:
+    """Take one establishment out of the campaign. It is not replaced, never picked again by a top-up, and its
+    planned message is cancelled; a message that already left cannot be recalled (refused, said as it is)."""
+    if lead_id not in await launch_repo.selection_of(session, account_id, campaign.id):
+        raise JourneyRefused("not_a_recipient", "Cet établissement ne fait pas partie de cette campagne.")
+    if lead_id in await launch_repo.removed_of(session, account_id, campaign.id):
+        return {"removed": True, "changed": False, "cancelled": 0}
+    plan = (await launch_repo.dispatches_of(session, account_id, campaign.id)).get(lead_id)
+    if _plan_left(plan):
+        raise JourneyRefused(
+            "already_sent", "Le message de cet établissement est déjà parti : il ne peut pas être rappelé."
+        )
+    note = (reason or "").strip()[:REMOVE_REASON_MAX] or None
+    await launch_repo.set_removed(
+        session, account_id, campaign.id, lead_id, removed=True, user_id=user_id, reason=note, now=now
+    )
+    cancelled = await launch_repo.cancel_scheduled_for(session, account_id, campaign.id, lead_id, now)
+    await audit_repo.log(
+        session,
+        account_id,
+        action="journey.recipient_removed",
+        resource_type="campaign",
+        resource_id=campaign.id,
+        actor_user_id=user_id,
+        diff={"lead_id": str(lead_id), "cancelled": cancelled, "reason": note},
+    )
+    return {"removed": True, "changed": True, "cancelled": cancelled}
+
+
+async def restore_recipient(
+    session: AsyncSession,
+    account_id: uuid.UUID,
+    user_id: Optional[uuid.UUID],
+    campaign: Campaign,
+    lead_id: uuid.UUID,
+    *,
+    now: datetime,
+) -> dict[str, Any]:
+    """Put a removed establishment back. Only while no approval is in force: nothing leaves without an approval that
+    covered it, so the person approves again (or revokes first)."""
+    if lead_id not in await launch_repo.removed_of(session, account_id, campaign.id):
+        raise JourneyRefused("not_removed", "Cet établissement n'a pas été retiré de cette campagne.")
+    approval, why = await journey_gate.reasons(session, campaign, now)
+    if approval is not None and not why:
+        raise JourneyRefused(
+            "approval_in_force",
+            "Une approbation est en vigueur : révoquez-la, réintégrez l'établissement puis approuvez à nouveau.",
+        )
+    await launch_repo.set_removed(
+        session, account_id, campaign.id, lead_id, removed=False, user_id=user_id, reason=None, now=now
+    )
+    await audit_repo.log(
+        session,
+        account_id,
+        action="journey.recipient_restored",
+        resource_type="campaign",
+        resource_id=campaign.id,
+        actor_user_id=user_id,
+        diff={"lead_id": str(lead_id)},
+    )
+    return {"removed": False, "changed": True}
+
+
 async def revoke(
     session: AsyncSession,
     account_id: uuid.UUID,
