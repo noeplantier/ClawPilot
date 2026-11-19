@@ -55,6 +55,7 @@ def test_a_new_organisation_gets_explicit_empty_values_not_invented_zeros():
     lim = d["limits"]
     assert lim["dry_run"] is True and lim["kill_switch"] is False and lim["paused"] is False
     assert lim["remaining_today"] == lim["max_per_day"] and lim["sandbox"] is True
+    assert lim["email_channel"] is None  # the test server has no e-mail provider: none is claimed
 
 
 def test_discovery_fills_prospects_scores_and_live_signals():

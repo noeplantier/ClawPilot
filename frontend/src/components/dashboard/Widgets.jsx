@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { ArrowRight, ChatCircleDots, Pause, Play, ShieldCheck, Sparkle, TrendUp } from "@phosphor-icons/react";
-import { DASH, ago, chartGeometry, kpiCards, modeOf, pct, quotaShare, seriesHasData, seriesSummary, shortDay } from "@/lib/dashboardFormat";
+import { DASH, ago, channelOf, chartGeometry, kpiCards, modeOf, pct, quotaShare, seriesHasData, seriesSummary, shortDay } from "@/lib/dashboardFormat";
 import { EmptyBlock } from "@/components/outreach/States";
 
 export function Widget({ title, kicker, testId, action, children }) {
@@ -244,7 +244,7 @@ export function LimitsCompliance({ limits, canEdit, busy, onTogglePause }) {
         <dt className="text-soft">kill switch</dt><dd data-testid="limits-kill">{limits.kill_switch ? "ON" : "off"}</dd>
         <dt className="text-soft">organisation</dt><dd data-testid="limits-paused">{limits.paused ? "paused" : "active"}</dd>
         <dt className="text-soft">sandbox allowlist</dt><dd>{limits.sandbox ? `${limits.allowlist_size} address(es)` : "sandbox off"}</dd>
-        <dt className="text-soft">SMTP</dt><dd>{limits.smtp_configured ? "configured" : "not configured"}</dd>
+        <dt className="text-soft">e-mail channel</dt><dd data-testid="limits-channel">{channelOf(limits) || "not configured"}</dd>
       </dl>
       <div className="flex gap-2 flex-wrap">
         {canEdit && (
