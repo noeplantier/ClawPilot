@@ -153,8 +153,27 @@ def _is_hostinger(host: str) -> bool:
     return "hostinger" in host or host == "titan.email" or host.endswith(".titan.email")
 
 
-def identify(*, smtp_host: Optional[str], sendgrid_configured: bool, brevo_configured: bool = False) -> ProviderInfo:
+def identify(
+    *,
+    smtp_host: Optional[str],
+    sendgrid_configured: bool,
+    brevo_configured: bool = False,
+    resend_configured: bool = False,
+) -> ProviderInfo:
     host = (smtp_host or "").strip().lower() or None
+    if resend_configured:  # Resend's API carries the e-mail first (see mail_provider.live_adapter)
+        return ProviderInfo(
+            id="resend_api",
+            label="Resend (API HTTPS)",
+            host="api.resend.com",
+            cold_outreach=UNVERIFIED,
+            restriction=(
+                "Resend : service d'envoi par API, pas une messagerie mutualisée. L'application ne lit pas ses "
+                "conditions : vérifiez qu'elles autorisent votre usage (prospection B2B, base légale, désinscription, "
+                "volume, domaine vérifié) avant tout envoi réel ; l'offre gratuite plafonne l'envoi quotidien, et un "
+                "quota disponible ne vaut pas autorisation."
+            ),
+        )
     if brevo_configured:  # Brevo's API carries the e-mail before SMTP (see mail_provider.live_adapter)
         return ProviderInfo(
             id="brevo_api",
