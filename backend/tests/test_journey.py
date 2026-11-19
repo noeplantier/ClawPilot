@@ -336,6 +336,28 @@ def test_nothing_is_approved_while_the_provider_is_not_configured_and_it_says_ho
     assert refused.value.code == "not_ready_provider" and "SMTP_HOST" in refused.value.label
 
 
+def test_a_configured_but_unreachable_provider_blocks_the_approval_and_says_what_to_do(monkeypatch):
+    """« Configured » is not « working »: a free Render instance closes SMTP ports; nothing may be planned to fail."""
+    from services import mail_provider
+
+    org = _org()
+    _seed(org, 2)
+    jid = _create(org).json()["data"]["id"]
+    closed = {"ok": False, "provider": "smtp", "host": "smtp.example-mail.test", "port": 587, "error": "TimeoutError"}
+    monkeypatch.setattr(mail_provider, "reachable", lambda: closed)
+    with pytest.raises(journey.JourneyRefused) as refused:
+        _approve(org, jid)
+    assert refused.value.code == "not_ready_provider"
+    assert "offre gratuite de Render" in refused.value.label and "BREVO_API_KEY" in refused.value.label
+
+    async def check(session):
+        return await journey.readiness(session, org["account_id"])
+
+    ready = run_async(check)
+    item = next(i for i in ready["items"] if i["id"] == "provider")
+    assert item["ok"] is False and item["label"].startswith("Fournisseur injoignable")
+
+
 def test_a_message_without_a_value_for_the_establishment_is_held_back_not_invented():
     org = _org()
     insert_rows(

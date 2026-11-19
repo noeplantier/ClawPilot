@@ -17,8 +17,10 @@ Every caller must go through `send_gate.check(..., provider=True)` first (a test
 from __future__ import annotations
 
 import logging
+import socket
+import time
 import uuid
-from typing import Optional
+from typing import Any, Callable, Optional
 
 from services import brevo_svc, feature_flags, sendgrid_svc, smtp_svc, twilio_svc
 from services.outreach_os import channels
@@ -94,6 +96,48 @@ def send_email(
         "provider": None,
         "ambiguous": False,
     }
+
+
+REACH_TIMEOUT = 3.0  # seconds: opening a connection, nothing else
+REACH_TTL = 600.0  # a probe is reused for 10 minutes
+_reach_cache: dict[tuple[str, int], tuple[float, dict[str, Any]]] = {}
+
+
+def live_endpoint() -> Optional[tuple[str, str, int]]:
+    """(provider, host, port) of the channel a real e-mail would take, in `live_adapter` order; None if none."""
+    if brevo_svc.is_configured():
+        return "brevo", "api.brevo.com", 443
+    config = smtp_svc.SmtpConfig.from_env()
+    if config is not None:
+        return "smtp", config.host, config.port
+    return None
+
+
+def reachable(
+    connect: Callable[..., Any] = socket.create_connection, clock: Callable[[], float] = time.monotonic
+) -> dict[str, Any]:
+    """Can this server open a connection to its e-mail channel? {ok, provider, host, port, error}.
+
+    « Configured » is not « working »: a free Render instance closes outbound SMTP ports, so a complete SMTP setup
+    can never deliver. This only opens a TCP connection (no TLS, no sign-in, nothing sent) and caches the answer
+    for REACH_TTL. The in-process test recorder is always reachable."""
+    if feature_flags.test_sink():
+        return {"ok": True, "provider": "sink", "host": None, "port": None, "error": None}
+    endpoint = live_endpoint()
+    if endpoint is None:
+        return {"ok": False, "provider": None, "host": None, "port": None, "error": "not_configured"}
+    provider, host, port = endpoint
+    cached = _reach_cache.get((host, port))
+    if cached and clock() - cached[0] < REACH_TTL:
+        return cached[1]
+    error: Optional[str] = None
+    try:
+        connect((host, port), timeout=REACH_TIMEOUT).close()
+    except OSError as exc:  # refused, timeout, unknown host: the class says which, never a secret
+        error = type(exc).__name__
+    result = {"ok": error is None, "provider": provider, "host": host, "port": port, "error": error}
+    _reach_cache[(host, port)] = (clock(), result)
+    return result
 
 
 def live_adapter(extra_allowed: tuple[str, ...] = ()) -> Optional[channels.ChannelAdapter]:

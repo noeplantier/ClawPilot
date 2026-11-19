@@ -14,6 +14,7 @@ Nothing here sends a message: approving writes drafts and a plan; the scheduled 
 
 from __future__ import annotations
 
+import asyncio
 import os
 import uuid
 from dataclasses import dataclass
@@ -33,7 +34,7 @@ from repositories import (
     prospect_repo,
     send_policy_repo,
 )
-from services import campaign_launch, feature_flags, imap_svc, journey_gate, send_gate
+from services import campaign_launch, feature_flags, imap_svc, journey_gate, mail_provider, send_gate
 from services.outreach_os import ai_draft, campaign_plan, campaign_template, drafts, email_footer
 from services.outreach_os import heat as heat_rules
 from services.outreach_os import provider_policy
@@ -119,6 +120,22 @@ async def coverage(session: AsyncSession, account_id: uuid.UUID, zone: dict[str,
 
 
 # ---------------------------------------------------------------------------------------------- readiness (onboarding)
+SMTP_PORTS = (25, 465, 587)
+
+
+def _unreachable_fix(reach: Optional[dict[str, Any]]) -> str:
+    """What to do when the configured channel cannot be reached: nothing approved could leave."""
+    where = f"{reach['host']}:{reach['port']}" if reach and reach.get("host") else "le fournisseur"
+    why = f" ({reach['error']})" if reach and reach.get("error") else ""
+    if reach and reach.get("provider") == "smtp" and reach.get("port") in SMTP_PORTS:
+        return (
+            f"{where} est injoignable depuis ce serveur{why} : les ports SMTP sortants sont fermés sur l'offre "
+            "gratuite de Render. Posez BREVO_API_KEY (envoi par HTTPS) ou passez l'API en offre payante. "
+            "Rien ne peut partir tant que c'est le cas."
+        )
+    return f"{where} est injoignable depuis ce serveur{why} : rien ne peut partir. Vérifiez l'adresse et le réseau."
+
+
 async def readiness(
     session: AsyncSession, account_id: uuid.UUID, scheduler: Optional[dict[str, Any]] = None
 ) -> dict[str, Any]:
@@ -127,6 +144,10 @@ async def readiness(
     offer = ai_draft.valid_offer(await draft_job_repo.offer_of(session, account_id))
     sender = drafts.SenderIdentity.from_env()
     provider = campaign_launch.provider_info()
+    configured = provider.cold_outreach != provider_policy.NOT_CONFIGURED
+    # Configured is not working: the channel must also be reachable from this server (a TCP probe, nothing sent).
+    reach = await asyncio.to_thread(mail_provider.reachable) if configured else None
+    provider_ok = configured and bool(reach and reach["ok"])
     items: list[dict[str, Any]] = [
         {
             "id": "offer",
@@ -153,16 +174,31 @@ async def readiness(
         },
         {
             "id": "provider",
-            "ok": provider.cold_outreach != provider_policy.NOT_CONFIGURED,
+            "ok": provider_ok,
             "blocking": True,
-            "label": f"Fournisseur : {provider.label}",
+            "label": (
+                f"Fournisseur : {provider.label}"
+                if provider_ok or not configured
+                else f"Fournisseur injoignable depuis ce serveur : {provider.label}"
+            ),
             "fix": (
                 None
-                if provider.cold_outreach != provider_policy.NOT_CONFIGURED
-                else "Pilotage › Intégrations : configurez SMTP (SMTP_HOST, SMTP_USERNAME, SMTP_PASSWORD)."
+                if provider_ok
+                else (
+                    _unreachable_fix(reach)
+                    if configured
+                    else "Pilotage › Intégrations : configurez un canal e-mail (BREVO_API_KEY, ou SMTP_HOST, "
+                    "SMTP_USERNAME, SMTP_PASSWORD)."
+                )
             ),
             "link": "/app/settings",
-            "note": provider.restriction,
+            "note": provider.restriction
+            + (
+                " Avec ce fournisseur, les prospects trouvés sur la carte (annuaire public, sans opt-in) seront "
+                "écartés de la campagne, avec la raison."
+                if provider.cold_outreach == provider_policy.OPT_IN_REQUIRED
+                else ""
+            ),
         },
     ]
     imap_ok = imap_svc.is_configured()
