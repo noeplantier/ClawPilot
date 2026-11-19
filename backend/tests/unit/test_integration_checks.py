@@ -402,3 +402,108 @@ def test_brevo_failures_are_explained_without_the_key(monkeypatch, reply, words)
 
     out = checks.brevo(get=get)
     assert out["outcome"] == "failed" and words in out["detail"] and BREVO_KEY not in out["detail"]
+
+
+RESEND_KEY = "re_" + secrets.token_hex(8)  # runtime-built, not a credential
+
+
+class _Resend:
+    def __init__(self, status, body=None):
+        self.status_code = status
+        self._body = body
+
+    def json(self):
+        if self._body is None:
+            raise ValueError("no JSON")
+        return self._body
+
+
+ACCOUNT = {
+    "object": "list",
+    "data": [
+        {"id": "d1", "name": "other-client.example", "status": "verified", "region": "eu-west-1"},
+        {"id": "d2", "name": "plantiers.com", "status": "verified", "region": "eu-west-1"},
+    ],
+}
+
+
+@pytest.fixture
+def resend_env(monkeypatch):
+    monkeypatch.setenv("RESEND_API_KEY", RESEND_KEY)
+    monkeypatch.setenv("OUTREACH_SENDER_EMAIL", "Founder@Plantiers.com")
+
+
+def _resend_with(reply, seen=None):
+    def get(url, **kwargs):
+        if seen is not None:
+            seen.update(url=url, **kwargs)
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+
+    return get
+
+
+def test_resend_is_skipped_without_a_key_and_nothing_is_asked(monkeypatch):
+    monkeypatch.delenv("RESEND_API_KEY", raising=False)
+
+    def ask(*a, **k):
+        raise AssertionError("asked Resend without a key")
+
+    assert checks.resend(get=ask)["outcome"] == "skipped"
+
+
+def test_resend_reads_the_domains_sends_nothing_and_reports_only_the_senders_domain(resend_env):
+    seen = {}
+    out = checks.resend(get=_resend_with(_Resend(200, ACCOUNT), seen))
+    assert out["outcome"] == "passed" and "plantiers.com" in out["detail"] and "is verified" in out["detail"]
+    assert "Nothing was sent" in out["detail"]
+    assert seen["url"] == "https://api.resend.com/domains" and seen["allow_redirects"] is False
+    assert seen["headers"]["Authorization"] == f"Bearer {RESEND_KEY}"
+    assert RESEND_KEY not in out["detail"] and "other-client" not in out["detail"] and "d2" not in out["detail"]
+
+
+@pytest.mark.parametrize(
+    "rows,words",
+    [
+        ([{"name": "plantiers.com", "status": "pending"}], "not verified yet (status: pending)"),
+        ([{"name": "plantiers.com", "status": "<script>"}], "not verified yet (status: unknown)"),
+        ([{"name": "other-client.example", "status": "verified"}], "is not in this Resend account"),
+    ],
+)
+def test_an_unverified_or_absent_sender_domain_is_a_failure_that_says_what_to_do(resend_env, rows, words):
+    out = checks.resend(get=_resend_with(_Resend(200, {"data": rows})))
+    assert out["outcome"] == "failed" and words in out["detail"] and "Resend refuses every message" in out["detail"]
+    assert "other-client" not in out["detail"] and "<script>" not in out["detail"]
+
+
+def test_a_sending_only_key_is_recognised_and_the_domain_left_to_check(resend_env):
+    reply = _Resend(401, {"statusCode": 401, "name": "restricted_api_key", "message": "echo founder@plantiers.com"})
+    out = checks.resend(get=_resend_with(reply))
+    assert out["outcome"] == "passed" and "sending access only" in out["detail"]
+    assert "Resend > Domains" in out["detail"] and "echo" not in out["detail"]
+
+
+def test_without_a_sender_the_key_is_proved_and_no_domain_is_claimed(resend_env, monkeypatch):
+    monkeypatch.delenv("OUTREACH_SENDER_EMAIL")
+    out = checks.resend(get=_resend_with(_Resend(200, ACCOUNT)))
+    assert out["outcome"] == "passed" and "no sender domain was checked" in out["detail"]
+    assert "plantiers.com" not in out["detail"]
+
+
+@pytest.mark.parametrize(
+    "reply,words",
+    [
+        (_Resend(403, {"name": "invalid_api_key", "message": "API key is invalid"}), "rejected the key (HTTP 403)"),
+        (_Resend(401, {"name": "missing_api_key"}), "rejected the key (HTTP 401)"),
+        (_Resend(401), "rejected the key (HTTP 401)"),
+        (_Resend(500, {"name": "internal_server_error"}), "answered HTTP 500"),
+        (_Resend(200), "could not be read"),
+        (_Resend(200, {"data": "nope"}), "could not be read"),
+        (requests.Timeout(), "in time"),
+        (requests.ConnectionError(), "could not be reached (ConnectionError)"),
+    ],
+)
+def test_resend_failures_are_explained_without_the_key(resend_env, reply, words):
+    out = checks.resend(get=_resend_with(reply))
+    assert out["outcome"] == "failed" and words in out["detail"] and RESEND_KEY not in out["detail"]

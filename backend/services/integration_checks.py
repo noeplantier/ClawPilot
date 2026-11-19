@@ -9,6 +9,8 @@ Result: {"ok", "outcome": passed|failed|skipped, "latency_ms", "detail"} — `sk
 
 from __future__ import annotations
 
+import os
+import re
 import time
 from typing import Any, Callable, Optional
 
@@ -21,10 +23,12 @@ from services import (
     imap_svc,
     overpass_svc,
     registry_svc,
+    resend_svc,
     sendgrid_svc,
     smtp_svc,
     twilio_svc,
 )
+from services.outreach_os.normalize import normalize_email
 
 
 def _result(outcome: str, detail: str, started: Optional[float] = None) -> dict[str, Any]:
@@ -111,6 +115,97 @@ def _twilio_client(sid: str, token: str) -> Any:
     from twilio.rest import Client
 
     return Client(sid, token)
+
+
+RESEND_DOMAIN_STATES = frozenset(
+    {"verified", "partially_verified", "pending", "not_started", "failed", "temporary_failure", "partially_failed"}
+)
+
+
+def _resend_error_name(response: Any) -> str:
+    """Resend's error code only (e.g. "restricted_api_key"): never its message, which could repeat the request."""
+    try:
+        name = response.json().get("name")
+    except Exception:  # noqa: BLE001 (no JSON body is an answer too)
+        return ""
+    return name if isinstance(name, str) and re.fullmatch(r"[a-z_]{1,40}", name) else ""
+
+
+def _resend_domain_state(body: Any, domain: str) -> Optional[str]:
+    """The state of the sender's domain in the account's list, "absent" when it is not there, None if unreadable.
+    Only this domain is looked at: the other domains of the account are never returned."""
+    rows = body.get("data") if isinstance(body, dict) else None
+    if not isinstance(rows, list):
+        return None
+    for row in rows:
+        if isinstance(row, dict) and str(row.get("name", "")).strip().lower() == domain:
+            state = str(row.get("status", ""))
+            return state if state in RESEND_DOMAIN_STATES else "unknown"
+    return "absent"
+
+
+def resend(get: Callable[..., Any] = requests.get) -> dict[str, Any]:
+    """Reads the account's domains (GET /domains): proves the key and says whether the sender's domain is verified,
+    without sending anything. Nothing of the answer is echoed but that one domain's state. A sending-only key cannot
+    read the domains: it is recognised, and the domain is left for the person to check in Resend."""
+    config = resend_svc.ResendConfig.from_env()
+    if config is None:
+        return _result("skipped", "RESEND_API_KEY is not set.")
+    sender = normalize_email(os.environ.get("OUTREACH_SENDER_EMAIL", "")) or ""
+    domain = sender.rsplit("@", 1)[1] if "@" in sender else ""
+    started = time.monotonic()
+    try:
+        response = get(
+            f"{resend_svc.API_ROOT}/domains",
+            headers={"Authorization": f"Bearer {config.api_key}", "Accept": "application/json"},
+            timeout=(5, 15),
+            allow_redirects=False,
+        )
+    except requests.Timeout:
+        return _result("failed", "Resend did not answer in time.", started)
+    except requests.RequestException as exc:
+        return _result("failed", f"Resend could not be reached ({type(exc).__name__}).", started)
+    code = int(response.status_code)
+    where = f"the sender's domain ({domain})" if domain else "the sender's domain"
+    if code == 401 and _resend_error_name(response) == "restricted_api_key":
+        return _result(
+            "passed",
+            f"Resend recognised the key (sending access only, so the domains cannot be read with it). Check in "
+            f"Resend > Domains that {where} is Verified. Nothing was sent.",
+            started,
+        )
+    if code in (401, 403):
+        return _result("failed", f"Resend rejected the key (HTTP {code}). Check RESEND_API_KEY.", started)
+    if code != 200:
+        return _result("failed", f"Resend answered HTTP {code}.", started)
+    if not domain:
+        return _result(
+            "passed",
+            "Resend accepted the key. OUTREACH_SENDER_EMAIL is not set, so no sender domain was checked. Nothing was "
+            "sent.",
+            started,
+        )
+    try:
+        state = _resend_domain_state(response.json(), domain)
+    except ValueError:
+        state = None
+    if state is None:
+        return _result("failed", "Resend accepted the key but its answer could not be read.", started)
+    if state == "verified":
+        return _result("passed", f"Resend accepted the key and {where} is verified. Nothing was sent.", started)
+    if state == "absent":
+        return _result(
+            "failed",
+            f"Resend accepted the key, but {where} is not in this Resend account: add it in Resend > Domains and "
+            "publish its DNS records. Until then Resend refuses every message.",
+            started,
+        )
+    return _result(
+        "failed",
+        f"Resend accepted the key, but {where} is not verified yet (status: {state}): publish its DNS records and "
+        "verify it in Resend > Domains. Until then Resend refuses every message.",
+        started,
+    )
 
 
 def brevo(get: Callable[..., Any] = requests.get) -> dict[str, Any]:

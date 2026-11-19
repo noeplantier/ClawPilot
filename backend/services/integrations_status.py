@@ -21,7 +21,18 @@ from urllib.parse import urlsplit
 
 STATUSES = ("ready", "unchecked", "partial", "missing", "blocked", "off")
 GROUPS = ("data", "sources", "sending", "inbound", "ai")
-TESTABLE = ("database", "osm", "registry", "brevo", "smtp", "imap", "sendgrid", "twilio", "ai")  # run on the server
+TESTABLE = (
+    "database",
+    "osm",
+    "registry",
+    "resend",
+    "brevo",
+    "smtp",
+    "imap",
+    "sendgrid",
+    "twilio",
+    "ai",
+)  # run on the server
 BROWSER_TESTS = ("geocoder",)  # the browser itself calls this service, so the browser is what must be tested
 DOCS = "docs/integrations.md"
 
@@ -45,6 +56,7 @@ TRACKED_ENV = (
     "OUTREACH_SENDER_ADDRESS",
     "OUTREACH_SENDER_EMAIL",
     "OUTREACH_SENDER_WHATSAPP",
+    "RESEND_API_KEY",
     "BREVO_API_KEY",
     "SMTP_HOST",
     "SMTP_USERNAME",
@@ -99,6 +111,7 @@ class Facts:
     test_sink: bool = False  # automated tests only: sends are recorded in-process, never sent
     sender_configured: bool = False
     sender_email: Optional[str] = None
+    resend_configured: bool = False
     brevo_configured: bool = False
     smtp_configured: bool = False
     smtp_host: Optional[str] = None
@@ -375,16 +388,16 @@ def _sending_mode(f: Facts) -> dict[str, Any]:
         return _item(
             "sending_mode", "Sending mode", "sending", "off", "DRY-RUN · NOTHING LEAVES", summary, env=env, facts=facts
         )
-    if not f.smtp_configured:
+    if not (f.resend_configured or f.brevo_configured or f.smtp_configured):  # mail_provider.live_adapter's order
         return _item(
             "sending_mode",
             "Sending mode",
             "sending",
             "blocked",
-            "LIVE FLAG ON · SMTP INCOMPLETE",
-            summary + " Sends are refused.",
+            "LIVE FLAG ON · NO E-MAIL CHANNEL",
+            summary + " Sends are refused: set RESEND_API_KEY (or BREVO_API_KEY, or SMTP_HOST, SMTP_USERNAME and "
+            "SMTP_PASSWORD).",
             env=env,
-            needs=_missing(f, ("SMTP_HOST", "SMTP_USERNAME", "SMTP_PASSWORD")),
             facts=facts,
         )
     if f.sandbox:
@@ -404,6 +417,39 @@ def _sending_mode(f: Facts) -> dict[str, Any]:
     )
 
 
+def _resend(f: Facts) -> dict[str, Any]:
+    names = ("RESEND_API_KEY",)
+    summary = (
+        "Sends e-mail through Resend's HTTPS API (port 443), first when set (before Brevo and SMTP): the real channel "
+        "where outbound SMTP ports are closed (a free Render instance). The sender is OUTREACH_SENDER_EMAIL, on a "
+        "domain verified in Resend. Accepted by Resend does not mean delivered."
+    )
+    if f.resend_configured:
+        return _item(
+            "resend",
+            "Resend e-mail (API)",
+            "sending",
+            "unchecked",
+            "CONFIGURED · NOT TESTED",
+            summary,
+            env=names,
+            facts=[("sender.email", f.sender_email or "—"), ("used", "first" if f.live_sending else "dry-run")],
+            test="server",
+            hint="The test reads the account's domains; it never sends a message.",
+        )
+    return _item(
+        "resend",
+        "Resend e-mail (API)",
+        "sending",
+        "off",
+        "OPTIONAL · NOT SET",
+        summary,
+        env=names,
+        needs=list(names),
+        test="server",
+    )
+
+
 def _brevo(f: Facts) -> dict[str, Any]:
     names = ("BREVO_API_KEY",)
     summary = (
@@ -419,7 +465,7 @@ def _brevo(f: Facts) -> dict[str, Any]:
             "CONFIGURED · NOT TESTED",
             summary,
             env=names,
-            facts=[("sender.email", f.sender_email or "—"), ("used", "before SMTP" if f.live_sending else "dry-run")],
+            facts=[("sender.email", f.sender_email or "—"), ("used", _brevo_use(f))],
             test="server",
             hint="The test reads the account; it never sends a message.",
         )
@@ -434,6 +480,12 @@ def _brevo(f: Facts) -> dict[str, Any]:
         needs=list(names),
         test="server",
     )
+
+
+def _brevo_use(f: Facts) -> str:
+    if not f.live_sending:
+        return "dry-run"
+    return "standby: Resend is used first" if f.resend_configured else "before SMTP"
 
 
 def _smtp(f: Facts) -> dict[str, Any]:
@@ -537,13 +589,14 @@ def _sendgrid(f: Facts) -> dict[str, Any]:
             test="server",
             hint="The test only reads the key's scopes.",
         )
-    if f.smtp_configured or f.brevo_configured:  # another channel already carries the e-mail: an alternative, not a gap
+    if f.smtp_configured or f.brevo_configured or f.resend_configured:  # another channel carries the e-mail
+        used = "RESEND" if f.resend_configured else "BREVO" if f.brevo_configured else "SMTP"
         return _item(
             "sendgrid",
             "SendGrid e-mail",
             "sending",
             "off",
-            "NOT NEEDED · BREVO IS USED" if f.brevo_configured else "NOT NEEDED · SMTP IS USED",
+            f"NOT NEEDED · {used} IS USED",
             summary,
             env=names,
             test="server",
@@ -722,6 +775,7 @@ def build(f: Facts) -> dict[str, Any]:
         _registry(f),
         _sender(f),
         _sending_mode(f),
+        _resend(f),
         _brevo(f),
         _smtp(f),
         _imap(f),
