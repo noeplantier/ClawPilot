@@ -139,6 +139,11 @@ def test_hot_needs_an_observed_sourced_intent_and_never_comes_from_a_need_signal
     assert drawn["Intéressé"]["priority"] == "hot" and drawn["Intéressé"]["priority_label"].startswith("Hot")
     assert drawn["Calme"]["priority"] == "qualified" and drawn["Besoin"]["priority"] == "qualified"
     assert [p["name"] for p in requests.get(f"{API}/map/prospects", headers=h).json()][0] == "Intéressé"  # hot first
+    # Why it is hot travels with it: the quoted, sourced evidence; a merely qualified prospect carries none
+    assert drawn["Intéressé"]["intent_evidence"] == "Asked for a quote on the contact page of the business's own site"
+    assert drawn["Calme"]["intent_evidence"] is None and drawn["Besoin"]["intent_evidence"] is None
+    other, _ = _org()  # another organisation never sees it
+    assert "Intéressé" not in {p["name"] for p in requests.get(f"{API}/map/prospects", headers=other).json()}
 
 
 def test_a_known_but_incomplete_place_is_still_known_so_the_search_does_not_offer_it_again():

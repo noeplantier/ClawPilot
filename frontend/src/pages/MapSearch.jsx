@@ -20,7 +20,7 @@ import { ATTEST_PREF, ATTEST_TEXT, addManyBodies, describeAddedMany, sumAdded } 
 import { nextDelay, startBurst, withSecondary } from "@/lib/pollPlan";
 import { canRetryInBrowser, jobLine, runSearch } from "@/lib/mapJobs";
 import {
-  EMPTY_FILTER, applyFilter, campaignPick, clusterPoints, clusterSize, facets, filterSummary, hasFilter, newIds, signalLabel,
+  EMPTY_FILTER, applyFilter, campaignPick, clusterPoints, clusterSize, emptyListText, facets, filterSummary, hasFilter, newIds, signalLabel,
 } from "@/lib/mapCluster";
 import { EmptyBlock, ErrorBlock, LoadingBlock } from "@/components/outreach/States";
 import PlacePopup from "@/components/outreach/PlacePopup";
@@ -57,10 +57,11 @@ function minePopup(p) {
   const site = p.website && /^https?:\/\//i.test(p.website)
     ? `<div><a href="${esc(p.website)}" target="_blank" rel="noopener noreferrer" class="text-brand-lilac hover:underline">${esc(p.website.replace(/^https?:\/\//i, ""))}</a></div>`
     : "";
-  const heat = p.heat ? `<b>${p.heat.tier} ${p.heat.value}</b> · ` : "";
+  const heat = p.heat ? `<b>chaleur ${p.heat.value}</b> · ` : ""; // a score, never « hot » (hot = an observed intent)
   return `<strong>${esc(p.name)}</strong><div>${p.city ? esc(p.city) : "<i>city not set</i>"}</div>` +
     `<div class="flex items-center gap-1.5 my-1"><span style="background:${cls.bg};color:${cls.color};border:1px solid ${cls.border}" class="text-[10px] px-1.5 py-0.5 rounded-full font-mono font-bold">${esc(cls.label)}</span> · ${heat}${STATUS_LABEL[p.review_status]}</div>` +
     `<div><a href="tel:${esc(p.phone || "")}">${esc(p.phone || "")}</a></div><div><a href="mailto:${esc(p.email || "")}">${esc(p.email || "")}</a></div>${site}` +
+    (cls.tier === "HOT" && p.intent_evidence ? `<div class="text-[11px] mt-1" data-testid="popup-why-hot"><b>Pourquoi Hot :</b> ${esc(p.intent_evidence)}</div>` : "") +
     `<div class="text-[11px] text-brand-lilac font-medium mt-1">${esc(cls.site.label)}</div>` +
     `<div class="pt-1"><a href="/app/prospects/${esc(p.id)}">Open the prospect</a>${p.review_status === "approved" ? ` · <a href="/app/leads">in your CRM</a>` : ""} · <a href="/app/launch">Launch</a></div>`;
 }
@@ -518,9 +519,23 @@ function MapView({ canImport }) {
                 <input type="checkbox" checked={showMine} onChange={(e) => setShowMine(e.target.checked)} />
                 <span><b>Qualified prospects</b> (squares) — {readySummary(mine)}</span>
               </label>
+              {mine.length > 0 && showMine && (
+                <p className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-soft" data-testid="map-legend">
+                  <span className="inline-flex items-center gap-1"><span className="map-legend-square is-hot" aria-hidden="true" /> Hot : qualifié + intention observée et sourcée</span>
+                  <span className="inline-flex items-center gap-1"><span className="map-legend-square" aria-hidden="true" /> Qualifié prioritaire</span>
+                </p>
+              )}
               <DraftJobsStrip />
               {mine.length > 0 && showMine && (
                 <div className="space-y-2" data-testid="map-filters">
+                  <div className="flex flex-wrap gap-1" role="radiogroup" aria-label="Priorité" data-testid="filter-priority">
+                    {[["", `Tous (${ready.length})`], ["hot", `Hot — intention observée (${options.hot})`], ["qualified", `Qualifiés (${ready.length - options.hot})`]].map(([key, label]) => (
+                      <button key={key || "all"} type="button" role="radio" aria-checked={filter.priority === key} onClick={() => setFilter({ ...filter, priority: key })} data-testid={`filter-priority-${key || "all"}`}
+                        className={`px-2.5 py-1 rounded-full text-xs border ${filter.priority === key ? "bg-brand-violet text-white border-brand-violet" : "bg-card border-border hover:border-white/20"}`}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
                   <div className="grid grid-cols-2 gap-2">
                     <select className="neo-input" aria-label="Filter by vertical" value={filter.vertical} onChange={(e) => setFilter({ ...filter, vertical: e.target.value })} data-testid="filter-vertical">
                       <option value="">All verticals</option>
@@ -616,14 +631,15 @@ function MapView({ canImport }) {
                   <h2 className="font-display text-lg font-bold">{group ? `Cluster · ${group.length} qualified prospects` : "Qualified prospects"}</h2>
                   {group && <button className="underline text-xs" onClick={() => setGroup(null)} data-testid="cluster-close">All</button>}
                 </div>
-                {list.length === 0 && <p className="text-sm text-soft mt-1" data-testid="mine-none">{ready.length === 0 ? "No hot lead with a phone and an e-mail yet." : "No hot lead matches the filters."}</p>}
+                {list.length === 0 && <p className="text-sm text-soft mt-1" data-testid="mine-none">{emptyListText(ready.length, filter)}</p>}
                 <ul className="divide-y divide-border">
                   {list.map((p) => (
                     <li key={p.id} className="py-1.5 flex gap-2 items-start text-sm" data-testid="mine-row">
                       <input type="checkbox" checked={picked.has(p.id)} onChange={() => togglePick(p.id)} aria-label={`Select ${p.name}`} className="mt-1" />
                       <button className="text-left min-w-0 flex-1" onClick={() => map.current.flyTo([p.lat, p.lon], 17, { duration: 1 })}>
                         <span className="font-medium block truncate">{p.name}</span>
-                        <span className="block text-xs text-soft truncate">{p.heat ? `${p.heat.tier} ${p.heat.value} · ` : ""}{STATUS_LABEL[p.review_status]} · {p.score === null || p.score === undefined ? "not scored" : `score ${p.score}`}{p.city ? ` · ${p.city}` : ""}</span>
+                        <span className="block text-xs text-soft truncate">{p.priority === "hot" ? "Hot · " : ""}{p.heat ? `chaleur ${p.heat.value} · ` : ""}{STATUS_LABEL[p.review_status]} · {p.score === null || p.score === undefined ? "not scored" : `score ${p.score}`}{p.city ? ` · ${p.city}` : ""}</span>
+                        {p.priority === "hot" && p.intent_evidence && <span className="block text-xs text-brand-lilac line-clamp-2" data-testid="mine-why-hot">Pourquoi Hot : {p.intent_evidence}</span>}
                       </button>
                       <Link to={`/app/prospects/${p.id}`} className="text-xs underline shrink-0">open</Link>
                     </li>

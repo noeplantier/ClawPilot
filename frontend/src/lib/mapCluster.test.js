@@ -1,4 +1,4 @@
-import { EMPTY_FILTER, applyFilter, clusterPoints, facets, filterSummary, hasFilter, newIds } from "@/lib/mapCluster";
+import { EMPTY_FILTER, applyFilter, clusterPoints, emptyListText, facets, filterSummary, hasFilter, newIds } from "@/lib/mapCluster";
 
 const P = (id, lat, lon, extra = {}) => ({ id, lat, lon, name: id, review_status: "pending", vertical: "restaurant", score: null, signals: [], ...extra });
 
@@ -40,7 +40,7 @@ test("filters combine on vertical, status and detected signal", () => {
 
 test("facets are counted from the data and an empty set says so", () => {
   const pts = [P("a", 0, 0, { signals: ["x", "y"] }), P("b", 0, 0, { signals: ["x"], vertical: null })];
-  expect(facets(pts)).toEqual({ verticals: [{ value: "restaurant", count: 1 }], signals: [{ value: "x", count: 2 }, { value: "y", count: 1 }] });
+  expect(facets(pts)).toEqual({ verticals: [{ value: "restaurant", count: 1 }], signals: [{ value: "x", count: 2 }, { value: "y", count: 1 }], hot: 0 }); // hot: counted from the server's priority, none here
   expect(filterSummary(0, 0)).toBe("No prospect with a position yet.");
   expect(filterSummary(2, 5)).toBe("2 of 5 prospects match the filters.");
   expect(filterSummary(1, 1)).toBe("1 prospect on the map.");
@@ -51,4 +51,23 @@ test("newIds flags only what appeared since the previous poll, and nothing on th
   const b = P("b", 0, 0);
   expect(newIds(null, [a, b]).size).toBe(0);
   expect([...newIds([a], [a, b])]).toEqual(["b"]);
+});
+
+test("the priority filter keeps the server's decision: hot is an observed intent, qualified is the rest", () => {
+  const pts = [
+    { id: "h", priority: "hot", intent_evidence: "hiring: the homepage https://x.fr says …" },
+    { id: "q1", priority: "qualified" },
+    { id: "q2" }, // an older answer without the field is never hot
+  ];
+  expect(applyFilter(pts, { ...EMPTY_FILTER, priority: "hot" }).map((p) => p.id)).toEqual(["h"]);
+  expect(applyFilter(pts, { ...EMPTY_FILTER, priority: "qualified" }).map((p) => p.id)).toEqual(["q1", "q2"]);
+  expect(hasFilter({ ...EMPTY_FILTER, priority: "hot" })).toBe(true);
+  expect(facets(pts).hot).toBe(1);
+});
+
+test("an empty list never calls a qualified prospect hot and says why it is empty", () => {
+  expect(emptyListText(0, EMPTY_FILTER)).toContain("Aucun prospect qualifié");
+  expect(emptyListText(5, { ...EMPTY_FILTER, priority: "hot" })).toBe("Aucun Hot Lead : aucune intention observée et sourcée parmi ces prospects qualifiés.");
+  expect(emptyListText(5, EMPTY_FILTER)).toBe("Aucun prospect ne correspond aux filtres.");
+  expect(emptyListText(0, EMPTY_FILTER)).not.toMatch(/\bhot\b/i);
 });

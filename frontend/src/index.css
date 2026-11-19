@@ -529,6 +529,9 @@ select option { background: var(--void-surface); color: var(--text-primary); }
   background: linear-gradient(135deg, #fff, color-mix(in srgb, var(--c) 60%, #fff) 40%, var(--c));
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--c) 30%, transparent), 0 0 14px 2px color-mix(in srgb, var(--c) 75%, transparent); transition: transform 0.15s; }
 .map-pin:hover .map-pin-square { transform: rotate(45deg) scale(1.3); }
+/* the legend of the map list: the same square as the pin, hot with the warning ring */
+.map-legend-square { display: inline-block; width: 9px; height: 9px; border-radius: 2px; transform: rotate(45deg); background: var(--brand-violet); }
+.map-legend-square.is-hot { background: var(--accent-warning); box-shadow: 0 0 0 1px var(--accent-warning), 0 0 8px var(--accent-warning); }
 .map-pin-square.is-hot { box-shadow: 0 0 0 2px var(--accent-warning), 0 0 22px 4px color-mix(in srgb, var(--accent-warning) 70%, transparent); } /* an observed, sourced intent */
 .map-pin-square.is-new { animation: pos-pulse 1.6s 3; outline: 2px solid #22D3EE; outline-offset: 3px; }
 .map-pin-square.is-hot::after, .map-pin-square.is-new::after { content: ""; position: absolute; inset: -8px; border-radius: 6px; border: 1px solid currentColor; color: var(--accent-warning); animation: map-ping 2.6s ease-out 3; }
