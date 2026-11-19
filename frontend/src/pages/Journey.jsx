@@ -8,6 +8,7 @@ import SetupChecklist from "@/components/journey/SetupChecklist";
 import ZoneBlock from "@/components/journey/ZoneBlock";
 import TemplateEditor from "@/components/journey/TemplateEditor";
 import ApprovalPanel from "@/components/journey/ApprovalPanel";
+import RecipientList from "@/components/journey/RecipientList";
 import ProgressPanel from "@/components/journey/ProgressPanel";
 import { EmptyBlock, ErrorBlock, LoadingBlock } from "@/components/outreach/States";
 import { canDecide, journeysApi, useAsync } from "@/lib/outreach";
@@ -123,6 +124,7 @@ function Detail({ id, onBack }) {
       <SetupChecklist readiness={summary.readiness} />
       <ZoneBlock zone={summary.zone} coverage={summary.coverage} />
       <TemplateEditor template={summary.template} examples={summary.examples} decide={decide} busy={j.busy} onSave={j.saveTemplate} />
+      <RecipientList journeyId={id} stamp={`${summary.audience.sendable}:${summary.approval.approved}:${summary.template.version}`} decide={decide} onChanged={j.reload} />
       <ApprovalPanel summary={summary} decide={decide} busy={j.busy} onApprove={j.approve} />
       {j.progress.data && <ProgressPanel progress={j.progress.data} decide={decide} busy={j.busy} onPause={j.pause} onResume={j.resume} onRevoke={j.revoke} />}
     </div>

@@ -23,6 +23,7 @@ from models import (
     JourneyCreateIn,
     JourneyListOut,
     JourneyOut,
+    JourneyRecipientRemoveIn,
     JourneyRevokeIn,
     JourneyTemplateIn,
 )
@@ -206,3 +207,63 @@ async def progress(
     """The compact follow-up: progression, what needs the person, replies, pause state."""
     campaign = await _journey(session, user, journey_id)
     return JourneyOut(data=await journey.progress(session, _account(user), campaign, _now()))
+
+
+def _lead_id(raw: str) -> uuid.UUID:
+    try:
+        return uuid.UUID(raw)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Recipient not found")
+
+
+@router.get("/{journey_id}/recipients", response_model=JourneyOut)
+async def recipients(
+    journey_id: str, user: dict = Depends(get_current_user), session: AsyncSession = Depends(get_db_session)
+):
+    """Every recipient as it stands: the message it would receive and its offer, or why it is held back, excluded,
+    removed by the person, or already sent. Read-only."""
+    campaign = await _journey(session, user, journey_id)
+    try:
+        return JourneyOut(data=await journey.recipients(session, _account(user), campaign, _now()))
+    except journey.JourneyRefused as exc:
+        raise _refused(exc)
+
+
+@router.post("/{journey_id}/recipients/{lead_id}/remove", response_model=JourneyOut)
+async def remove_recipient(
+    journey_id: str,
+    lead_id: str,
+    payload: JourneyRecipientRemoveIn,
+    user: dict = Depends(decider),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Take one establishment out: not replaced, never picked again, its planned message cancelled. A message that
+    already left cannot be recalled (409)."""
+    campaign = await _journey(session, user, journey_id)
+    try:
+        return JourneyOut(
+            data=await journey.remove_recipient(
+                session, _account(user), _uid(user), campaign, _lead_id(lead_id), reason=payload.reason, now=_now()
+            )
+        )
+    except journey.JourneyRefused as exc:
+        raise _refused(exc)
+
+
+@router.post("/{journey_id}/recipients/{lead_id}/restore", response_model=JourneyOut)
+async def restore_recipient(
+    journey_id: str,
+    lead_id: str,
+    user: dict = Depends(decider),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Put a removed establishment back; refused while an approval is in force (approve again after revoking)."""
+    campaign = await _journey(session, user, journey_id)
+    try:
+        return JourneyOut(
+            data=await journey.restore_recipient(
+                session, _account(user), _uid(user), campaign, _lead_id(lead_id), now=_now()
+            )
+        )
+    except journey.JourneyRefused as exc:
+        raise _refused(exc)

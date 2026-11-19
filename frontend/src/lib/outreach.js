@@ -219,6 +219,9 @@ export const journeysApi = {
   pause: (id) => api.post(`/journeys/${id}/pause`).then((r) => r.data.data),
   resume: (id) => api.post(`/journeys/${id}/resume`).then((r) => r.data.data),
   progress: (id) => api.get(`/journeys/${id}/progress`).then((r) => r.data.data),
+  recipients: (id) => api.get(`/journeys/${id}/recipients`).then((r) => r.data.data),
+  removeRecipient: (id, leadId, reason) => api.post(`/journeys/${id}/recipients/${leadId}/remove`, { reason: reason || null }).then((r) => r.data.data),
+  restoreRecipient: (id, leadId) => api.post(`/journeys/${id}/recipients/${leadId}/restore`).then((r) => r.data.data),
 };
 
 export const mandatesApi = {
