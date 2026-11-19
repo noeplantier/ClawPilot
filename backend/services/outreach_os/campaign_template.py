@@ -209,6 +209,29 @@ def offer_hash(offer: Optional[Mapping[str, str]]) -> Optional[str]:
     return _digest({k: normalize_text(str(offer.get(k, ""))) for k in ("name", "pitch", "cta", "language")})
 
 
+def offers_hash(found: Optional[Mapping[str, Any]]) -> Optional[str]:
+    """The approval's view of the offers (`ai_draft.valid_offers`): each recipient receives the offer of its case, so
+    every complete offer is bound, and the default one (the unknown case). With a single offer it is exactly
+    `offer_hash` of that offer: an approval given before the three offers stays valid while nothing changed."""
+    if not found or not found.get("offers"):
+        return None
+    offers: Mapping[str, Mapping[str, str]] = found["offers"]
+    language = str(found.get("language", "fr"))
+    if len(offers) == 1:
+        (only,) = offers.values()
+        return offer_hash({**only, "language": language})
+    return _digest(
+        {
+            "language": language,
+            "default": str(found.get("default", "")),
+            "offers": {
+                kind: {k: normalize_text(str(o.get(k, ""))) for k in ("name", "pitch", "cta")}
+                for kind, o in offers.items()
+            },
+        }
+    )
+
+
 def zone_hash(zone: Optional[Mapping[str, Any]]) -> Optional[str]:
     """The perimeter that was approved: the box and the category, not the label or the time it was drawn."""
     if not zone:

@@ -32,6 +32,12 @@ export default function ApprovalPanel({ summary, decide, busy, onApprove }) {
           {audience.already_sent > 0 && <> · {audience.already_sent} déjà partis</>}
           {audience.held_back_count > 0 && <> · <span className="text-amber-300">{audience.held_back_count} retenus</span></>}
         </Row>
+        {(audience.by_offer || []).length > 0 && (
+          <Row label="Offres" testId="approval-offers">
+            <ul className="space-y-0.5">{audience.by_offer.map((o) => <li key={o.kind}><b>{o.count}</b> · {o.label}</li>)}</ul>
+            <p className="mt-1 text-xs text-faint">Chaque établissement reçoit l&apos;offre de son cas : aucun site identifié → création, site qui ne répond pas → refonte, site trouvé → SEO / GEO, inconnu → offre par défaut.</p>
+          </Row>
+        )}
         {exclusions.length > 0 && (
           <Row label="Exclus" testId="approval-exclusions">
             <ul className="space-y-0.5">{exclusions.map((r) => <li key={r.code}>{r.count} · {r.label}</li>)}</ul>

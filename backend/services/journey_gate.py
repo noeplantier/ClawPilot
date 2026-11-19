@@ -32,7 +32,7 @@ def sender_fp() -> Optional[str]:
 
 
 async def current_offer_hash(session: AsyncSession, account_id: uuid.UUID) -> Optional[str]:
-    return campaign_template.offer_hash(ai_draft.valid_offer(await draft_job_repo.offer_of(session, account_id)))
+    return campaign_template.offers_hash(ai_draft.valid_offers(await draft_job_repo.offer_of(session, account_id)))
 
 
 def binding_of(approval: Optional[CampaignApproval]) -> Optional[campaign_template.Binding]:
