@@ -130,8 +130,8 @@ def _unreachable_fix(reach: Optional[dict[str, Any]]) -> str:
     if reach and reach.get("provider") == "smtp" and reach.get("port") in SMTP_PORTS:
         return (
             f"{where} est injoignable depuis ce serveur{why} : les ports SMTP sortants sont fermés sur l'offre "
-            "gratuite de Render. Posez BREVO_API_KEY (envoi par HTTPS) ou passez l'API en offre payante. "
-            "Rien ne peut partir tant que c'est le cas."
+            "gratuite de Render. Posez RESEND_API_KEY ou BREVO_API_KEY (envoi par HTTPS) ou passez l'API en offre "
+            "payante. Rien ne peut partir tant que c'est le cas."
         )
     return f"{where} est injoignable depuis ce serveur{why} : rien ne peut partir. Vérifiez l'adresse et le réseau."
 

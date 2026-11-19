@@ -2,7 +2,8 @@
 
 Never a pretend success: when nothing is configured the answer is `failed` and says what to configure.
 
-    e-mail    Brevo's HTTP API (BREVO_API_KEY, port 443: works where SMTP ports are closed) → else SMTP (SMTP_*);
+    e-mail    Resend's HTTP API (RESEND_API_KEY) → else Brevo's (BREVO_API_KEY): port 443, works where SMTP ports are
+              closed → else SMTP (SMTP_*);
               both real channels need FEATURE_LIVE_SENDING, recipients limited to the sandbox allowlist while
               OUTREACH_SANDBOX is on → else SendGrid (SENDGRID_API_KEY + SENDGRID_FROM_EMAIL) → else refused
     WhatsApp  Twilio (account SID starting with AC + token; recipients limited to OUTREACH_LIVE_PHONES while the sandbox
@@ -22,24 +23,26 @@ import time
 import uuid
 from typing import Any, Callable, Optional
 
-from services import brevo_svc, feature_flags, sendgrid_svc, smtp_svc, twilio_svc
+from services import brevo_svc, feature_flags, resend_svc, sendgrid_svc, smtp_svc, twilio_svc
 from services.outreach_os import channels
 from services.outreach_os.drafts import SenderIdentity
 
 logger = logging.getLogger(__name__)
 
 NOT_CONFIGURED = {
-    "email": "No e-mail provider is configured: set BREVO_API_KEY, or SMTP_HOST, SMTP_USERNAME and SMTP_PASSWORD (with "
-    "FEATURE_LIVE_SENDING=true), or SENDGRID_API_KEY and SENDGRID_FROM_EMAIL. Nothing was sent.",
+    "email": "No e-mail provider is configured: set RESEND_API_KEY or BREVO_API_KEY, or SMTP_HOST, SMTP_USERNAME and "
+    "SMTP_PASSWORD (with FEATURE_LIVE_SENDING=true), or SENDGRID_API_KEY and SENDGRID_FROM_EMAIL. Nothing was sent.",
     "whatsapp": "No WhatsApp provider is configured: set TWILIO_ACCOUNT_SID (starting with AC), TWILIO_AUTH_TOKEN and "
     "TWILIO_WHATSAPP_FROM. Nothing was sent.",
 }
 
 
 def email_provider() -> Optional[str]:
-    """Which provider an e-mail would go through right now: "sink", "brevo", "smtp", "sendgrid" or None."""
+    """Which provider an e-mail would go through right now: "sink", "resend", "brevo", "smtp", "sendgrid" or None."""
     if feature_flags.test_sink():
         return "sink"
+    if not feature_flags.dry_run() and resend_svc.is_configured():
+        return "resend"
     if not feature_flags.dry_run() and brevo_svc.is_configured():
         return "brevo"
     if not feature_flags.dry_run() and smtp_svc.is_configured():
@@ -84,7 +87,7 @@ def send_email(
             "provider": "sink",
             "ambiguous": False,
         }
-    if provider in ("brevo", "smtp"):
+    if provider in ("resend", "brevo", "smtp"):
         return {**_send_live(to_email, subject, body, headers or {}), "provider": provider}
     if provider == "sendgrid":
         result = sendgrid_svc.send_email(to_email, subject, body, from_email=from_email, headers=headers)
@@ -105,6 +108,8 @@ _reach_cache: dict[tuple[str, int], tuple[float, dict[str, Any]]] = {}
 
 def live_endpoint() -> Optional[tuple[str, str, int]]:
     """(provider, host, port) of the channel a real e-mail would take, in `live_adapter` order; None if none."""
+    if resend_svc.is_configured():
+        return "resend", resend_svc.HOST, 443
     if brevo_svc.is_configured():
         return "brevo", "api.brevo.com", 443
     config = smtp_svc.SmtpConfig.from_env()
@@ -141,9 +146,11 @@ def reachable(
 
 
 def live_adapter(extra_allowed: tuple[str, ...] = ()) -> Optional[channels.ChannelAdapter]:
-    """The real e-mail channel for every path that sends a message: Brevo when its key is set (HTTPS, port 443), else
-    SMTP, else None (the caller refuses: fail closed). The sandbox applies to both."""
-    adapter: Optional[channels.ChannelAdapter] = brevo_svc.adapter_from_env(extra_allowed)
+    """The real e-mail channel for every path that sends a message: Resend, else Brevo when their key is set (HTTPS,
+    port 443), else SMTP, else None (the caller refuses: fail closed). The sandbox applies to all."""
+    adapter: Optional[channels.ChannelAdapter] = resend_svc.adapter_from_env(extra_allowed)
+    if adapter is None:
+        adapter = brevo_svc.adapter_from_env(extra_allowed)
     if adapter is None:
         adapter = smtp_svc.adapter_from_env(extra_allowed)
     return adapter

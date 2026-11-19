@@ -10,7 +10,7 @@ from services import mail_provider
 
 @pytest.fixture(autouse=True)
 def env(monkeypatch):
-    for name in ("OUTREACH_TEST_SINK", "BREVO_API_KEY", "SMTP_PORT", "SMTP_SECURITY"):
+    for name in ("OUTREACH_TEST_SINK", "BREVO_API_KEY", "RESEND_API_KEY", "SMTP_PORT", "SMTP_SECURITY"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("SMTP_HOST", "smtp.hostinger.com")
     monkeypatch.setenv("SMTP_USERNAME", "founder@plantiers.com")

@@ -87,3 +87,11 @@ def test_brevo_carries_the_mail_before_smtp_and_is_unverified_never_an_authoriza
     assert "quota" in info.restriction and "autorisation" in info.restriction
     # without Brevo, the Hostinger mailbox keeps its opt-in rule
     assert pp.identify(smtp_host="smtp.hostinger.com", sendgrid_configured=False).cold_outreach == pp.OPT_IN_REQUIRED
+
+
+def test_resend_carries_the_mail_first_and_is_unverified_never_an_authorization_by_quota():
+    info = pp.identify(
+        smtp_host="smtp.hostinger.com", sendgrid_configured=False, brevo_configured=True, resend_configured=True
+    )
+    assert (info.id, info.cold_outreach, info.host) == ("resend_api", pp.UNVERIFIED, "api.resend.com")
+    assert "quota" in info.restriction and "autorisation" in info.restriction

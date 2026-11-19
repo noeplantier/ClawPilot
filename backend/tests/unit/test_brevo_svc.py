@@ -39,6 +39,7 @@ class Recorder:
 @pytest.fixture(autouse=True)
 def env(monkeypatch):
     monkeypatch.setenv("BREVO_API_KEY", KEY)
+    monkeypatch.delenv("RESEND_API_KEY", raising=False)  # Resend would be chosen first
     for name in ("OUTREACH_SANDBOX", "OUTREACH_LIVE_ALLOWLIST", "OUTREACH_TEST_SINK", "SMTP_HOST", "SMTP_USERNAME"):
         monkeypatch.delenv(name, raising=False)
 

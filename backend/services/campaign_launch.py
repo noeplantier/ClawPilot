@@ -38,7 +38,16 @@ from repositories import (
     send_policy_repo,
     suppression_repo,
 )
-from services import brevo_svc, draft_runner, feature_flags, journey_gate, send_gate, sendgrid_svc, smtp_svc
+from services import (
+    brevo_svc,
+    draft_runner,
+    feature_flags,
+    journey_gate,
+    resend_svc,
+    send_gate,
+    sendgrid_svc,
+    smtp_svc,
+)
 from services.outreach_os import ai_draft, campaign_plan, channels, dispatch, drafts, eligibility
 from services.outreach_os import heat as heat_rules
 from services.outreach_os import provider_policy
@@ -77,6 +86,7 @@ def provider_info() -> provider_policy.ProviderInfo:
         smtp_host=config.host if config else None,
         sendgrid_configured=sendgrid_svc.is_configured(),
         brevo_configured=brevo_svc.is_configured(),
+        resend_configured=resend_svc.is_configured(),
     )
 
 
