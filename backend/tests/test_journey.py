@@ -621,3 +621,86 @@ def test_approving_twice_does_not_duplicate_drafts_or_messages():
     _process(org, _base() + timedelta(hours=1), recorder)
     assert len(recorder.calls) == 3 and len(_messages(org)) == 3
     assert len(_dispatches(org, jid)) == 3  # one plan row per recipient, however many approvals
+
+
+# ================================================================== one offer per case
+THREE_OFFERS = {
+    "language": "fr",
+    "default": "seo_geo",
+    "offers": {
+        "creation": {
+            "name": "Création",
+            "pitch": "Créer le site de votre établissement, simple et rapide.",
+            "cta": "Un appel ?",
+        },
+        "refonte_maintenance": {
+            "name": "Refonte",
+            "pitch": "Refondre votre site et en assurer la maintenance au quotidien.",
+            "cta": "On en parle ?",
+        },
+        "seo_geo": {
+            "name": "SEO / GEO",
+            "pitch": "Être trouvé sur les moteurs, les cartes et les assistants IA.",
+            "cta": "10 min ?",
+        },
+    },
+}
+
+
+def _detect(org, lead_id, key, evidence):
+    async def go(session):
+        session.add(
+            ProspectSignal(
+                account_id=org["account_id"],
+                lead_id=uuid.UUID(lead_id),
+                signal_key=key,
+                state="detected",
+                evidence=evidence,
+            )
+        )
+
+    _call(go)
+
+
+def test_each_establishment_receives_the_offer_of_its_case_and_a_change_of_any_offer_stops_the_messages():
+    org = _org()
+    assert requests.put(f"{API}/settings/offers", headers=org["headers"], json=THREE_OFFERS).status_code == 200
+    none_found, unreachable, with_site, unknown = insert_rows(
+        org["account_id"],
+        [
+            row("Sans Site", "Lyon", review_status="approved", website=None),
+            row("Site Muet", "Lyon", review_status="approved", website="https://site-muet.example"),
+            row("Avec Site", "Lyon", review_status="approved", website="https://avec-site.example"),
+            row("Inconnu", "Lyon", review_status="approved", website=None),
+        ],
+    )
+    _detect(org, none_found, sig.NO_WEBSITE, "aucun site dans l'annuaire")
+    _detect(org, unreachable, "website_unreachable", "le site n'a pas répondu")
+    jid = _create(org).json()["data"]["id"]
+    summary = _get(org, jid)
+    counts = {b["kind"]: b["count"] for b in summary["audience"]["by_offer"]}
+    assert counts == {"creation": 1, "refonte_maintenance": 1, "seo_geo": 2}  # unknown -> the default offer
+    examples = {e["name"]: e for e in summary["examples"]}
+    assert {e["offer_kind"] for e in examples.values()} == {"creation", "refonte_maintenance", "seo_geo"}
+    pitches = {k: o["pitch"] for k, o in THREE_OFFERS["offers"].items()}
+    for example in examples.values():
+        assert pitches[example["offer_kind"]] in example["body"]
+        assert sum(p in example["body"] for p in pitches.values()) == 1  # one offer per message, never all three
+
+    _approve(org, jid)
+    recorder = Recorder()
+    _process(org, _base() + timedelta(minutes=10), recorder)
+    sent = {c.to: c.body for c in recorder.calls}
+    assert len(sent) == 4
+    names = _lead_names(org, [none_found, unreachable, with_site, unknown])
+    expected = {none_found: "creation", unreachable: "refonte_maintenance", with_site: "seo_geo", unknown: "seo_geo"}
+    for lead_id, kind in expected.items():
+        (body,) = [b for b in sent.values() if names[lead_id] in b]
+        assert pitches[kind] in body
+
+    other = {
+        **THREE_OFFERS,
+        "offers": {**THREE_OFFERS["offers"], "creation": {**THREE_OFFERS["offers"]["creation"], "cta": "Appelez-moi."}},
+    }
+    assert requests.put(f"{API}/settings/offers", headers=org["headers"], json=other).status_code == 200
+    assert "offer_changed" in [r["code"] for r in _get(org, jid)["approval"]["reasons"]]  # not the default, still bound

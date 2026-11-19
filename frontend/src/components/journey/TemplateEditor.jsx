@@ -72,6 +72,7 @@ export default function TemplateEditor({ template, examples, decide, busy, onSav
               return (
                 <li key={`${ex.name}-${ex.email}`} className="rounded-xl border border-border bg-black/20 p-3 text-xs space-y-1.5" data-testid="example">
                   <div className="flex items-center justify-between gap-2"><b className="truncate">{ex.name}</b><span className={`chip ${site.chip}`}>{site.label}</span></div>
+                  {ex.offer_label && <div className="text-faint" data-testid="example-offer">Offre : {ex.offer_label}</div>}
                   <div className="font-medium">{ex.subject}</div>
                   <pre className="whitespace-pre-wrap font-sans text-soft">{ex.body}</pre>
                 </li>

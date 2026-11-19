@@ -4,8 +4,9 @@
    candidates; nothing says "every establishment of the zone": the coverage of the sources is reported as it is.
 2. DRAFT: one controlled template, pre-filled from the configured offer, that the person may edit. Each message is
    rendered for its establishment from fixed placeholders (services/outreach_os/campaign_template.py): no AI, nothing is
-   rewritten after the approval.
-3. APPROVAL: bound to the version of the template, the zone, the offer, the sender and a volume. It starts the campaign
+   rewritten after the approval. Each establishment receives the offer of its case (services/outreach_os/ai_draft.py
+   `offer_for`: no site identified -> creation, a site that did not answer -> redesign, a site -> SEO / GEO).
+3. APPROVAL: bound to the version of the template, the zone, the offers, the sender and a volume. It starts the campaign
    that was approved, not an unlimited send: caps, windows, suppression, replies and every other gate still apply at the
    moment each message leaves (services/campaign_launch.py, services/journey_gate.py).
 
@@ -19,7 +20,7 @@ import os
 import uuid
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
-from typing import Any, Optional
+from typing import Any, Mapping, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -261,6 +262,12 @@ class Material:
     lead: Lead
     rendered: campaign_template.Rendered
     source_name: Optional[str]
+    offer: dict[str, str]  # the offer of this recipient's case (`ai_draft.offer_for`): kind, name, pitch, cta
+
+
+def offer_label(offer: Mapping[str, str]) -> str:
+    """The name of the case when the account has three offers, else the offer's own name."""
+    return ai_draft.KIND_LABELS.get(offer.get("kind", ""), offer.get("name", ""))
 
 
 def _public_base_url() -> str:
@@ -268,8 +275,10 @@ def _public_base_url() -> str:
 
 
 async def _context(
-    session: AsyncSession, lead: Lead, offer: dict[str, str], sender: drafts.SenderIdentity
-) -> tuple[campaign_template.RenderContext, Optional[str]]:
+    session: AsyncSession, lead: Lead, offers: Any, sender: drafts.SenderIdentity
+) -> tuple[campaign_template.RenderContext, Optional[str], dict[str, str]]:
+    """What is known of this establishment, and the offer of its case: no website identified -> creation, a site that
+    did not answer -> redesign, a site -> SEO / GEO, unknown -> the default offer (and nothing said about the site)."""
     sources = await prospect_repo.sources_of(session, lead.id)
     latest = max(sources, key=lambda s: s.fetched_at) if sources else None
     results = await prospect_repo.effective_results(session, lead.id)  # a dismissed signal is never stated
@@ -278,6 +287,9 @@ async def _context(
     pairs = drafts.observed_facts(results, latest.source_name if latest else "", updated)
     detected = {r.key: r.evidence for r in results if r.state is SignalState.DETECTED}
     state = ai_draft.site_state(website=lead.website if heat_rules.is_known(lead.website) else None, detected=detected)
+    offer = ai_draft.offer_for(offers, state)
+    if offer is None:  # the caller checked the offers first; never render a message without one
+        raise JourneyRefused("offer_missing", "Décrivez d'abord votre offre (Pilotage › Offre) : le modèle part de là.")
     ctx = campaign_template.RenderContext(
         nom=lead.full_name,
         activite=lead.vertical,
@@ -290,14 +302,15 @@ async def _context(
         expediteur=f"{sender.name} — {sender.company}",
         language=offer["language"],
     )
-    return ctx, (latest.source_name if latest else None)
+    return ctx, (latest.source_name if latest else None), offer
 
 
 async def render_for(
-    session: AsyncSession, lead: Lead, template_subject: str, template_body: str, offer: dict[str, str], sender: Any
+    session: AsyncSession, lead: Lead, template_subject: str, template_body: str, offers: Any, sender: Any
 ) -> Material:
-    ctx, source_name = await _context(session, lead, offer, sender)
-    return Material(lead, campaign_template.render(template_subject, template_body, ctx), source_name)
+    """`offers` is the account's stored offers (one, or one per case): each recipient gets the offer of its case."""
+    ctx, source_name, offer = await _context(session, lead, offers, sender)
+    return Material(lead, campaign_template.render(template_subject, template_body, ctx), source_name, offer)
 
 
 # ---------------------------------------------------------------------------------------------- creation and edition
@@ -313,7 +326,8 @@ async def create(
 ) -> tuple[Campaign, campaign_launch.Selection]:
     """The campaign of a zone, with its candidates and a first template pre-filled from the offer. Nothing is sent or
     approved. Refused, with what to do, while the offer is not described."""
-    offer = ai_draft.valid_offer(await draft_job_repo.offer_of(session, account_id))
+    raw = await draft_job_repo.offer_of(session, account_id)
+    offer = ai_draft.valid_offer(raw)
     if offer is None:
         raise JourneyRefused("offer_missing", "Décrivez d'abord votre offre (Pilotage › Offre) : le modèle part de là.")
     clean = validate_zone(zone)
@@ -328,7 +342,7 @@ async def create(
         subject=subject,
         body=body,
         content_hash=campaign_template.content_hash(subject, body),
-        offer_hash=campaign_template.offer_hash(offer),
+        offer_hash=campaign_template.offers_hash(ai_draft.valid_offers(raw)),
         user_id=user_id,
     )
     await audit_repo.log(
@@ -361,7 +375,7 @@ async def edit_template(
     digest = campaign_template.content_hash(subject, body)
     if latest is not None and latest.content_hash == digest:
         return {"version": latest.version, "changed": False}
-    offer = ai_draft.valid_offer(await draft_job_repo.offer_of(session, account_id))
+    offers = ai_draft.valid_offers(await draft_job_repo.offer_of(session, account_id))
     row = await journey_repo.add_template(
         session,
         account_id,
@@ -369,7 +383,7 @@ async def edit_template(
         subject=subject.strip(),
         body=body.strip(),
         content_hash=digest,
-        offer_hash=campaign_template.offer_hash(offer),
+        offer_hash=campaign_template.offers_hash(offers),
         user_id=user_id,
     )
     await audit_repo.log(
@@ -398,16 +412,16 @@ async def audience(
     """Who would receive the template: the live exclusions first (the same ones as every other campaign), then the
     rendering of each remaining establishment. A lead whose message cannot be written without a hole is held back."""
     states = await campaign_launch.evaluate(session, account_id, campaign, now)
-    offer = ai_draft.valid_offer(await draft_job_repo.offer_of(session, account_id))
+    offers = await draft_job_repo.offer_of(session, account_id)  # read once: every recipient sees the same offers
     sender = drafts.SenderIdentity.from_env()
     sendable: list[Material] = []
     unrenderable: list[tuple[Lead, list[campaign_plan.Problem]]] = []
-    if offer is None or sender is None:
+    if ai_draft.valid_offers(offers) is None or sender is None:
         return Audience(states, sendable, unrenderable)
     for state in states:
         if state.lead is None or state.exclusion or state.stage == "launched":
             continue
-        material = await render_for(session, state.lead, subject, body, offer, sender)
+        material = await render_for(session, state.lead, subject, body, offers, sender)
         if material.rendered.problems:
             unrenderable.append((state.lead, material.rendered.problems))
         else:
@@ -415,14 +429,31 @@ async def audience(
     return Audience(states, sendable, unrenderable)
 
 
-def pick_examples(sendable: list[Material], count: int = 3) -> list[Material]:
-    """A few representative messages: one per website state when there is a choice, then the first ones."""
-    chosen: list[Material] = []
-    seen: set[str] = set()
+def by_offer(sendable: list[Material]) -> list[dict[str, Any]]:
+    """How many messages carry each offer, in the order of the offers (redesign, creation, SEO / GEO, single)."""
+    counts: dict[str, int] = {}
+    labels: dict[str, str] = {}
     for material in sendable:
-        if material.rendered.site_state not in seen:
-            chosen.append(material)
-            seen.add(material.rendered.site_state)
+        kind = material.offer.get("kind", "")
+        counts[kind] = counts.get(kind, 0) + 1
+        labels[kind] = offer_label(material.offer)
+    order = [*ai_draft.OFFER_KINDS, ai_draft.SINGLE]
+    return [
+        {"kind": k, "label": labels[k], "count": counts[k]}
+        for k in sorted(counts, key=lambda k: order.index(k) if k in order else len(order))
+    ]
+
+
+def pick_examples(sendable: list[Material], count: int = 3) -> list[Material]:
+    """A few representative messages: one per offer first (each case is seen before approving), then one per website
+    state, then the first ones."""
+    chosen: list[Material] = []
+    for key in (lambda m: m.offer.get("kind", ""), lambda m: m.rendered.site_state):
+        seen = {key(m) for m in chosen}
+        for material in sendable:
+            if len(chosen) < count and key(material) not in seen:
+                chosen.append(material)
+                seen.add(key(material))
     for material in sendable:
         if len(chosen) >= count:
             break
@@ -477,6 +508,7 @@ async def summary(
                 for lead, found in aud.unrenderable[:20]
             ],
             "held_back_count": len(aud.unrenderable),
+            "by_offer": by_offer(aud.sendable),
             "exclusions": exclusions,
             "exclusion_labels": {code: campaign_plan.exclusion_label(code) for code in exclusions},
         },
@@ -499,6 +531,8 @@ async def summary(
                 "body": m.rendered.body,
                 "facts": m.rendered.facts,
                 "site_state": m.rendered.site_state,
+                "offer_kind": m.offer.get("kind"),
+                "offer_label": offer_label(m.offer),
             }
             for m in pick_examples(aud.sendable)
         ],
@@ -616,8 +650,8 @@ async def approve(
     if not aud.sendable:
         raise JourneyRefused("nothing_to_send", "Aucun établissement ne peut recevoir ce message : rien à approuver.")
     sender = drafts.SenderIdentity.from_env()
-    offer = ai_draft.valid_offer(await draft_job_repo.offer_of(session, account_id))
-    assert sender is not None and offer is not None and campaign.zone is not None
+    offers = ai_draft.valid_offers(await draft_job_repo.offer_of(session, account_id))
+    assert sender is not None and offers is not None and campaign.zone is not None
     policy = await send_policy_repo.get_policy(session, account_id, "email")
     approval = await journey_repo.add_approval(
         session,
@@ -627,7 +661,7 @@ async def approve(
             template_version=template.version,
             content_hash=template.content_hash,
             zone_hash=campaign_template.zone_hash(campaign.zone),
-            offer_hash=campaign_template.offer_hash(offer),
+            offer_hash=campaign_template.offers_hash(offers),
             sender_fp=journey_gate.sender_fp(),
             audience_count=len(aud.sendable),
             daily_cap=daily_cap if daily_cap is not None else policy.max_per_day,

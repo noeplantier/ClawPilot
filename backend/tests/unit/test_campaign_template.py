@@ -1,6 +1,7 @@
 """The controlled template: placeholders, rendering per establishment, the three website states, untrusted data, and
 what an approval is bound to. Pure and offline."""
 
+import copy
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -163,3 +164,55 @@ def test_each_substantial_change_makes_the_approval_stale(current, binding, code
 def test_several_changes_are_all_reported():
     reasons = ct.approval_reasons(_binding(), _current(content_hash="x", zone_hash="y"), NOW)
     assert reasons == ["template_changed", "zone_changed"]
+
+
+# ---------------------------------------------------------------- the approval binds every offer (one per case)
+THREE = {
+    "language": "fr",
+    "default": "seo_geo",
+    "offers": {
+        "creation": {"name": "Création", "pitch": "Un site neuf pour présenter votre activité.", "cta": "Un appel ?"},
+        "refonte_maintenance": {
+            "name": "Refonte",
+            "pitch": "Refondre et maintenir votre site web.",
+            "cta": "On en parle ?",
+        },
+        "seo_geo": {
+            "name": "SEO / GEO",
+            "pitch": "Être trouvé sur les moteurs, les cartes et les IA.",
+            "cta": "10 min ?",
+        },
+    },
+}
+
+
+def test_with_a_single_offer_the_approval_binding_is_unchanged():
+    single = {
+        "language": "fr",
+        "default": "single",
+        "offers": {"single": {k: OFFER[k] for k in ("name", "pitch", "cta")}},
+    }
+    assert ct.offers_hash(single) == ct.offer_hash({**OFFER, "language": "fr"})
+    assert ct.offers_hash(None) is None and ct.offers_hash({"offers": {}}) is None
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        lambda o: o["offers"]["creation"].update(cta="Appelez-moi."),  # an offer that is not the default one
+        lambda o: o["offers"]["refonte_maintenance"].update(pitch="Une tout autre proposition de refonte."),
+        lambda o: o.update(default="creation"),  # the unknown case now receives another offer
+        lambda o: o["offers"].pop("seo_geo") and o.update(default="creation"),
+        lambda o: o.update(language="en"),
+    ],
+)
+def test_changing_any_offer_or_the_default_one_is_a_change_of_offer(change):
+    other = copy.deepcopy(THREE)
+    change(other)
+    assert ct.offers_hash(other) != ct.offers_hash(THREE)
+
+
+def test_spacing_alone_is_not_a_change_of_offer():
+    other = copy.deepcopy(THREE)
+    other["offers"]["creation"]["pitch"] += "   "
+    assert ct.offers_hash(other) == ct.offers_hash(THREE)

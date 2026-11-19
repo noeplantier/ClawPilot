@@ -27,9 +27,9 @@ const SUMMARY = (over = {}) => ({
   zone: ZONE,
   coverage: { searched: true, places_found: 87, truncated: false, statement: "87 établissement(s) trouvé(s) par la recherche du 10/11/2026. Les résultats viennent des sources interrogées ; aucune source n'est exhaustive." },
   readiness: READY,
-  audience: { selected: 14, sendable: 12, already_sent: 0, held_back: [{ lead_id: "p9", name: "Café Noir", problems: ["Champ vide : {{ville}}"] }], held_back_count: 1, exclusions: { opted_out: 1 }, exclusion_labels: { opted_out: "Opposition enregistrée" } },
+  audience: { selected: 14, sendable: 12, already_sent: 0, held_back: [{ lead_id: "p9", name: "Café Noir", problems: ["Champ vide : {{ville}}"] }], held_back_count: 1, by_offer: [{ kind: "creation", label: "Création et conception de site web ou d'application mobile", count: 4 }, { kind: "seo_geo", label: "SEO / GEO et présence en ligne, y compris la visibilité dans les IA", count: 8 }], exclusions: { opted_out: 1 }, exclusion_labels: { opted_out: "Opposition enregistrée" } },
   template: { version: 2, subject: "À propos de {{nom}}", body: "Bonjour,\n\n{{constat}}\n\n{{offre}}", content_hash: "abcd1234", problems: [], placeholders: ["nom", "activite", "ville", "constat", "offre"], footer_note: "Le pied du message (identité, origine des données, lien de désinscription) est ajouté par le serveur." },
-  examples: [{ name: "Bistro Un", city: "Lyon", email: "b1@x.example", subject: "À propos de Bistro Un", body: "Bonjour,\n\nSauf erreur de ma part, je n'ai pas identifié de site officiel pour Bistro Un.", facts: [], site_state: "none_identified" }],
+  examples: [{ name: "Bistro Un", city: "Lyon", email: "b1@x.example", subject: "À propos de Bistro Un", body: "Bonjour,\n\nSauf erreur de ma part, je n'ai pas identifié de site officiel pour Bistro Un.", facts: [], site_state: "none_identified", offer_kind: "creation", offer_label: "Création et conception de site web ou d'application mobile" }],
   volume: { messages: 12, daily_cap: 20, total_cap: 12 },
   sender: { configured: true, name: "Noé", company: "Plantiers", email: "founder@plantiers.example", provider: "SMTP Hostinger" },
   schedule: { first_at: "2026-11-12T08:00:00Z", last_at: "2026-11-12T13:00:00Z", timezone: "Europe/Paris", days: [{ date: "2026-11-12", count: 12 }] },
@@ -130,6 +130,8 @@ describe("the approval screen", () => {
     expect(byId("approval-sender").textContent).toMatch(/founder@plantiers\.example · via SMTP Hostinger/);
     expect(byId("approval-schedule").textContent).toMatch(/Europe\/Paris/);
     expect(byId("examples").textContent).toMatch(/Bistro Un/);
+    expect(byId("approval-offers").textContent).toMatch(/4 · Création et conception.*8 · SEO \/ GEO/);
+    expect(byId("example-offer").textContent).toMatch(/Offre : Création/);
     expect(byId("template-footer-note").textContent).toMatch(/désinscription/);
     expect(api.post).not.toHaveBeenCalled();
     expect(api.put).not.toHaveBeenCalled();
