@@ -26,6 +26,9 @@ STALE_LISTING = "stale_listing"
 INCOMPLETE_LISTING = "incomplete_listing"
 OUTDATED_TECHNOLOGY = "outdated_technology"
 NO_SOCIAL_PRESENCE = "no_social_presence"
+# The one signal "hot" rests on (eligibility.INTENT_SIGNAL): what the business states itself, on its
+# own homepage, that shows it is acting now (it is hiring, or it says its own site is being built). Never a guess.
+COMMERCIAL_INTENT = "commercial_intent"
 
 SIGNAL_LABELS: dict[str, str] = {
     NO_WEBSITE: "No own website listed",
@@ -37,6 +40,7 @@ SIGNAL_LABELS: dict[str, str] = {
     INCOMPLETE_LISTING: "Listing is missing key information",
     OUTDATED_TECHNOLOGY: "Homepage shows outdated technology",
     NO_SOCIAL_PRESENCE: "No social network linked from the homepage",
+    COMMERCIAL_INTENT: "Commercial intent stated on its own homepage",
 }
 ALL_SIGNALS = tuple(SIGNAL_LABELS)
 
@@ -63,6 +67,32 @@ _SOCIAL_HOSTS = (
     "pinterest.com",
 )
 _HREF_RE = re.compile(r"href=[\"']([^\"']+)[\"']", re.IGNORECASE)
+
+# Commercial intent: phrases the business writes about itself. The page is untrusted data: it is only matched against
+# these fixed patterns, never interpreted, never sent anywhere. A builder's "maison en construction" is not its website:
+# only a sentence about the site itself counts.
+_INTENT_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    (
+        "hiring",
+        re.compile(
+            r"\b(nous recrutons|on recrute|recrutement en cours|rejoignez[- ]nous|rejoignez notre [ée]quipe|"
+            r"offres? d'emploi|we are hiring|we're hiring|join our team)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "own site being built",
+        re.compile(
+            r"\b(site (?:internet |web )?(?:est )?en (?:cours de )?construction|bient[ôo]t en ligne|coming soon|"
+            r"(?:website|site) under construction)\b",
+            re.IGNORECASE,
+        ),
+    ),
+)
+_DROP_BLOCKS_RE = re.compile(r"<(script|style|noscript)\b.*?</\1\s*>", re.IGNORECASE | re.DOTALL)
+_TAG_RE = re.compile(r"<[^>]+>")
+_SPACES_RE = re.compile(r"\s+")
+EXCERPT_CHARS = 60
 
 
 class MobileAnalyzer(Protocol):
@@ -210,6 +240,35 @@ def _social(listing: RawListing, snap: SiteSnapshot | None) -> SignalResult:
     )
 
 
+def _visible_text(html: str) -> str:
+    return _SPACES_RE.sub(" ", _TAG_RE.sub(" ", _DROP_BLOCKS_RE.sub(" ", html))).strip()
+
+
+def _intent(listing: RawListing, snap: SiteSnapshot | None) -> SignalResult:
+    own, third = _own_website(listing)
+    if third or not own:
+        return SignalResult(COMMERCIAL_INTENT, SignalState.UNKNOWN, "Not applicable: no own website listed")
+    if not snap or not _has_html(snap):
+        return SignalResult(COMMERCIAL_INTENT, SignalState.UNKNOWN, "Homepage HTML not available")
+    assert snap.html is not None
+    text = _visible_text(snap.html)
+    for kind, pattern in _INTENT_PATTERNS:
+        match = pattern.search(text)
+        if match:
+            start, end = max(0, match.start() - EXCERPT_CHARS), min(len(text), match.end() + EXCERPT_CHARS)
+            excerpt = text[start:end].replace('"', "'").strip()
+            return SignalResult(
+                COMMERCIAL_INTENT,
+                SignalState.DETECTED,
+                f'{kind}: the homepage {snap.url} says "…{excerpt}…" (stated by the business; other pages not checked)',
+            )
+    return SignalResult(
+        COMMERCIAL_INTENT,
+        SignalState.NOT_DETECTED,
+        "No hiring or site-under-construction statement on the homepage (other pages not checked)",
+    )
+
+
 def _contact(listing: RawListing) -> SignalResult:
     present = [label for label, value in (("phone", listing.phone), ("email", listing.email)) if value]
     if present:
@@ -289,6 +348,7 @@ def analyze(
         _incomplete(listing, trust_absence),
         _outdated(listing, snapshot),
         _social(listing, snapshot),
+        _intent(listing, snapshot),
     ]
     assert tuple(r.key for r in results) == ALL_SIGNALS
     return results

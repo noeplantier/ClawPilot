@@ -26,6 +26,8 @@ DEFAULT_WEIGHTS: dict[str, int] = {
     sig.INCOMPLETE_LISTING: 10,
     sig.OUTDATED_TECHNOLOGY: 10,
     sig.NO_SOCIAL_PRESENCE: 5,
+    # sig.COMMERCIAL_INTENT is deliberately absent (weight 0): an observed intent makes a qualified prospect "hot"
+    # (eligibility.py); it never changes the fit score, so adding it moved no existing score nor qualification.
 }
 MIN_SCORE, MAX_SCORE = 0, 100
 

@@ -165,3 +165,11 @@ describe("what a search found, explained", () => {
     expect(breakdownText(resultBreakdown([P("a")], new Set()))).toBe("1 lieu trouvé · 1 joignable (téléphone et e-mail publiés).");
   });
 });
+
+test("a hot prospect says why, with the server's quoted evidence; a qualified one never borrows it", () => {
+  const evidence = "hiring: the homepage https://fournil.fr says \"…Nous recrutons un boulanger…\"";
+  const hot = classifyProspect({ email: "a@b.fr", phone: "+33 1", priority: "hot", intent_evidence: evidence });
+  expect(hot.reasons[0]).toBe(`Pourquoi Hot : ${evidence}`);
+  const qualified = classifyProspect({ email: "a@b.fr", phone: "+33 1", map_ready: true, priority: "qualified", intent_evidence: evidence });
+  expect(qualified.reasons.join(" ")).not.toContain("Pourquoi Hot");
+});

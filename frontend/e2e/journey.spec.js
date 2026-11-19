@@ -304,6 +304,12 @@ test("the prospects map clusters nearby prospects, filters them, refreshes by po
   await page.getByTestId("filter-score").fill("50");
   await expect(page.getByTestId("filter-summary")).toHaveText("2 of 4 prospects match the filters."); // "not scored" never passes a threshold
   await page.getByTestId("filter-clear").click();
+  // No observed intent here: « Hot » finds none and says why, it never calls a merely qualified prospect hot
+  await expect(page.getByTestId("filter-priority-hot")).toHaveText("Hot — intention observée (0)");
+  await page.getByTestId("filter-priority-hot").click();
+  await expect(page.getByTestId("filter-summary")).toHaveText("0 of 4 prospects match the filters.");
+  await expect(page.getByTestId("mine-none")).toHaveText("Aucun Hot Lead : aucune intention observée et sourcée parmi ces prospects qualifiés.");
+  await page.getByTestId("filter-priority-all").click();
 
   await page.locator(".map-cluster").dispatchEvent("click");
   await expect(page.getByTestId("map-mine-list")).toContainText("Cluster · 3 qualified prospects");

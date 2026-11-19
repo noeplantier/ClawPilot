@@ -104,37 +104,59 @@ async def _create_primary_contact(
     return contact
 
 
-async def load_extra(session: AsyncSession, lead: Lead) -> LeadExtra:
-    source_name = None
-    if lead.source_id is not None:
-        result = await session.execute(select(LeadSource.name).where(LeadSource.id == lead.source_id))
-        source_name = result.scalar_one_or_none()
+async def load_extras(session: AsyncSession, leads: list[Lead]) -> dict[uuid.UUID, LeadExtra]:
+    """The related fields of many leads in a fixed number of queries (sources, primary contacts, both consents, latest
+    prospect score), whatever the number of leads: the CRM list used to issue up to five queries per lead."""
+    if not leads:
+        return {}
+    ids = [lead.id for lead in leads]
 
-    contact_id = await consent_repo.get_primary_contact_id(session, lead.id)
-    email_consent = "unknown"
-    whatsapp_consent = "unknown"
-    if contact_id:
-        email_consent = await consent_repo.get_status(session, contact_id, "email")
-        whatsapp_consent = await consent_repo.get_status(session, contact_id, "whatsapp")
+    source_ids = {lead.source_id for lead in leads if lead.source_id is not None}
+    source_names: dict[uuid.UUID, str] = {}
+    if source_ids:
+        rows = await session.execute(select(LeadSource.id, LeadSource.name).where(LeadSource.id.in_(source_ids)))
+        source_names = {sid: name for sid, name in rows.all()}
 
-    prospect_score = None
-    if lead.review_status is not None:  # a discovery prospect is scored in `prospect_scores`, not in `Lead.score`
-        prospect_score = (
-            await session.execute(
-                select(ProspectScore.score)
-                .where(ProspectScore.lead_id == lead.id)
-                .order_by(ProspectScore.created_at.desc(), ProspectScore.id)
-                .limit(1)
-            )
-        ).scalar_one_or_none()
-
-    return LeadExtra(
-        source=source_name,
-        contact_id=contact_id,
-        email_consent=email_consent,
-        whatsapp_consent=whatsapp_consent,
-        prospect_score=prospect_score,
+    # The primary contact as `consent_repo.get_primary_contact_id` picks it: primary first, then oldest, not deleted.
+    contacts = await session.execute(
+        select(Contact.lead_id, Contact.id)
+        .where(Contact.lead_id.in_(ids), Contact.deleted_at.is_(None))
+        .order_by(Contact.lead_id, Contact.is_primary.desc(), Contact.created_at.asc(), Contact.id)
     )
+    contact_by_lead: dict[uuid.UUID, uuid.UUID] = {}
+    for lead_id, contact_id in contacts.all():
+        contact_by_lead.setdefault(lead_id, contact_id)
+    contact_ids = list(contact_by_lead.values())
+    email = await consent_repo.get_status_map(session, contact_ids, "email")
+    whatsapp = await consent_repo.get_status_map(session, contact_ids, "whatsapp")
+
+    # A discovery prospect is scored in `prospect_scores`, not in `Lead.score`: its latest score, one row per lead.
+    prospect_ids = [lead.id for lead in leads if lead.review_status is not None]
+    scores: dict[uuid.UUID, int] = {}
+    if prospect_ids:
+        latest = await session.execute(
+            select(ProspectScore.lead_id, ProspectScore.score)
+            .where(ProspectScore.lead_id.in_(prospect_ids))
+            .order_by(ProspectScore.lead_id, ProspectScore.created_at.desc(), ProspectScore.id)
+            .distinct(ProspectScore.lead_id)
+        )
+        scores = {lead_id: score for lead_id, score in latest.all()}
+
+    out: dict[uuid.UUID, LeadExtra] = {}
+    for lead in leads:
+        contact_id = contact_by_lead.get(lead.id)
+        out[lead.id] = LeadExtra(
+            source=source_names.get(lead.source_id) if lead.source_id is not None else None,
+            contact_id=contact_id,
+            email_consent=email.get(contact_id, consent_repo.DEFAULT_STATUS) if contact_id else "unknown",
+            whatsapp_consent=whatsapp.get(contact_id, consent_repo.DEFAULT_STATUS) if contact_id else "unknown",
+            prospect_score=scores.get(lead.id) if lead.review_status is not None else None,
+        )
+    return out
+
+
+async def load_extra(session: AsyncSession, lead: Lead) -> LeadExtra:
+    return (await load_extras(session, [lead]))[lead.id]
 
 
 @dataclass
@@ -201,7 +223,8 @@ async def list_leads(
     stmt = stmt.limit(limit)
     result = await session.execute(stmt)
     leads = result.scalars().all()
-    return [(lead, await load_extra(session, lead)) for lead in leads]
+    extras = await load_extras(session, list(leads))
+    return [(lead, extras[lead.id]) for lead in leads]
 
 
 class DuplicateEmail(Exception):

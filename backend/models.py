@@ -956,6 +956,7 @@ class MapProspectOut(BaseModel):
     map_ready: bool = False  # kept for older clients: same meaning as `eligible`
     priority: Literal["qualified", "hot"] = "qualified"  # "hot" only with an observed, sourced commercial intent
     priority_label: Optional[str] = None
+    intent_evidence: Optional[str] = None  # why it is hot: the quoted sentence and its page; None when not hot
     fit_score: Optional[int] = None
     has_phone: bool = False
     has_website: bool = False

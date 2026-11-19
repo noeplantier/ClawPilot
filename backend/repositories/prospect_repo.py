@@ -568,6 +568,10 @@ async def list_positions(
         )
     ).all()
     detected = await detected_by_lead(session, account_id, [row[0].id for row in rows])
+    hot_ids = [row[0].id for row in rows if row[-1]]
+    why_hot: dict[uuid.UUID, str] = {}
+    if hot_ids:  # why each one is hot: the quoted, sourced evidence the decision rests on, in one query
+        why_hot = dict((await session.execute(eligibility_sql.intent_evidence(account_id, hot_ids, now))).all())
     out: list[dict] = []
     for lead, address, lat, lon, external_id, score, is_hot in rows:
         out.append(
@@ -588,6 +592,7 @@ async def list_positions(
                 "map_ready": True,  # kept for older clients: it now means "qualified by the common policy"
                 "priority": "hot" if is_hot else "qualified",
                 "priority_label": "Hot — intention observée" if is_hot else "Qualifié prioritaire",
+                "intent_evidence": why_hot.get(lead.id) if is_hot else None,
                 "fit_score": lead.fit_score,
                 "review_status": lead.review_status,
                 "external_id": external_id,

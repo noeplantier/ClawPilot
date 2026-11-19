@@ -23,9 +23,10 @@ export function clusterPoints(points, zoom) {
   });
 }
 
-export const hasFilter = (f) => Boolean(f.vertical || f.status || f.minScore !== "" || f.signal);
+export const hasFilter = (f) => Boolean(f.vertical || f.status || f.minScore !== "" || f.signal || f.priority);
 
-export const EMPTY_FILTER = { vertical: "", status: "", minScore: "", signal: "" };
+// `priority`: "" (all), "hot" (an observed, sourced intent: the server's decision) or "qualified" (qualified, not hot).
+export const EMPTY_FILTER = { vertical: "", status: "", minScore: "", signal: "", priority: "" };
 
 // A prospect without a score never passes a score threshold: "not scored" is not 0 and not a pass.
 export function applyFilter(points, f) {
@@ -35,7 +36,8 @@ export function applyFilter(points, f) {
       (!f.vertical || p.vertical === f.vertical) &&
       (!f.status || p.review_status === f.status) &&
       (min === null || (p.score !== null && p.score !== undefined && p.score >= min)) &&
-      (!f.signal || (p.signals || []).includes(f.signal)),
+      (!f.signal || (p.signals || []).includes(f.signal)) &&
+      (!f.priority || (f.priority === "hot" ? p.priority === "hot" : p.priority !== "hot")),
   );
 }
 
@@ -49,7 +51,15 @@ const countBy = (points, pick) => {
 export const facets = (points) => ({
   verticals: countBy(points, (p) => (p.vertical ? [p.vertical] : [])),
   signals: countBy(points, (p) => p.signals || []),
+  hot: points.filter((p) => p.priority === "hot").length,
 });
+
+// What the list says when it is empty: never « hot » for a merely qualified prospect, never an invented reason.
+export function emptyListText(qualified, filter) {
+  if (qualified === 0) return "Aucun prospect qualifié ici pour l'instant (e-mail, téléphone et adresse publiés) : les incomplets attendent dans « À enrichir ».";
+  if (filter && filter.priority === "hot") return "Aucun Hot Lead : aucune intention observée et sourcée parmi ces prospects qualifiés.";
+  return "Aucun prospect ne correspond aux filtres.";
+}
 
 export const filterSummary = (shown, all) =>
   all === 0

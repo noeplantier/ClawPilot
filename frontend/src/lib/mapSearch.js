@@ -159,7 +159,7 @@ export function classifyProspect(p) {
 
   // Facts carried by the response only: the server's priority, the review status, the site state and the signals it detected.
   const reasons = [];
-  if (tierKey === "HOT") reasons.push("Intention commerciale observée et sourcée");
+  if (tierKey === "HOT") reasons.push(p.intent_evidence ? `Pourquoi Hot : ${p.intent_evidence}` : "Intention commerciale observée et sourcée");
   if (tierKey === "QUALIFIED") reasons.push("E-mail, téléphone, adresse et position qualifiés par le serveur");
   if (p.review_status === "approved") reasons.push("Approuvé dans la revue");
   reasons.push(site.label);

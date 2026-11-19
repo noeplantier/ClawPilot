@@ -191,6 +191,19 @@ def qualified(src: Subquery, now: Optional[datetime] = None) -> ColumnElement[bo
     )
 
 
+def _intent_conditions(now: datetime) -> list[ColumnElement[bool]]:
+    """The conditions `intent` checks on one signal row, shared with `intent_evidence` so both always agree."""
+    return [
+        ProspectSignal.signal_key == policy.INTENT_SIGNAL,
+        ProspectSignal.state == "detected",
+        func.length(func.btrim(ProspectSignal.evidence)) > 0,
+        ProspectSignal.created_at >= now - timedelta(days=policy.rules().intent_days),
+        ProspectSource.account_id == ProspectSignal.account_id,
+        ProspectSource.lead_id == ProspectSignal.lead_id,
+        not_(is_demo_source()),
+    ]
+
+
 def intent(now: Optional[datetime] = None) -> ColumnElement[bool]:
     """A recent, detected, evidenced `commercial_intent` signal that points at a real source of this prospect.
     Use it alone on rows `qualified` already kept; `hot` is the standalone decision (qualified AND intent)."""
@@ -203,15 +216,27 @@ def intent(now: Optional[datetime] = None) -> ColumnElement[bool]:
             .where(
                 ProspectSignal.account_id == Lead.account_id,
                 ProspectSignal.lead_id == Lead.id,
-                ProspectSignal.signal_key == policy.INTENT_SIGNAL,
-                ProspectSignal.state == "detected",
-                func.length(func.btrim(ProspectSignal.evidence)) > 0,
-                ProspectSignal.created_at >= now - timedelta(days=policy.rules().intent_days),
-                ProspectSource.account_id == Lead.account_id,
-                ProspectSource.lead_id == Lead.id,
-                not_(is_demo_source()),
+                *_intent_conditions(now),
             )
         )
+    )
+
+
+def intent_evidence(
+    account_id: uuid.UUID, lead_ids: list[uuid.UUID], now: Optional[datetime] = None
+):  # type: ignore[no-untyped-def]
+    """lead id -> the evidence of its latest signal that makes it hot (the quoted sentence and its page), one query.
+    Exactly the rows `intent` accepts: a prospect without one simply has no entry."""
+    return (
+        select(ProspectSignal.lead_id, ProspectSignal.evidence)
+        .join(ProspectSource, ProspectSource.id == ProspectSignal.source_id)
+        .where(
+            ProspectSignal.account_id == account_id,
+            ProspectSignal.lead_id.in_(lead_ids),
+            *_intent_conditions(_now(now)),
+        )
+        .order_by(ProspectSignal.lead_id, ProspectSignal.created_at.desc(), ProspectSignal.id)
+        .distinct(ProspectSignal.lead_id)
     )
 
 
