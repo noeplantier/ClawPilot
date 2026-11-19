@@ -25,6 +25,7 @@ def test_a_new_account_has_its_full_allowance_and_the_default_model():
     assert (session["key"], session["used"], session["resets_at"]) == ("session", 0, None)
     assert (day["key"], day["used"], day["remaining"]) == ("day", 0, day["limit"])
     assert s["settings"] == ["CREDITS_PER_DAY", "CREDITS_PER_SESSION"]  # names only
+    assert s["ai_usage"]["models"] == [] and s["ai_usage"]["unattributed"] == 0  # nothing spent: nothing invented
 
 
 def test_the_owner_chooses_the_model_and_an_unknown_one_is_refused():
@@ -94,3 +95,38 @@ def test_a_successful_call_is_counted(monkeypatch):
     assert run_async(go)["subject"] == "Bonjour"
     session_window, day = _state(h)["windows"]
     assert session_window["used"] == 2 and day["used"] == 2 and session_window["resets_at"]
+
+
+def test_today_s_real_ai_usage_is_read_back_per_model_and_stays_in_its_organisation():
+    import uuid
+    from datetime import datetime, timedelta, timezone
+
+    from db.models import UsageRecord
+    from repositories import usage_repo
+    from tasks._bridge import run_async
+
+    _, h, me = _org()
+    _, other_h, _ = _org()
+    account = uuid.UUID(me["org_id"])
+
+    async def go(session):
+        meta = {"action": "draft", "model": "rapide", "ai_model": "openai/gpt-oss-20b", "ai_tokens": 250}
+        await usage_repo.spend_credits(session, account, 1, meta)
+        await usage_repo.spend_credits(session, account, 1, {**meta, "ai_tokens": 150})
+        await usage_repo.spend_credits(session, account, 2, {"action": "composer", "model": "equilibre"})
+        session.add(  # two days ago: not today's
+            UsageRecord(
+                account_id=account,
+                kind="credits",
+                quantity=1,
+                meta={**meta, "ai_tokens": 9999},
+                created_at=datetime.now(timezone.utc) - timedelta(days=2),
+            )
+        )
+        await session.commit()
+
+    run_async(go)
+    usage = _state(h)["ai_usage"]
+    assert usage["models"] == [{"ai_model": "openai/gpt-oss-20b", "spends": 2, "tokens": 400, "without_tokens": 0}]
+    assert usage["unattributed"] == 1 and usage["since"]
+    assert _state(other_h)["ai_usage"]["models"] == []  # another organisation sees nothing of it

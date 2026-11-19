@@ -79,6 +79,7 @@ TRACKED_ENV = (
     "AI_API_KEY",
     "AI_MODEL",
     "AI_BASE_URL",
+    "AI_MODEL_LIGHT",
 )
 
 DATABASE_KINDS = {
@@ -712,9 +713,15 @@ def _sendgrid_webhook(f: Facts) -> dict[str, Any]:
     return _item("sendgrid_webhook", "SendGrid webhook signature", "inbound", "ready", "VERIFIED", summary, env=names)
 
 
+def _light(ai: dict[str, Any]) -> str:
+    """The lighter model the short messages ("Rapide") ask for, or that they use the main one."""
+    light = ai.get("model_light")
+    return "same as main" if not light or light == ai.get("model") else str(light)
+
+
 def _ai(f: Facts) -> dict[str, Any]:
     ai = f.ai
-    names = ("AI_PROVIDER", "AI_API_KEY", "AI_MODEL", "AI_BASE_URL")
+    names = ("AI_PROVIDER", "AI_API_KEY", "AI_MODEL", "AI_BASE_URL", "AI_MODEL_LIGHT")
     summary = (
         "Writes messages with the provider you chose. Nothing is generated and no canned text is offered until it is "
         "configured."
@@ -731,6 +738,7 @@ def _ai(f: Facts) -> dict[str, Any]:
             facts=[
                 ("provider", str(ai.get("provider"))),
                 ("model", str(ai.get("model"))),
+                ("model.light", _light(ai)),
                 ("sent to", str(ai.get("host"))),
                 ("api.key", "configured"),
             ],

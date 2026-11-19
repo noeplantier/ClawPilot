@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Any, Mapping, Optional
+from typing import Any, Iterable, Mapping, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -66,9 +66,34 @@ async def state(session: AsyncSession, account_id: uuid.UUID, now: Optional[date
             for m in credits.MODELS
         ],
         "windows": [w.as_dict() for w in await windows(session, account_id, now)],
+        "ai_usage": ai_usage(
+            await usage_repo.credit_metas(session, account_id, credits.day_start(now)), credits.day_start(now)
+        ),
         "settings": ["CREDITS_PER_DAY", "CREDITS_PER_SESSION"],  # names only, never a value of a secret
         "generated_at": now,
     }
+
+
+def ai_usage(metas: Iterable[Mapping[str, Any]], since: datetime) -> dict[str, Any]:
+    """Today's real AI usage from the credit spends: per AI model, the spends and the tokens the provider reported.
+    A spend without a reported model (the composer, older spends) is counted apart, never attributed; a model whose
+    spends reported no tokens shows None, never 0 or an estimate. Pure."""
+    by_model: dict[str, dict[str, Any]] = {}
+    unattributed = 0
+    for meta in metas:
+        model = meta.get("ai_model")
+        if not isinstance(model, str) or not model:
+            unattributed += 1
+            continue
+        row = by_model.setdefault(model, {"ai_model": model, "spends": 0, "tokens": None, "without_tokens": 0})
+        row["spends"] += 1
+        tokens = meta.get("ai_tokens")
+        if isinstance(tokens, int) and not isinstance(tokens, bool) and tokens >= 0:
+            row["tokens"] = (row["tokens"] or 0) + tokens
+        else:
+            row["without_tokens"] += 1
+    models = sorted(by_model.values(), key=lambda r: (-r["spends"], r["ai_model"]))
+    return {"since": since, "models": models, "unattributed": unattributed}
 
 
 async def reserve(
