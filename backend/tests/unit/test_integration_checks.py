@@ -260,7 +260,7 @@ class _Models:
 
 @pytest.fixture()
 def ai_env(monkeypatch):
-    for name in ("AI_PROVIDER", "AI_API_KEY", "AI_MODEL", "AI_BASE_URL"):
+    for name in ("AI_PROVIDER", "AI_API_KEY", "AI_MODEL", "AI_BASE_URL", "AI_MODEL_LIGHT"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("AI_PROVIDER", "groq")
     monkeypatch.setenv("AI_API_KEY", AI_KEY)
@@ -507,3 +507,22 @@ def test_without_a_sender_the_key_is_proved_and_no_domain_is_claimed(resend_env,
 def test_resend_failures_are_explained_without_the_key(resend_env, reply, words):
     out = checks.resend(get=_resend_with(reply))
     assert out["outcome"] == "failed" and words in out["detail"] and RESEND_KEY not in out["detail"]
+
+
+def test_the_light_model_is_checked_too_and_named_when_the_key_reaches_it(ai_env):
+    out = checks.ai(get=lambda *a, **k: _Models(ids=("openai/gpt-oss-120b", "openai/gpt-oss-20b")))
+    assert out["outcome"] == "passed" and "and the light model openai/gpt-oss-20b" in out["detail"]
+
+
+def test_a_missing_light_model_is_not_a_failure_but_says_where_short_messages_go(ai_env):
+    out = checks.ai(get=lambda *a, **k: _Models(ids=("openai/gpt-oss-120b", "llama-3.1-8b-instant", "whisper-large")))
+    assert out["outcome"] == "passed" and "not the light model openai/gpt-oss-20b" in out["detail"]
+    assert "will use openai/gpt-oss-120b" in out["detail"] and "AI_MODEL_LIGHT" in out["detail"]
+    assert "llama-3.1-8b-instant" in out["detail"] and "whisper" not in out["detail"]  # chat models only
+    assert "Nothing was generated" in out["detail"] and AI_KEY not in out["detail"]
+
+
+def test_without_a_lighter_model_nothing_about_it_is_claimed(monkeypatch, ai_env):
+    monkeypatch.setenv("AI_PROVIDER", "mistral")
+    out = checks.ai(get=lambda *a, **k: _Models(ids=("mistral-small-latest",)))
+    assert out["outcome"] == "passed" and "light" not in out["detail"]

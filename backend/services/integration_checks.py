@@ -321,6 +321,19 @@ def ai(get: Callable[..., Any] = requests.get) -> dict[str, Any]:
         names = ", ".join(offered[:MODELS_SHOWN]) + (f" (+{more} more)" if more > 0 else "")
         hint = f" Set AI_MODEL to one it offers: {names}." if offered else " Set AI_MODEL."
         return _result("failed", f"The key works but {cfg.host} does not list the model {cfg.model}.{hint}", started)
+    light = cfg.model_for("light")
+    if light != cfg.model and ids and light not in ids:  # not a failure: the short messages fall back to AI_MODEL
+        offered = chat_models(ids)
+        names = ", ".join(offered[:MODELS_SHOWN])
+        return _result(
+            "passed",
+            f"{cfg.host} accepted the key and lists the model {cfg.model}, but not the light model {light}: the short "
+            f"messages (Rapide) will use {cfg.model}. To use a lighter one, set AI_MODEL_LIGHT"
+            + (f" to one it offers: {names}." if names else ".")
+            + " Nothing was generated.",
+            started,
+        )
+    also = f" and the light model {light}" if light != cfg.model and ids else ""
     return _result(
-        "passed", f"{cfg.host} accepted the key and lists the model {cfg.model}. Nothing was generated.", started
+        "passed", f"{cfg.host} accepted the key and lists the model {cfg.model}{also}. Nothing was generated.", started
     )

@@ -155,6 +155,11 @@ def test_ai_is_configured_only_when_a_provider_can_really_be_called_and_says_whe
     item = by_id(Facts(**{**NOTHING.__dict__, "ai": live}))["ai"]
     assert item["status"] == "unchecked" and item["test"] == "server" and item["needs"] == []
     assert ("sent to", "api.groq.com") in [tuple(f) for f in item["facts"]]
+    assert ("model.light", "same as main") in [tuple(f) for f in item["facts"]]  # no light model reported
+    light = {**live, "model_light": "openai/gpt-oss-20b"}
+    item = by_id(Facts(**{**NOTHING.__dict__, "ai": light}))["ai"]
+    assert ("model.light", "openai/gpt-oss-20b") in [tuple(f) for f in item["facts"]]
+    assert "AI_MODEL_LIGHT" in item["env"] and "AI_MODEL_LIGHT" in TRACKED_ENV
     assert "e-mail and phone never are" in item["hint"]  # what leaves the server is said
     no_key = {"key_configured": False, "provider": "groq", "active": False, "reason": "AI_API_KEY is not set"}
     item = by_id(Facts(**{**NOTHING.__dict__, "ai": no_key}))["ai"]
@@ -245,3 +250,28 @@ def test_resend_is_optional_until_its_key_is_set_then_unchecked_and_used_before_
     assert dict(items["resend"]["facts"])["used"] == "first"
     assert dict(items["brevo"]["facts"])["used"] == "standby: Resend is used first"
     assert items["sendgrid"]["label"] == "NOT NEEDED · RESEND IS USED"
+
+
+def test_today_s_ai_usage_is_summed_per_model_and_never_estimated():
+    from datetime import datetime, timezone
+
+    from services.credit_gate import ai_usage
+
+    since = datetime(2026, 11, 19, 23, tzinfo=timezone.utc)
+    metas = [
+        {"action": "draft", "model": "rapide", "ai_model": "openai/gpt-oss-20b", "ai_tokens": 300},
+        {"action": "draft", "model": "rapide", "ai_model": "openai/gpt-oss-20b", "ai_tokens": 120},
+        {"action": "draft", "model": "equilibre", "ai_model": "openai/gpt-oss-120b"},  # no tokens reported
+        {"action": "draft", "model": "equilibre", "ai_model": "openai/gpt-oss-120b", "ai_tokens": True},  # not a count
+        {"action": "composer", "model": "equilibre"},  # no AI model recorded: apart, never attributed
+    ]
+    out = ai_usage(metas, since)
+    assert out == {
+        "since": since,
+        "models": [
+            {"ai_model": "openai/gpt-oss-120b", "spends": 2, "tokens": None, "without_tokens": 2},
+            {"ai_model": "openai/gpt-oss-20b", "spends": 2, "tokens": 420, "without_tokens": 0},
+        ],
+        "unattributed": 1,
+    }
+    assert ai_usage([], since) == {"since": since, "models": [], "unattributed": 0}

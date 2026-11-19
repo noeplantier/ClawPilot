@@ -136,6 +136,13 @@ aucun texte tout fait qui ferait semblant d'être un message) et la page affiche
 - **Limites** : une offre gratuite a un quota par minute et par jour ; l'API répond alors 429 `ai_rate_limited` avec le délai. Côté serveur,
   30 appels par minute et par organisation au maximum (les 3 variantes comptent pour 3).
 - **Test** : « TEST NOW » demande au fournisseur la liste de ses modèles avec la clé : prouve la clé, l'adresse et le modèle, sans rien générer ni
-  envoyer. Un modèle absent de la liste donne `failed` avec « set AI_MODEL ».
+  envoyer. Un modèle absent de la liste donne `failed` avec « set AI_MODEL ». Le test vérifie aussi le modèle léger : s'il manque, le test
+  reste `passed` (les messages courts passent alors par `AI_MODEL`) et propose les modèles disponibles pour `AI_MODEL_LIGHT`.
+- **Modèle léger** : `AI_MODEL_LIGHT` (facultatif) est un modèle plus léger **du même fournisseur, avec la même clé**, utilisé pour le modèle
+  d'écriture « Plantiers Rapide ». Groq a une valeur par défaut (`openai/gpt-oss-20b`) ; ailleurs, sans elle, tout passe par `AI_MODEL`.
+  Un modèle léger inconnu ou retiré (HTTP 400/404) : une seule nouvelle demande au modèle principal, jamais l'inverse ; une limite (429) n'est
+  jamais contournée. La carte l'affiche sur la ligne `model.light`.
+- **Usage réel** : chaque brouillon enregistre, avec ses crédits, le modèle qui l'a vraiment écrit et les tokens rapportés par le fournisseur.
+  `GET /api/usage/credits` en donne le total du jour (Europe/Paris) par modèle (`ai_usage`) ; sans chiffre du fournisseur, rien n'est estimé.
 - **Mise en route gratuite** : créer une clé sur Groq (console.groq.com) ou Mistral (console.mistral.ai), puis dans Render poser `AI_PROVIDER` et
   `AI_API_KEY`.

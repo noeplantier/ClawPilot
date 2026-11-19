@@ -38,6 +38,16 @@ async def credit_spends(session: AsyncSession, account_id: uuid.UUID, since: dat
     return [(at, int(n)) for at, n in rows.all()]
 
 
+async def credit_metas(session: AsyncSession, account_id: uuid.UUID, since: datetime) -> list[dict]:
+    """The metadata of the credit spends since `since` (model, AI model, tokens reported by the provider)."""
+    rows = await session.execute(
+        select(UsageRecord.meta).where(
+            UsageRecord.account_id == account_id, UsageRecord.kind == "credits", UsageRecord.created_at >= since
+        )
+    )
+    return [dict(meta or {}) for meta in rows.scalars().all()]
+
+
 async def spend_credits(session: AsyncSession, account_id: uuid.UUID, amount: int, meta: dict) -> None:
     """Append one spend (never updated or deleted). Locks the account row first, so two spends of the same account are
     counted one after the other: the check before it and this write see the same total."""
