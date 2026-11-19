@@ -32,6 +32,7 @@ EXCLUSIONS: dict[str, str] = {
     "provider_requires_opt_in": "Pas d'opt-in : non autorisé à recevoir une campagne via ce fournisseur",
     "demo": "Donnée de démonstration",
     "rejected": "Prospect rejeté",
+    "removed_by_reviewer": "Retiré de cette campagne par vous",
 }
 
 # Why a planned message was refused when it was about to leave. "wait" = come back later, "stop" = never sent.

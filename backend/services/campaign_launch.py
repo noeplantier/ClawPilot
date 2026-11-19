@@ -67,6 +67,7 @@ STUCK_AFTER = timedelta(
     minutes=10
 )  # a message "sending" for this long was interrupted: its outcome is established, not guessed
 DUE_PER_RUN = 20
+REMOVED = "removed_by_reviewer"  # a recipient the person removed from the campaign (campaign_leads.removed_at)
 REPLANNABLE = (
     "cancelled",
     "skipped",
@@ -400,6 +401,7 @@ async def evaluate(session: AsyncSession, account_id: uuid.UUID, campaign: Campa
     drafts_of = await launch_repo.latest_drafts(session, account_id, ids)
     jobs_of = await launch_repo.latest_jobs(session, account_id, ids)
     plans = await launch_repo.dispatches_of(session, account_id, campaign.id)
+    removed = await launch_repo.removed_of(session, account_id, campaign.id)
     seen_emails: set[str] = set()
     seen_keys: set[str] = set()
     out: list[LeadState] = []
@@ -420,7 +422,11 @@ async def evaluate(session: AsyncSession, account_id: uuid.UUID, campaign: Campa
             out.append(LeadState(lead_id, lead, stage, None, draft, job, [], auth, sourced, site_state, source, plan))
             _remember(lead, seen_emails, seen_keys)
             continue
-        code = exclusion_for(lead, (qualified, suppressed, opted_out, demo), facts, provider, seen_emails, seen_keys)
+        code = (
+            REMOVED  # the person took it out of this campaign: never rendered, counted or approved
+            if lead_id in removed
+            else exclusion_for(lead, (qualified, suppressed, opted_out, demo), facts, provider, seen_emails, seen_keys)
+        )
         problems: list[campaign_plan.Problem] = []
         if code is not None:
             stage = "excluded"
@@ -785,6 +791,8 @@ async def _send_one(
     draft = await draft_repo.get(session, account_id, str(row.draft_id)) if row.draft_id else None
     if draft is None or draft.status != "approved":
         return Outcome("skipped", "draft_not_approved")
+    if row.lead_id in await launch_repo.removed_of(session, account_id, row.campaign_id):  # removed meanwhile
+        return Outcome("skipped", REMOVED)
     if campaign.zone is not None:  # a campaign with a zone sends only what its approval still covers, right now
         refusal = await journey_gate.check(session, campaign, now, draft.template_version, row.id, lead)
         if refusal is not None:
