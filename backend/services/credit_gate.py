@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Any, Mapping, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -88,6 +88,20 @@ async def reserve(
 
 
 async def spent(
-    session: AsyncSession, account_id: uuid.UUID, chosen: credits.OutreachModel, cost: int, action: str
+    session: AsyncSession,
+    account_id: uuid.UUID,
+    chosen: credits.OutreachModel,
+    cost: int,
+    action: str,
+    usage: Optional[Mapping[str, Any]] = None,
 ) -> None:
-    await usage_repo.spend_credits(session, account_id, cost, {"action": action, "model": chosen.id})
+    """Record the credits a call cost. `usage` (from ai_svc.complete) adds the AI model that really wrote the message
+    and the tokens the provider reported: what the provider's own quota counts, never an estimate."""
+    meta: dict[str, Any] = {"action": action, "model": chosen.id}
+    if usage:
+        model, tokens = usage.get("model"), usage.get("tokens")
+        if isinstance(model, str) and model:
+            meta["ai_model"] = model[:80]
+        if isinstance(tokens, int) and not isinstance(tokens, bool) and tokens >= 0:
+            meta["ai_tokens"] = tokens
+    await usage_repo.spend_credits(session, account_id, cost, meta)

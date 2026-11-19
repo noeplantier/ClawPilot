@@ -6,7 +6,9 @@ company, the offer and the goal. Never the e-mail address, the phone number or a
 
     AI_PROVIDER  groq | gemini | mistral | custom      (no default: the choice of who receives names is yours)
     AI_API_KEY   the provider's key (never shown, never logged)
-    AI_MODEL     optional: overrides the provider's default model
+    AI_MODEL     optional: overrides the provider's default model (the "main" one)
+    AI_MODEL_LIGHT optional: a lighter model of the SAME provider, for the short messages ("Rapide"); Groq has a
+                 default (gpt-oss-20b). Without one, every message uses the main model. Same key, same provider.
     AI_BASE_URL  only for `custom`: https://…/v1 (the API root that serves /chat/completions and /models)
 """
 
@@ -35,6 +37,11 @@ PROVIDERS: dict[str, tuple[Optional[str], Optional[str]]] = {
     "mistral": ("https://api.mistral.ai/v1", "mistral-small-latest"),
     "custom": (None, None),
 }
+# provider -> the lighter model of the same provider, used for the "light" tier (short messages). A provider without
+# one here uses its main model unless AI_MODEL_LIGHT names one. If the light model is unknown or retired (HTTP 400 or
+# 404), the message is asked once from the main model: never the other way round.
+LIGHT_MODELS: dict[str, str] = {"groq": "openai/gpt-oss-20b"}
+TIERS = ("main", "light")
 TIMEOUT = (5, 40)  # connect, read (seconds)
 RETRY_PAUSE = 1.0  # seconds before the one retry after a provider-side failure (HTTP 5xx)
 MAX_TOKENS = 700
@@ -56,6 +63,10 @@ class AIConfig:
     base_url: str
     model: str
     key: str = ""
+    light_model: str = ""  # empty: the light tier uses the main model
+
+    def model_for(self, tier: str = "main") -> str:
+        return (self.light_model or self.model) if tier == "light" else self.model
 
     @property
     def host(self) -> str:
@@ -84,7 +95,8 @@ def _read() -> tuple[Optional[AIConfig], Optional[str]]:
         return None, "AI_BASE_URL must start with https:// (the key travels in every request)"
     if not parts.hostname:
         return None, "AI_BASE_URL is not a valid address"
-    return AIConfig(provider, base_url, model, key), None
+    light = os.environ.get("AI_MODEL_LIGHT", "").strip() or LIGHT_MODELS.get(provider, "")
+    return AIConfig(provider, base_url, model, key, light if light != model else ""), None
 
 
 def config() -> Optional[AIConfig]:
@@ -98,6 +110,7 @@ def status() -> dict[str, Any]:
         "key_configured": bool(os.environ.get("AI_API_KEY", "").strip()),
         "provider": cfg.provider if cfg else (os.environ.get("AI_PROVIDER", "").strip().lower() or None),
         "model": cfg.model if cfg else None,
+        "model_light": cfg.model_for("light") if cfg else None,
         "host": cfg.host if cfg else None,
         "active": cfg is not None,
         "mode": "live" if cfg else "off",
@@ -197,17 +210,23 @@ def parse_answer(raw: str) -> dict[str, Optional[str]]:
     return {"subject": None, "body": text, "whatsapp": None}
 
 
-def _generate_sync(
-    cfg: AIConfig, messages: list[dict[str, str]], max_tokens: Optional[int] = None, temperature: Optional[float] = None
-) -> str:
+class Generated(str):
+    """The provider's text, with the model that really wrote it and the tokens the provider reported (None when it
+    reported none: never estimated)."""
+
+    model: str = ""
+    tokens: Optional[int] = None
+
+
+def _ask(cfg: AIConfig, model: str, messages: list[dict[str, str]], max_tokens: int, temperature: float):
     payload: dict[str, Any] = {
-        "model": cfg.model,
+        "model": model,
         "messages": messages,
-        "temperature": 0.7 if temperature is None else temperature,
-        "max_tokens": max_tokens or MAX_TOKENS,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
         "response_format": {"type": "json_object"},
     }
-    if "gpt-oss" in cfg.model:  # a reasoning model: keep its thinking short, so the answer fits in max_tokens
+    if "gpt-oss" in model:  # a reasoning model: keep its thinking short, so the answer fits in max_tokens
         payload["reasoning_effort"] = "low"
     response = _post(cfg, payload)
     if response.status_code == 400:  # a provider or model without JSON mode: ask again in plain mode, once
@@ -216,26 +235,60 @@ def _generate_sync(
     if response.status_code >= 500:  # the provider's own failure: one bounded retry (nothing is stored or spent before)
         time.sleep(RETRY_PAUSE)
         response = _post(cfg, payload)
+    return response
+
+
+def _tokens(data: Any) -> Optional[int]:
+    usage = data.get("usage") if isinstance(data, dict) else None
+    total = usage.get("total_tokens") if isinstance(usage, dict) else None
+    return total if isinstance(total, int) and not isinstance(total, bool) and total >= 0 else None
+
+
+def _generate_sync(
+    cfg: AIConfig,
+    messages: list[dict[str, str]],
+    max_tokens: Optional[int] = None,
+    temperature: Optional[float] = None,
+    tier: str = "main",
+) -> Generated:
+    model = cfg.model_for(tier)
+    budget, warmth = max_tokens or MAX_TOKENS, 0.7 if temperature is None else temperature
+    response = _ask(cfg, model, messages, budget, warmth)
+    if response.status_code in (400, 404) and model != cfg.model:  # the light model is unknown or retired
+        logger.warning(
+            "AI provider=%s light model=%s answered HTTP %s: main model used", cfg.provider, model, response.status_code
+        )
+        model = cfg.model
+        response = _ask(cfg, model, messages, budget, warmth)
     if response.status_code != 200:
         # What the operator needs to fix it, in the server log: the provider, the model and the status (never the key
         # nor the body, which can echo the request).
-        logger.warning("AI provider=%s model=%s answered HTTP %s", cfg.provider, cfg.model, response.status_code)
+        logger.warning("AI provider=%s model=%s answered HTTP %s", cfg.provider, model, response.status_code)
         code, message = explain_http_error(response.status_code, response.headers.get("Retry-After"))
         raise AIUnavailable(code, message)
     try:
-        content = response.json()["choices"][0]["message"]["content"]
+        data = response.json()
+        content = data["choices"][0]["message"]["content"]
     except (ValueError, KeyError, IndexError, TypeError):
         raise AIUnavailable("ai_failed", "The AI provider answered in a format this server does not understand.")
     if not isinstance(content, str) or not content.strip():
         raise AIUnavailable("ai_failed", "The AI provider returned an empty message. Nothing was generated.")
-    return content
+    out = Generated(content)
+    out.model, out.tokens = model, _tokens(data)
+    return out
 
 
 async def complete(
-    messages: list[dict[str, str]], *, max_tokens: Optional[int] = None, temperature: Optional[float] = None
-) -> dict[str, Optional[str]]:
-    """The provider's answer to `messages` as {"subject", "body"}, or `AIUnavailable` saying why (not configured,
-    rejected, limit, unreachable). The one place that talks to the provider, for the composer and the automatic drafts.
+    messages: list[dict[str, str]],
+    *,
+    max_tokens: Optional[int] = None,
+    temperature: Optional[float] = None,
+    tier: str = "main",
+) -> dict[str, Any]:
+    """The provider's answer to `messages` as {"subject", "body", "whatsapp", "usage"}, or `AIUnavailable` saying why
+    (not configured, rejected, limit, unreachable). The one place that talks to the provider, for the composer and the
+    automatic drafts. `tier` "light" asks the provider's lighter model (see LIGHT_MODELS). `usage` is
+    {"model", "tokens"}: the model that really wrote the answer and the tokens the provider reported (or None).
     """
     cfg, reason = _read()
     if cfg is None:
@@ -244,7 +297,9 @@ async def complete(
             f"The AI composer is off: {reason}. Write the message yourself, or set it up in Settings > Integrations.",
         )
     try:
-        raw = await asyncio.to_thread(_generate_sync, cfg, messages, max_tokens, temperature)  # never on the event loop
+        raw = await asyncio.to_thread(
+            _generate_sync, cfg, messages, max_tokens, temperature, tier if tier in TIERS else "main"
+        )  # never on the event loop
     except AIUnavailable:
         raise
     except requests.Timeout:
@@ -252,7 +307,7 @@ async def complete(
     except requests.RequestException as exc:
         logger.warning("AI provider unreachable: %s", type(exc).__name__)
         raise AIUnavailable("ai_failed", "The AI provider could not be reached. Nothing was generated.")
-    return parse_answer(raw)
+    return {**parse_answer(raw), "usage": {"model": raw.model, "tokens": raw.tokens}}
 
 
 async def generate_message(
@@ -276,6 +331,7 @@ async def generate_message(
         messages,
         max_tokens=getattr(style, "max_tokens", None),
         temperature=getattr(style, "temperature", None),
+        tier=getattr(style, "tier", "main"),
     )
     return {
         "subject": answer.get("subject") if channel == "email" else None,

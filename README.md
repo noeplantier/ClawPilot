@@ -139,6 +139,7 @@ set (Settings > Integrations): nothing is ever recorded as sent, generated or fo
 | `AI_PROVIDER` | AI composer: `groq`, `gemini`, `mistral` or `custom`. No default: you choose who receives the recipient's name and company. Unset, the composer refuses with the reason (no canned text) |
 | `AI_API_KEY` | The provider's key (a free one exists at Groq and Mistral). Never shown, never logged |
 | `AI_MODEL` | Optional: replaces the provider's default model |
+| `AI_MODEL_LIGHT` | Optional: a lighter model of the same provider, used for short messages (the « Rapide » writing model); Groq defaults to `openai/gpt-oss-20b`, other providers use `AI_MODEL` unless it is set. If it is unknown or retired, the message is asked once from `AI_MODEL` |
 | `AI_BASE_URL` | Only with `AI_PROVIDER=custom`: the API root (`https://…/v1`), with `AI_MODEL` |
 | `CREDITS_PER_DAY` | AI credits per day (Europe/Paris), default `100`: a spend over it is refused before any provider call (`docs/cost-control.md`) |
 | `CREDITS_PER_SESSION` | AI credits per 5-hour session, default `30` |

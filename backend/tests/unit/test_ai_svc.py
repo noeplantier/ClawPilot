@@ -23,7 +23,7 @@ KEY = "k-" + secrets.token_hex(10)  # runtime-built, not a credential
 
 @pytest.fixture(autouse=True)
 def clean_env(monkeypatch):
-    for name in ("AI_PROVIDER", "AI_API_KEY", "AI_MODEL", "AI_BASE_URL"):
+    for name in ("AI_PROVIDER", "AI_API_KEY", "AI_MODEL", "AI_BASE_URL", "AI_MODEL_LIGHT"):
         monkeypatch.delenv(name, raising=False)
 
     def refuse(*a, **k):
@@ -283,3 +283,88 @@ def test_a_refused_key_is_not_retried(monkeypatch):
     with pytest.raises(ai_svc.AIUnavailable):
         write()
     assert len(post.calls) == 1
+
+
+# ------------------------------------------------------------------------------------------------ model tiers
+def ask(tier, **kwargs):
+    return asyncio.run(ai_svc.complete([{"role": "user", "content": "x"}], tier=tier, **kwargs))
+
+
+def test_the_light_tier_asks_groq_s_lighter_model_and_reports_what_really_answered(monkeypatch):
+    configure(monkeypatch)
+    post = answering(Reply(body={"choices": [{"message": {"content": GOOD}}], "usage": {"total_tokens": 321}}))
+    monkeypatch.setattr(requests, "post", post)
+    out = ask("light", max_tokens=350, temperature=0.4)
+    sent = post.calls[0]["json"]
+    assert sent["model"] == "openai/gpt-oss-20b" and sent["max_tokens"] == 350 and sent["temperature"] == 0.4
+    assert sent["reasoning_effort"] == "low"
+    assert out["usage"] == {"model": "openai/gpt-oss-20b", "tokens": 321} and out["body"].startswith("Bonjour")
+    assert ai_svc.status()["model_light"] == "openai/gpt-oss-20b"
+
+
+def test_the_main_tier_keeps_the_main_model_and_an_unreported_usage_stays_unknown(monkeypatch):
+    configure(monkeypatch)
+    post = answering(Reply(text_content=GOOD))
+    monkeypatch.setattr(requests, "post", post)
+    out = ask("main")
+    assert post.calls[0]["json"]["model"] == "openai/gpt-oss-120b"
+    assert out["usage"] == {"model": "openai/gpt-oss-120b", "tokens": None}  # never estimated
+
+
+@pytest.mark.parametrize("status", [400, 404])
+def test_an_unknown_light_model_falls_back_once_to_the_main_model(monkeypatch, status):
+    configure(monkeypatch)
+    replies = [Reply(status=status)] * (2 if status == 400 else 1) + [Reply(text_content=GOOD)]
+    post = answering(*replies)
+    monkeypatch.setattr(requests, "post", post)
+    out = ask("light")
+    assert [c["json"]["model"] for c in post.calls][-1] == "openai/gpt-oss-120b"
+    assert {c["json"]["model"] for c in post.calls[:-1]} == {"openai/gpt-oss-20b"}
+    assert out["usage"]["model"] == "openai/gpt-oss-120b"
+
+
+def test_a_main_model_failure_is_never_retried_on_the_light_model(monkeypatch):
+    configure(monkeypatch)
+    post = answering(Reply(status=404))
+    monkeypatch.setattr(requests, "post", post)
+    with pytest.raises(ai_svc.AIUnavailable):
+        ask("main")
+    assert [c["json"]["model"] for c in post.calls] == ["openai/gpt-oss-120b"]
+
+
+def test_a_rate_limit_on_the_light_model_is_not_hidden_by_spending_the_main_one(monkeypatch):
+    configure(monkeypatch)
+    post = answering(Reply(status=429))
+    monkeypatch.setattr(requests, "post", post)
+    with pytest.raises(ai_svc.AIUnavailable) as refused:
+        ask("light")
+    assert refused.value.code == "ai_rate_limited" and len(post.calls) == 1
+
+
+def test_a_provider_without_a_light_model_uses_its_main_one_unless_one_is_named(monkeypatch):
+    configure(monkeypatch, "mistral")
+    cfg = ai_svc.config()
+    assert cfg.model_for("light") == cfg.model == "mistral-small-latest"
+    configure(monkeypatch, "mistral", AI_MODEL_LIGHT="ministral-8b-latest")
+    assert ai_svc.config().model_for("light") == "ministral-8b-latest"
+    monkeypatch.delenv("AI_MODEL_LIGHT")
+    configure(monkeypatch, "groq", AI_MODEL="openai/gpt-oss-20b")  # the light model is already the main one
+    assert ai_svc.config().light_model == "" and ai_svc.config().model_for("light") == "openai/gpt-oss-20b"
+
+
+def test_an_unknown_tier_is_the_main_model(monkeypatch):
+    configure(monkeypatch)
+    post = answering(Reply(text_content=GOOD))
+    monkeypatch.setattr(requests, "post", post)
+    ask("premium")
+    assert post.calls[0]["json"]["model"] == "openai/gpt-oss-120b"
+
+
+def test_the_rapide_writing_model_is_the_only_light_one():
+    from services.outreach_os import credits
+
+    assert {m.id: m.tier for m in credits.MODELS if m.uses_ai} == {
+        "rapide": "light",
+        "equilibre": "main",
+        "precision": "main",
+    }
