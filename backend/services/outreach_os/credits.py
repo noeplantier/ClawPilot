@@ -32,6 +32,7 @@ class OutreachModel:
     max_tokens: Optional[int]
     temperature: Optional[float]
     instruction: Optional[str]  # appended to the writing instructions (never replaces the safety rules)
+    tier: str = "main"  # "light": the provider's lighter model (ai_svc.LIGHT_MODELS), enough for a short message
 
 
 MODELS: tuple[OutreachModel, ...] = (
@@ -58,6 +59,7 @@ MODELS: tuple[OutreachModel, ...] = (
         max_tokens=350,
         temperature=0.4,
         instruction="Écris un message très court : 90 mots au plus, une seule idée, un seul appel à l'action.",
+        tier="light",
     ),
     OutreachModel(
         id="equilibre",

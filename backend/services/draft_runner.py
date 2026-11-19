@@ -41,7 +41,8 @@ CONCURRENCY = 2  # drafts in flight at once
 _running: set[uuid.UUID] = set()
 _background: set[asyncio.Task[None]] = set()
 
-Generator = Callable[[list[dict[str, str]]], Awaitable[dict[str, Optional[str]]]]
+# (messages, max_tokens=, temperature=, tier=) -> the answer; ai_svc.complete in production, a fake in the tests.
+Generator = Callable[..., Awaitable[dict[str, Any]]]
 
 
 def utcnow() -> datetime:
@@ -200,8 +201,10 @@ async def run_job(
                 )
             messages = credits.with_instruction(messages, chosen)
 
-        try:
-            answer = await generator(messages)
+        try:  # the chosen writing model's length, warmth and tier ("Rapide" asks the lighter model)
+            answer = await generator(
+                messages, max_tokens=chosen.max_tokens, temperature=chosen.temperature, tier=chosen.tier
+            )
         except ai_svc.AIUnavailable as exc:
             limited = exc.code == "ai_rate_limited"
             return await end(
@@ -253,7 +256,7 @@ async def run_job(
                         "business": business[:80],
                     },
                 )
-            await credit_gate.spent(session, account_id, chosen, cost, "draft")
+            await credit_gate.spent(session, account_id, chosen, cost, "draft", usage=answer.get("usage"))
             await draft_job_repo.finish(session, job_id, status="ready", now=now(), draft_id=draft.id)
             await session.commit()
         return "ready"
