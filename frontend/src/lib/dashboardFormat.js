@@ -20,12 +20,20 @@ export function kpiCards(k, limits) {
   ];
 }
 
+// The e-mail channel a live send would take, as the server decided it (Resend, then Brevo, then SMTP); an older answer
+// without the field falls back to SMTP alone. Null: no channel, nothing can leave.
+export const CHANNEL_LABELS = { resend: "Resend", brevo: "Brevo", smtp: "SMTP" };
+export function channelOf(l) {
+  const id = l.email_channel !== undefined ? l.email_channel : l.smtp_configured ? "smtp" : null;
+  return id ? CHANNEL_LABELS[id] || id : null;
+}
+
 // Sending mode as an operator should read it. The order matters: the most restrictive state wins.
 export function modeOf(l) {
   if (l.kill_switch) return { tone: "danger", label: "HALTED · KILL SWITCH" };
   if (l.paused) return { tone: "warn", label: "PAUSED" };
   if (l.dry_run) return { tone: "ink", label: "DRY-RUN" };
-  if (!l.smtp_configured) return { tone: "danger", label: "LIVE FLAG ON · SMTP INCOMPLETE" };
+  if (!channelOf(l)) return { tone: "danger", label: "LIVE FLAG ON · NO E-MAIL CHANNEL" };
   if (l.sandbox) return { tone: "warn", label: `LIVE · SANDBOX (${l.allowlist_size} ALLOWED)` };
   return { tone: "danger", label: "LIVE · OPEN" };
 }

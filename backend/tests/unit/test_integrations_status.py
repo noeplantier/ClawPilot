@@ -131,7 +131,9 @@ def test_twilio_api_key_instead_of_account_sid_is_explained():
     "patch,status,label",
     [
         ({"kill_switch": True, "live_sending": True}, "blocked", "KILL SWITCH"),
-        ({"live_sending": True, "smtp_configured": False}, "blocked", "SMTP INCOMPLETE"),
+        ({"live_sending": True, "smtp_configured": False}, "blocked", "NO E-MAIL CHANNEL"),
+        ({"live_sending": True, "resend_configured": True, "sandbox": True}, "partial", "SANDBOX"),
+        ({"live_sending": True, "brevo_configured": True, "sandbox": False}, "ready", "REAL E-MAIL"),
         ({"live_sending": True, "smtp_configured": True, "sandbox": True}, "partial", "SANDBOX"),
         ({"live_sending": True, "smtp_configured": True, "sandbox": False}, "ready", "REAL E-MAIL"),
     ],
@@ -222,3 +224,24 @@ def test_brevo_is_optional_until_its_key_is_set_then_unchecked_until_its_read_on
     assert items["brevo"]["status"] == "unchecked" and "never sends" in items["brevo"]["hint"]
     assert items["sendgrid"]["label"] == "NOT NEEDED · BREVO IS USED"
     assert "brevo" in TESTABLE
+
+
+def test_resend_is_optional_until_its_key_is_set_then_unchecked_and_used_before_brevo():
+    bare = by_id(NOTHING)["resend"]
+    assert bare["status"] == "off" and bare["needs"] == ["RESEND_API_KEY"] and bare["test"] == "server"
+    assert "RESEND_API_KEY" in TRACKED_ENV and "resend" in TESTABLE
+    facts = Facts(
+        **{
+            **NOTHING.__dict__,
+            "resend_configured": True,
+            "brevo_configured": True,
+            "live_sending": True,
+            "env_set": frozenset({"RESEND_API_KEY", "BREVO_API_KEY"}),
+        }
+    )
+    items = by_id(facts)
+    assert items["resend"]["status"] == "unchecked" and items["resend"]["needs"] == []
+    assert "never sends" in items["resend"]["hint"] and "does not mean delivered" in items["resend"]["summary"]
+    assert dict(items["resend"]["facts"])["used"] == "first"
+    assert dict(items["brevo"]["facts"])["used"] == "standby: Resend is used first"
+    assert items["sendgrid"]["label"] == "NOT NEEDED · RESEND IS USED"

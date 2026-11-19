@@ -27,6 +27,7 @@ Tous en lecture seule : **aucun message n'est envoyé à une personne**. Un test
 | `database` | un aller-retour `SELECT 1`, latence mesurée |
 | `osm` | une requête d'état par serveur Overpass, l'un après l'autre (jamais en rafale) |
 | `registry` | une requête d'exemple au registre des entreprises ; ignoré si `FEATURE_EXTERNAL_SOURCES` est coupé |
+| `resend` | lecture des domaines du compte (`GET /domains`), **sans envoi** : seul l'état du domaine de `OUTREACH_SENDER_EMAIL` est renvoyé (vérifié, en attente, absent), jamais les autres domaines ; une clé « envoi seul » est reconnue mais ne permet pas cette lecture (le domaine reste à vérifier dans Resend) |
 | `brevo` | lecture du compte (`GET /v3/account`), **sans envoi** ; la réponse (société, e-mail, offre) n'est jamais renvoyée |
 | `smtp` | connexion TLS + authentification, **sans envoi** (pas de `MAIL FROM`) |
 | `imap` | connexion TLS + ouverture du dossier **en lecture seule** ; aucun message lu, marqué ou modifié |
@@ -82,10 +83,23 @@ autorisée ; le kill switch arrête tout. Procédure : `docs/go-live-email.md`.
 ### IMAP
 `IMAP_HOST`, `IMAP_USERNAME`, `IMAP_PASSWORD` (+ `IMAP_PORT`, `IMAP_FOLDER`). Lit réponses, rebonds et STOP dans la boîte d'envoi ; sans lui, tout se traite à la main.
 
+<a id="resend"></a>
+### Resend (API HTTPS, recommandé)
+`RESEND_API_KEY` (Resend › API Keys). Envoie l'e-mail par l'API de Resend (`POST /emails`, port 443) **en premier** quand la clé
+est posée et `FEATURE_LIVE_SENDING` actif (avant Brevo, puis SMTP) : c'est le canal réel là où les ports SMTP sortants sont fermés
+(une instance Render gratuite bloque 25, 465 et 587). L'expéditeur est `OUTREACH_SENDER_EMAIL`, sur un domaine **ajouté et
+vérifié dans Resend** (Resend › Domains : enregistrements DNS SPF + DKIM, MX de retour) ; sinon Resend refuse (HTTP 403/422,
+raison affichée). Le test de la carte lit la liste des domaines et dit si celui de l'expéditeur est vérifié ; il n'envoie rien.
+Une clé « Sending access » suffit pour envoyer, mais ne peut pas lire les domaines : le test la reconnaît et vous laisse vérifier
+le domaine dans Resend (une clé « Full access » permet le contrôle complet).
+Mêmes règles que SMTP : un destinataire par message, sans copie, en-têtes `List-Unsubscribe`, bac à sable, kill switch, limites ;
+une connexion perdue après l'envoi est une issue inconnue, jamais renvoyée. « Accepté par Resend » ne veut pas dire « livré ».
+L'offre gratuite a un plafond quotidien et des conditions d'usage : un quota disponible ne vaut pas autorisation d'envoyer.
+
 <a id="brevo"></a>
 ### Brevo (API HTTPS, facultatif)
 `BREVO_API_KEY` (Brevo › SMTP & API › API Keys). Envoie l'e-mail par l'API transactionnelle de Brevo (`POST /v3/smtp/email`,
-port 443) **avant** SMTP quand la clé est posée et `FEATURE_LIVE_SENDING` actif : c'est le canal réel là où les ports SMTP
+port 443) **après Resend et avant** SMTP quand la clé est posée et `FEATURE_LIVE_SENDING` actif : c'est le canal réel là où les ports SMTP
 sortants sont fermés (une instance Render gratuite bloque 25, 465 et 587). L'expéditeur est `OUTREACH_SENDER_EMAIL`, qui doit
 être **vérifié dans Brevo** (idéalement le domaine, SPF + DKIM), sinon Brevo refuse (HTTP 400/403, raison affichée).
 Mêmes règles que SMTP : un destinataire par message, en-têtes `List-Unsubscribe`, bac à sable, kill switch, limites ;

@@ -43,6 +43,7 @@ from services import (
     integrations_status,
     mail_diagnostics,
     overpass_svc,
+    resend_svc,
     sendgrid_svc,
     smtp_svc,
     twilio_svc,
@@ -99,6 +100,7 @@ async def integrations(user: dict = Depends(get_current_user), session: AsyncSes
             test_sink=feature_flags.test_sink(),
             sender_configured=sender is not None,
             sender_email=sender.reply_to if sender else None,
+            resend_configured=resend_svc.is_configured(),
             brevo_configured=brevo_svc.is_configured(),
             smtp_configured=smtp["configured"],
             smtp_host=smtp["host"],
@@ -151,6 +153,7 @@ def _checks() -> dict:
     return {
         "osm": integration_checks.osm,
         "registry": integration_checks.registry,
+        "resend": integration_checks.resend,
         "brevo": integration_checks.brevo,
         "smtp": integration_checks.smtp,
         "imap": integration_checks.imap,

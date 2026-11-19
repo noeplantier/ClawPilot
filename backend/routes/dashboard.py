@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from typing import Optional
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,8 +12,16 @@ from db.session import get_db_session
 from deps import get_current_user
 from models import DashboardOut
 from repositories import dashboard_repo
-from services import feature_flags, send_gate, smtp_svc
+from services import feature_flags, mail_provider, send_gate, smtp_svc
 from services.outreach_os.signals import SIGNAL_LABELS
+
+
+def _email_channel() -> Optional[str]:
+    """The real e-mail channel a live send would take ("resend", "brevo", "smtp"), None when none is configured.
+    From the configuration only: no network, no secret."""
+    endpoint = mail_provider.live_endpoint()
+    return endpoint[0] if endpoint else None
+
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 SERIES_DAYS = 14
@@ -78,6 +87,7 @@ async def overview(
             "sandbox": feature_flags.sandbox(),
             "allowlist_size": len(feature_flags.live_allowlist()),
             "smtp_configured": smtp_svc.is_configured(),
+            "email_channel": _email_channel(),
         },
         inbox=await dashboard_repo.inbox(session, account_id, 6),
         top_signals=[

@@ -1,4 +1,4 @@
-import { chartGeometry, DASH, ago, kpiCards, modeOf, pct, quotaShare, seriesHasData, seriesSummary, shortDay } from "@/lib/dashboardFormat";
+import { chartGeometry, channelOf, DASH, ago, kpiCards, modeOf, pct, quotaShare, seriesHasData, seriesSummary, shortDay } from "@/lib/dashboardFormat";
 
 const K = { prospects: 3, pending_review: 2, approved: 1, scored: 3, avg_score: 41.5, sent_today: 2, messages: 4, replies: 1, reply_rate: 0.25, bounces: 0, bounce_rate: 0, unsubscribed: 1 };
 const L = { dry_run: true, kill_switch: false, paused: false, smtp_configured: false, sandbox: true, allowlist_size: 0, max_per_day: 20, sent_today: 2, remaining_today: 18 };
@@ -28,9 +28,19 @@ test("the most restrictive sending state wins", () => {
   expect(modeOf({ ...L, kill_switch: true, paused: true }).label).toMatch(/KILL SWITCH/);
   expect(modeOf({ ...L, paused: true }).label).toBe("PAUSED");
   expect(modeOf(L).label).toBe("DRY-RUN");
-  expect(modeOf({ ...L, dry_run: false }).label).toMatch(/SMTP INCOMPLETE/);
+  expect(modeOf({ ...L, dry_run: false }).label).toBe("LIVE FLAG ON · NO E-MAIL CHANNEL");
+  expect(modeOf({ ...L, dry_run: false, email_channel: null, smtp_configured: true }).label).toBe("LIVE FLAG ON · NO E-MAIL CHANNEL");
+  expect(modeOf({ ...L, dry_run: false, email_channel: "resend", allowlist_size: 1 }).label).toBe("LIVE · SANDBOX (1 ALLOWED)");
   expect(modeOf({ ...L, dry_run: false, smtp_configured: true, allowlist_size: 2 }).label).toBe("LIVE · SANDBOX (2 ALLOWED)");
   expect(modeOf({ ...L, dry_run: false, smtp_configured: true, sandbox: false }).tone).toBe("danger");
+});
+
+test("the e-mail channel is the server's, never guessed", () => {
+  expect(channelOf({ email_channel: "resend", smtp_configured: false })).toBe("Resend");
+  expect(channelOf({ email_channel: "brevo" })).toBe("Brevo");
+  expect(channelOf({ email_channel: null, smtp_configured: true })).toBe(null); // the server said none
+  expect(channelOf({ smtp_configured: true })).toBe("SMTP"); // an older answer without the field
+  expect(channelOf({ smtp_configured: false })).toBe(null);
 });
 
 test("quota share is bounded and a zero cap counts as full", () => {
