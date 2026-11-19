@@ -2,6 +2,9 @@
 # This file must live at the repository root; Netlify ignores one under frontend/public/.
 # In the Netlify UI, "Base directory" must be empty or "frontend" — not "public".
 [build]
+  # PAUSED (decision of the owner, to save Netlify build credits): every build is skipped — production and deploy previews.
+  # The site already online stays as it is. To deploy again, delete the `ignore` line below.
+  ignore = "exit 0"
   base = "frontend"
   command = "npm ci --legacy-peer-deps && npm run build"
   publish = "build"

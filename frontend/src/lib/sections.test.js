@@ -53,10 +53,10 @@ test("a path lands in the section that holds it, the nested screen under its own
   expect(sectionOf("/login")).toBeNull();
 });
 
-test("the current tab follows the path and the pipeline query", () => {
+test("the current tab follows the path; an old pipeline link is the CRM", () => {
   const leads = SECTIONS.find((s) => s.id === "leads");
   expect(activeTab(leads, "/app/leads", "").label).toBe("CRM");
-  expect(activeTab(leads, "/app/leads", "?view=kanban").label).toBe("Pipeline");
+  expect(activeTab(leads, "/app/leads", "?view=kanban").label).toBe("CRM");
   expect(activeTab(leads, "/app/prospects/p1", "").label).toBe("Prospects"); // a sheet keeps its list highlighted
   expect(activeTab(leads, "/app/prospects/review", "").label).toBe("À traiter");
   expect(activeTab(leads, "/app/prospects/to-enrich", "").label).toBe("À traiter"); // a merged screen lights its page

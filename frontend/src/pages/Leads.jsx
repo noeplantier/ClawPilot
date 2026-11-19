@@ -4,7 +4,7 @@ import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 import {
-  Plus, MagnifyingGlass, Envelope, Phone, Trash, Table, Kanban, Sparkle, X, UploadSimple, PaperPlaneTilt, MapTrifold,
+  Plus, MagnifyingGlass, Envelope, Phone, Trash, Table, Sparkle, X, UploadSimple, PaperPlaneTilt, MapTrifold,
 } from "@phosphor-icons/react";
 import AIComposerModal from "@/components/AIComposerModal";
 import BulkLeadsModal from "@/components/BulkLeadsModal";
@@ -21,10 +21,10 @@ import { readPref, writePref } from "@/lib/uiPrefs";
 // Where a prospect from discovery (map, sources, import) stands in the human review; a CRM lead has none.
 const REVIEW_LABEL = { pending: "to review", approved: "approved", rejected: "rejected" };
 const REVIEW_CHIP = { pending: "chip-warn", approved: "chip-success", rejected: "chip-danger" };
-// The views of the CRM, drawn like the review tabs of Prospects: the pipeline is the kanban, the map shows the CRM's positions.
+// The views of the CRM, drawn like the review tabs of Prospects. No separate pipeline: each lead's stage is a column of the CRM,
+// and an old « ?view=kanban » link opens the CRM itself.
 const VIEWS = [
   { key: "table", label: "CRM", Icon: Table },
-  { key: "kanban", label: "Pipeline", Icon: Kanban },
   { key: "map", label: "Map", Icon: MapTrifold },
 ];
 const STAGES = ["new", "contacted", "engaged", "qualified", "won", "lost"];
@@ -35,7 +35,7 @@ const STAGE_COLORS = {
 
 export default function Leads() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const view = searchParams.get("view") === "kanban" ? "kanban" : searchParams.get("view") === "map" ? "map" : "table";
+  const view = searchParams.get("view") === "map" ? "map" : "table";
   const [search, setSearch] = useState("");
   const [lane, setLane] = useState("all"); // heat filter: all | top | hot | warm | cold
   const [showEmpty, setShowEmpty] = useState(() => readPref("leads.showEmpty", false)); // leads with no e-mail, phone or website
@@ -175,10 +175,10 @@ export default function Leads() {
     <div className="p-6 md:p-10 space-y-6">
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
-          <div className="eyebrow">crm.pipeline</div>
+          <div className="eyebrow">crm</div>
           <h1 className="mt-3 text-4xl font-bold tracking-tight leading-[1.15]">Leads</h1>
           <p className="text-soft mt-1">
-            {leads.length}{lane !== "all" ? ` ${LANE_LABEL[lane].toLowerCase()}` : ""} contact{leads.length === 1 ? "" : "s"} across the pipeline, hottest first.
+            {leads.length}{lane !== "all" ? ` ${LANE_LABEL[lane].toLowerCase()}` : ""} contact{leads.length === 1 ? "" : "s"} in the CRM, hottest first.
           </p>
           <p className="text-xs mt-1 inline-flex items-center gap-2 text-brand-lilac" role="status" aria-live="polite" data-testid="leads-live">
             <span className="pos-live-dot" aria-hidden="true" />
@@ -269,7 +269,6 @@ export default function Leads() {
 
       {live.error && <div role="alert" className="text-sm text-red-300" data-testid="leads-error">{live.error}</div>}
 
-      {view === "table" ? (
         <div className="surface overflow-hidden overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-white/[0.04] border-b border-border">
@@ -389,41 +388,6 @@ export default function Leads() {
             </tbody>
           </table>
         </div>
-      ) : (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-          {STAGES.map((s) => {
-            const items = leads.filter((l) => l.stage === s);
-            return (
-              <div key={s} className="kanban-column p-3 min-h-[400px]" data-testid={`kanban-${s}`}>
-                <div className="flex items-center justify-between mb-3 pb-2 border-b border-border">
-                  <span className="mono-accent" style={{ color: STAGE_COLORS[s] }}>{s}</span>
-                  <span className="font-mono text-xs text-soft">{items.length}</span>
-                </div>
-                <div className="space-y-2">
-                  {items.map((l) => (
-                    <motion.div
-                      key={l.id}
-                      initial={{ opacity: 0, y: 4 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      onClick={() => setDetailLeadId(l.id)}
-                      className="surface p-3 text-xs cursor-pointer hover:border-brand-violet/40 transition"
-                      data-testid={`kanban-card-${l.id}`}
-                    >
-                      <div className="font-semibold text-sm text-foreground">{l.full_name}</div>
-                      <div className="text-soft mt-0.5">{l.company}</div>
-                      <div className="mt-2"><HeatBadge heat={l.heat} compact /></div>
-                      <div className="mono-accent text-faint mt-2 flex items-center justify-between">
-                        <span>{l.country}</span>
-                        <span>{l.heat && !l.heat.scored ? "not scored" : `score · ${l.score}`}</span>
-                      </div>
-                    </motion.div>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
 
       {showCreate && <CreateLead onClose={() => setShowCreate(false)} onSaved={() => { setShowCreate(false); load(); }} />}
       <BulkLeadsModal open={showBulk} onClose={() => setShowBulk(false)} onDone={load} />

@@ -80,9 +80,12 @@ test("complete journey: discovery → review → draft → dry-run dispatch → 
   await expect(page.getByTestId("chart-empty")).toBeVisible();
   await expect(page.getByTestId("limits-mode")).toHaveText("DRY-RUN");
 
-  // 2. Discovery from the fictional fixture directory (nothing leaves the process).
+  // 2. Discovery from the fictional fixture directory (nothing leaves the process). The app no longer offers it: the test asks
+  //    the API directly, as an operator script would.
   await page.goto("/app/prospects");
-  await page.getByTestId("empty-run-discovery").click();
+  await expect(page.getByTestId("empty-run-discovery")).toHaveCount(0);
+  await apiPost(page, "/prospects/discovery/run", { source: "fixture_directory" });
+  await page.reload();
   await expect(page.getByTestId("prospects-table")).toBeVisible();
   await page.getByRole("link", { name: /La Table d'Alice/ }).first().click();
 
@@ -251,45 +254,18 @@ test("the map shows real places from the search, marks what is published and nev
   await expect(page.getByTestId("map-import-off")).toContainText("FEATURE_PROSPECT_IMPORT"); // import stays closed without its flag
 });
 
-test("sources: discover from the world demo, see explained signals, page, add to the review queue; live sources say why they are off", async ({ page }) => {
+test("sources: only real sources are offered, never the demo directory, and live sources say why they are off", async ({ page }) => {
   await register(page);
   await page.getByTestId("nav-prospecting").click();
   await page.getByTestId("tab-sources").click();
   await expect(page.getByTestId("sources-page")).toBeVisible();
+  // The test server enables FEATURE_DEMO_DATA, yet the fictional directory is not offered: only real providers are listed.
+  await expect(page.getByText("local demo")).toHaveCount(0);
+  await expect(page.getByTestId("source-world_fixture")).toHaveCount(0);
   // The server runs with the flags off: live providers are shown but disabled, with the reason.
   await expect(page.getByTestId("source-openstreetmap-off")).toContainText("FEATURE_EXTERNAL_SOURCES");
   await expect(page.getByTestId("source-registry_fr-off")).toContainText("FEATURE_EXTERNAL_SOURCES");
-
-  await page.getByTestId("source-limit").fill("30");
-  await page.getByTestId("source-discover").click();
-  await expect(page.getByTestId("source-summary")).toContainText("places");
-  await expect(page.getByTestId("source-summary")).toContainText("Fictional data");
-  const rows = page.locator('[data-testid^="place-wf-"]');
-  await expect(rows.first()).toBeVisible();
-  await expect(rows.first()).toContainText("unknown"); // signals are explained and "unknown" stays unknown
-  // « Pépites »: counted on the page, each one justified by a gap the source shows; the filter keeps only those rows
-  await expect(page.getByTestId("source-gems")).toContainText("Pépites seulement");
-  await page.getByTestId("source-gems-only").check();
-  for (const cell of await page.locator('[data-testid^="gem-"]').allInnerTexts()) expect(cell).toContain("source :");
-  await page.getByTestId("source-gems-only").uncheck();
-  const firstPage = await rows.count();
-  expect(firstPage).toBeGreaterThan(0);
-
-  if (await page.getByTestId("source-next").isEnabled()) {
-    await page.getByTestId("source-next").click();
-    await expect(page.getByTestId("source-range")).toContainText("26");
-    await page.getByTestId("source-prev").click();
-  }
-
-  await rows.first().getByRole("checkbox").check();
-  await rows.nth(1).getByRole("checkbox").check();
-  await expect(page.getByTestId("source-add")).toContainText("Add 2 to prospects");
-  await expect(page.getByTestId("source-add-run")).toBeDisabled(); // not before the attestation
-  await page.getByTestId("source-attest").check();
-  await page.getByTestId("source-add-run").click();
-  await expect(page.getByTestId("source-add-done")).toContainText("2 added");
-  await page.goto("/app/prospects");
-  await expect(page.getByTestId("prospect-row")).toHaveCount(2); // the two places added from the demo
+  await expect(page.getByTestId("source-form")).toBeVisible();
 });
 
 test("the prospects map clusters nearby prospects, filters them, refreshes by polling and starts a campaign from the selection", async ({ page }) => {
@@ -344,8 +320,8 @@ test("the prospects map clusters nearby prospects, filters them, refreshes by po
 
 test("a reviewer dismisses a wrong signal: it reads as unknown, the score is recomputed and the decision is reversible", async ({ page }) => {
   await register(page);
+  await apiPost(page, "/prospects/discovery/run", { source: "fixture_directory" });
   await page.goto("/app/prospects");
-  await page.getByTestId("empty-run-discovery").click();
   await page.getByRole("link", { name: /Le Petit Bouchon/ }).first().click();
   const before = await page.getByTestId("score-badge").first().innerText();
   await page.getByTestId("dismiss-no_website").click();
