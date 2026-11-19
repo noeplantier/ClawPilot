@@ -65,3 +65,27 @@ def test_the_stored_row_round_trips_and_disabling_keeps_the_settings():
     assert ap.settings_of(ap.to_row(s)) == s
     off = ap.disable(s)
     assert off.enabled is False and off.zone == s.zone and ap.plan(off, NOW).approve == 0
+
+
+class _P:
+    def __init__(self, phone=None, email=None, website=None):
+        self.phone, self.email, self.website = phone, email, website
+
+
+def test_a_place_is_added_when_a_person_could_reach_it_and_a_homepage_is_read_only_within_the_cap():
+    with_mail = [_P("+33 1", "a@x.fr") for _ in range(3)]
+    with_site = [_P("+33 1", None, f"https://s{i}.fr") for i in range(ap.SITES_PER_RUN + 4)]
+    no_phone = [_P(None, "b@x.fr", "https://b.fr"), _P(None, None, None)]
+    read, as_published, later = ap.plan_additions(with_site + with_mail + no_phone)
+    assert len(read) == ap.SITES_PER_RUN and all(p.website for p in read)  # at most SITES_PER_RUN homepages per run
+    assert as_published == with_mail  # a phone and an e-mail: added as published
+    assert later == 4  # a site-only place past the cap waits for the next run, counted, never dropped silently
+    assert not {id(p) for p in no_phone} & {id(p) for p in read + as_published}  # no phone: never added
+
+
+def test_a_place_with_mail_and_site_has_its_homepage_read_and_the_total_is_capped():
+    both = _P("+33 1", "a@x.fr", "https://a.fr")
+    read, as_published, later = ap.plan_additions([both])
+    assert (read, as_published, later) == ([both], [], 0)
+    many = [_P("+33 1", f"m{i}@x.fr") for i in range(ap.MAX_PLACES_PER_RUN + 10)]
+    assert len(ap.plan_additions(many)[1]) == ap.MAX_PLACES_PER_RUN

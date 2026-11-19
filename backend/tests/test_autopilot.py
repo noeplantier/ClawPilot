@@ -23,6 +23,12 @@ def _run(account_id, fetcher=None, now=None):
     )
 
 
+def _own_cells(uid):
+    """A latitude shift of whole cache cells (map_jobs.GRID = 0.005°, kept 6 h): a run never reuses a previous run's
+    cached Overpass answer. Up to 10° north of Lyon: still a valid, small zone."""
+    return (int(uid[:4], 16) % 1000) * 0.01
+
+
 def test_off_by_default_and_a_run_on_demand_is_refused():
     _, h, _ = _org()
     state = requests.get(f"{API}/autopilot", headers=h).json()
@@ -64,9 +70,7 @@ def test_a_run_approves_the_qualified_prospects_waiting_for_review_and_sends_not
 
 def test_a_due_search_adds_the_reachable_places_then_waits_for_the_interval():
     uid, h, me = _org()
-    shift = (
-        int(uid[:4], 16) / 1e7
-    )  # a zone of its own: the server's shared Overpass cache never answers from a previous run
+    shift = _own_cells(uid)  # a zone of its own: the server's shared Overpass cache never answers from a previous run
     zone = {**ZONE, "south": ZONE["south"] + shift, "north": ZONE["north"] + shift}
     requests.put(f"{API}/autopilot", headers=h, json={"zone": zone, "acknowledgements": ACKS}).raise_for_status()
     answer = {
@@ -74,7 +78,7 @@ def test_a_due_search_adds_the_reachable_places_then_waits_for_the_interval():
             {
                 "type": "node",
                 "id": 9100 + i,
-                "lat": 45.76,
+                "lat": 45.76 + shift,
                 "lon": 4.84 + i / 1000,
                 "tags": {
                     "name": f"Boulangerie {uid} {i}",
@@ -89,7 +93,15 @@ def test_a_due_search_adds_the_reachable_places_then_waits_for_the_interval():
             }
             for i in range(2)
         ]
-        + [{"type": "node", "id": 9199, "lat": 45.76, "lon": 4.85, "tags": {"name": "Sans contact", "shop": "bakery"}}]
+        + [
+            {
+                "type": "node",
+                "id": 9199,
+                "lat": 45.76 + shift,
+                "lon": 4.85,
+                "tags": {"name": "Sans contact", "shop": "bakery"},
+            }
+        ]
     }
     calls = []
 
@@ -119,3 +131,68 @@ def test_without_the_external_sources_flag_the_search_is_skipped_and_said():
     requests.put(f"{API}/autopilot", headers=h, json={"zone": ZONE, "acknowledgements": ACKS}).raise_for_status()
     out = _run(me["org_id"], lambda q: {"elements": []})
     assert out["discovery"]["search"] == "skipped" and "FEATURE_EXTERNAL_SOURCES" in out["discovery"]["why"]
+
+
+def test_a_place_with_a_phone_and_a_website_is_added_its_homepage_read_for_its_e_mail_and_its_stated_intent(
+    monkeypatch,
+):
+    """No e-mail on the map: the homepage (faked, no network) gives the contact e-mail and a hiring statement."""
+    from routes import prospect_imports
+    from services.outreach_os.types import SiteSnapshot
+
+    uid, h, me = _org()
+    shift = _own_cells(uid)
+    zone = {**ZONE, "south": ZONE["south"] + shift, "north": ZONE["north"] + shift}
+    requests.put(f"{API}/autopilot", headers=h, json={"zone": zone, "acknowledgements": ACKS}).raise_for_status()
+    site = f"https://fournil-{uid}.fr"
+    home = (
+        "<html><body><h1>Fournil</h1><p>Nous recrutons un boulanger pour notre fournil de Lyon.</p>"
+        f'<a href="mailto:contact@fournil-{uid}.fr">Écrire</a></body></html>'
+    )
+    read = []
+
+    class FakeSite:
+        def fetch(self, url):
+            read.append(url)
+            return SiteSnapshot(url, 200, home)
+
+    monkeypatch.setattr(prospect_imports, "HttpSiteFetcher", FakeSite)
+    tags = {"shop": "bakery", "addr:street": "Rue Test", "addr:housenumber": "1", "addr:postcode": "69002"}
+    answer = {
+        "elements": [
+            {
+                "type": "node",
+                "id": 9301,
+                "lat": 45.76 + shift,
+                "lon": 4.84,
+                "tags": {
+                    **tags,
+                    "name": f"Fournil {uid}",
+                    "phone": "+33 4 78 00 04 10",
+                    "website": site,
+                    "addr:city": "Lyon",
+                },
+            },
+            {
+                "type": "node",
+                "id": 9302,
+                "lat": 45.76 + shift,
+                "lon": 4.841,
+                "tags": {**tags, "name": f"Téléphone seul {uid}", "phone": "+33 4 78 00 04 11", "addr:city": "Lyon"},
+            },
+        ]
+    }
+    monkeypatch.setenv("FEATURE_EXTERNAL_SOURCES", "true")
+    monkeypatch.setenv("FEATURE_PROSPECT_IMPORT", "true")
+    out = _run(me["org_id"], lambda q: answer, datetime.now(timezone.utc))
+    assert out["discovery"]["search"] == "ok", out
+    assert (out["discovery"]["sites_read"], out["discovery"]["created"], out["discovery"]["later"]) == (1, 1, 0)
+    assert read and read[0].rstrip("/") == site  # its own homepage only
+
+    crm = requests.get(f"{API}/leads", headers=h).json()
+    assert [lead["full_name"] for lead in crm] == [f"Fournil {uid}"]  # a phone alone is never added
+    assert crm[0]["email"] == f"contact@fournil-{uid}.fr"  # found on its own homepage, never guessed
+    detail = requests.get(f"{API}/prospects/{crm[0]['id']}", headers=h).json()
+    intent = next(s for s in detail["signals"] if s["key"] == "commercial_intent")
+    assert intent["state"] == "detected" and "Nous recrutons un boulanger" in intent["evidence"]
+    assert requests.get(f"{API}/outbound", headers=h).json() == []  # nothing dispatched

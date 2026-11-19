@@ -2,8 +2,10 @@
 
 Off by default. An owner turns it on with four explicit acknowledgements; from then on, each run (scheduled, or
 asked for with « Lancer maintenant ») may: search its zone again on the map (no more often than every
-MIN_SEARCH_HOURS), add the places that published a phone AND an e-mail to the CRM with the same attested import as a
-click on the map, approve the qualified prospects that wait for review (at most `max_approvals` per run), and prepare
+MIN_SEARCH_HOURS), add the places that published a phone and an e-mail, or a phone and their own website (whose homepage
+is then read for its contact e-mail and its signals, at most SITES_PER_RUN per run) to the CRM with the same attested
+import as a click on the map, approve the qualified prospects that wait for review (at most `max_approvals` per run),
+and prepare
 their AI drafts within the credits. It never sends: sending stays the active mandate's job, inside its caps, through
 every gate of the sender.
 """
@@ -12,7 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any, Mapping, Optional
+from typing import Any, Mapping, Optional, Protocol, Sequence, TypeVar
 
 from services.outreach_os import osm
 
@@ -26,6 +28,32 @@ MIN_SEARCH_HOURS = 6
 MAX_APPROVALS = 200
 DEFAULT_APPROVALS = 50
 CATEGORIES = tuple(osm.CATEGORIES)  # the categories of a map search, one source
+SITES_PER_RUN = 25  # homepages read per run (robots.txt, 8 s, 512 KiB each: services/site_fetcher_svc.py)
+MAX_PLACES_PER_RUN = 200  # places added per run, like one click on the map's selection
+
+
+class _Place(Protocol):
+    phone: Optional[str]
+    email: Optional[str]
+    website: Optional[str]
+
+
+P = TypeVar("P", bound=_Place)
+
+
+def plan_additions(places: Sequence[P]) -> tuple[list[P], list[P], int]:
+    """(places added with their homepage read, places added as published, places left for a later run).
+
+    A place is worth adding when a person could reach it: a published phone AND either a published e-mail or its own
+    website, where the e-mail may be on the contact page. A place whose only hope is its website is added only when its
+    homepage is read in this run; past SITES_PER_RUN it waits for the next run (counted, never dropped silently).
+    Until an e-mail is found a prospect stays in « À enrichir »: never contactable by default."""
+    reachable = [p for p in places if p.phone and (p.email or p.website)][:MAX_PLACES_PER_RUN]
+    read = [p for p in reachable if p.website][:SITES_PER_RUN]
+    picked = {id(p) for p in read}
+    as_published = [p for p in reachable if id(p) not in picked and p.email]
+    later = len(reachable) - len(read) - len(as_published)
+    return read, as_published, later
 
 
 class Invalid(ValueError):

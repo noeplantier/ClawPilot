@@ -67,16 +67,31 @@ async def _search_and_add(
                 "why": (job.error if job else None) or "recherche échouée",
             }
         rows = await map_job_repo.list_results(session, account_id, job_id)
-        reachable = [r for r in rows if r.phone and r.email]  # only what a person could reach: never a guess
-        out: dict[str, Any] = {"search": "ok", "job_id": str(job_id), "found": len(rows), "reachable": len(reachable)}
-        if reachable:
-            places = [MapPlaceIn(**{k: getattr(r, k) for k in map_job_repo.PLACE_FIELDS}) for r in reachable[:200]]
+        # Only what a person could reach, never a guess: a phone and an e-mail, or a phone and a homepage read now.
+        read, as_published, later = rules.plan_additions(rows)
+        out: dict[str, Any] = {
+            "search": "ok",
+            "job_id": str(job_id),
+            "found": len(rows),
+            "reachable": len(read) + len(as_published),
+            "sites_read": len(read),
+            "later": later,
+        }
+        totals = {"created": 0, "already_known": 0, "suppressed": 0}
+        for batch, read_site in ((read, True), (as_published, False)):
+            if not batch:
+                continue
+            places = [MapPlaceIn(**{k: getattr(r, k) for k in map_job_repo.PLACE_FIELDS}) for r in batch]
             added = await map_search.add_places(
-                MapAddManyIn(places=places, attestation=True, approve=False, check_website=False),
+                MapAddManyIn(places=places, attestation=True, approve=False, check_website=read_site),
                 user=owner,
                 session=session,
             )
-            out.update(created=added.created, already_known=added.already_known, suppressed=added.suppressed)
+            totals["created"] += added.created
+            totals["already_known"] += added.already_known
+            totals["suppressed"] += added.suppressed
+        if read or as_published:
+            out.update(totals)
         await session.commit()
     return out
 
