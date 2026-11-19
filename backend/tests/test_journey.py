@@ -18,7 +18,15 @@ if not os.environ.get("DATABASE_URL"):
 
 from sqlalchemy import select, update  # noqa: E402
 
-from db.models import Campaign, CampaignApproval, CampaignDispatch, CampaignTemplate, Lead, ProspectSignal  # noqa: E402
+from db.models import (  # noqa: E402
+    Campaign,
+    CampaignApproval,
+    CampaignDispatch,
+    CampaignTemplate,
+    Lead,
+    ProspectSignal,
+    User,
+)
 from repositories import campaign_repo, launch_repo  # noqa: E402
 from services import campaign_launch, journey  # noqa: E402
 from services.outreach_os import signals as sig  # noqa: E402
@@ -845,3 +853,51 @@ def test_a_recipient_marked_removed_while_its_message_waits_is_never_sent():
     assert target["email"] not in {c.to for c in recorder.calls} and len(recorder.calls) == 1
     row = next(d for d in _dispatches(org, jid) if d["lead_id"] == target["lead_id"])
     assert row["reason"] == "removed_by_reviewer" and row["status"] != "accepted"
+
+
+def _recipients_http(org, jid):
+    return requests.get(f"{API}/journeys/{jid}/recipients", headers=org["headers"])
+
+
+def _post_recipient(org, jid, lead_id, action, **body):
+    return requests.post(f"{API}/journeys/{jid}/recipients/{lead_id}/{action}", headers=org["headers"], json=body)
+
+
+def test_the_recipients_are_listed_removed_and_restored_over_http():
+    org = _org()
+    _seed(org, 2)
+    jid = _create(org).json()["data"]["id"]
+    listing = _recipients_http(org, jid)
+    assert listing.status_code == 200, listing.text
+    first = listing.json()["data"]["items"][0]
+    resp = _post_recipient(org, jid, first["lead_id"], "remove", reason="Déjà client")
+    assert resp.status_code == 200 and resp.json()["data"]["changed"] is True
+    after = {i["lead_id"]: i for i in _recipients_http(org, jid).json()["data"]["items"]}
+    assert after[first["lead_id"]]["status"] == "removed" and after[first["lead_id"]]["removed_reason"] == "Déjà client"
+    assert _get(org, jid)["audience"]["sendable"] == 1
+    assert _post_recipient(org, jid, first["lead_id"], "restore").json()["data"]["removed"] is False
+    again = _post_recipient(org, jid, first["lead_id"], "restore")
+    assert again.status_code == 409 and again.json()["detail"]["code"] == "not_removed"
+    long = _post_recipient(org, jid, first["lead_id"], "remove", reason="x" * 201)
+    assert long.status_code == 422  # the note is bounded
+    for bad in ("not-a-uuid", str(uuid.uuid4())):
+        refused = _post_recipient(org, jid, bad, "remove")
+        assert refused.status_code in (404, 409) and refused.status_code != 200
+
+
+def test_only_an_owner_or_admin_removes_and_another_organisation_sees_nothing():
+    org = _org()
+    _seed(org, 1)
+    jid = _create(org).json()["data"]["id"]
+    (item,) = _recipients_http(org, jid).json()["data"]["items"]
+
+    async def demote(session):
+        await session.execute(update(User).where(User.id == org["user_id"]).values(role="member"))
+
+    other = _org("journey_other")
+    assert _recipients_http(other, jid).status_code == 404
+    assert _post_recipient(other, jid, item["lead_id"], "remove").status_code == 404
+    _call(demote)
+    assert _recipients_http(org, jid).status_code == 200  # a member reads
+    assert _post_recipient(org, jid, item["lead_id"], "remove").status_code == 403  # but does not decide
+    assert _post_recipient(org, jid, item["lead_id"], "restore").status_code == 403

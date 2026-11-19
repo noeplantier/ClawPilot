@@ -1405,6 +1405,12 @@ class JourneyRevokeIn(BaseModel):
     reason: Optional[str] = Field(default=None, max_length=200)
 
 
+class JourneyRecipientRemoveIn(BaseModel):
+    """Take one establishment out of a zone campaign; the reason is the person's own note (optional)."""
+
+    reason: Optional[str] = Field(default=None, max_length=200)
+
+
 class JourneyOut(BaseModel):
     """A flexible, server-computed document (summary, progress, readiness): the screen reads what it needs."""
 

@@ -13,6 +13,7 @@ import { api } from "@/lib/api";
 import { toast } from "sonner";
 import { clear } from "@/lib/swr";
 import Journey from "@/pages/Journey";
+import { countLine } from "@/components/journey/RecipientList";
 
 global.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -37,6 +38,13 @@ const SUMMARY = (over = {}) => ({
   offer_configured: true,
   ...over,
 });
+const RECIPIENT = (id, status, over = {}) => ({ lead_id: id, name: `Bistro ${id}`, city: "Lyon", email: `${id}@x.example`, stage: "ready", status, exclusion: null, exclusion_label: null, message: null, problems: [], removed_at: null, removed_reason: null, can_remove: ["will_receive", "planned", "held_back", "excluded"].includes(status), can_restore: false, ...over });
+const MESSAGE = { subject: "À propos de Bistro p1", body: "Bonjour,\n\nCréer le site de votre établissement.", facts: [], site_state: "none_identified", offer_kind: "creation", offer_label: "Création et conception de site web ou d'application mobile" };
+const RECIPIENTS = (items = [RECIPIENT("p1", "will_receive", { message: MESSAGE }), RECIPIENT("p2", "excluded", { exclusion: "opted_out", exclusion_label: "S'est opposé aux e-mails" }), RECIPIENT("p3", "removed", { removed_reason: "Déjà client", can_restore: true }), RECIPIENT("p4", "sent", { can_remove: false })]) => ({
+  items,
+  counts: items.reduce((c, r) => ({ ...c, [r.status]: (c[r.status] || 0) + 1 }), {}),
+  approval_in_force: false,
+});
 const PROGRESS = (over = {}) => ({ status: "draft", paused: false, total: 0, done: 0, percent: null, states: {}, replies: {}, actions: [], approval_valid: false, ...over });
 
 let container;
@@ -55,6 +63,7 @@ beforeEach(() => {
     "/journeys/readiness": { data: READY },
     "/journeys/J1": { data: SUMMARY() },
     "/journeys/J1/progress": { data: PROGRESS() },
+    "/journeys/J1/recipients": { data: RECIPIENTS() },
   };
   api.get.mockImplementation((url) => (url in table ? Promise.resolve({ data: table[url] }) : Promise.reject(new Error(`unexpected GET ${url}`))));
 });
@@ -225,5 +234,66 @@ describe("the follow-up", () => {
     table["/journeys/J1/progress"] = { data: PROGRESS({ status: "paused", paused: true, total: 12, done: 0, percent: 0, states: { scheduled: 12 }, approval_valid: false }) };
     await show("/app/journey?id=J1");
     expect(byId("journey-resume").disabled).toBe(true);
+  });
+});
+
+
+describe("the recipients", () => {
+  const row = (id) => [...container.querySelectorAll('[data-testid="recipient"]')].find((li) => li.textContent.includes(`Bistro ${id}`));
+  const within = (li, id) => li.querySelector(`[data-testid="${id}"]`);
+
+  it("lists every recipient with the server's status, offer and reason, and opens the rendered message", async () => {
+    await show("/app/journey?id=J1");
+    expect(byId("recipients-counts").textContent).toMatch(/1 recevra le message · 1 exclu · 1 retiré par vous · 1 parti/);
+    expect(countLine({ will_receive: 3, removed: 2, sent: 1 })).toBe("3 recevront le message · 2 retirés par vous · 1 parti");
+    expect(within(row("p1"), "recipient-offer").textContent).toMatch(/Offre : Création/);
+    expect(within(row("p2"), "recipient-why").textContent).toMatch(/opposé/);
+    expect(within(row("p3"), "recipient-why").textContent).toMatch(/Déjà client/);
+    expect(within(row("p4"), "recipient-remove")).toBeNull(); // already sent: cannot be recalled
+    await click(within(row("p1"), "recipient-preview"));
+    expect(byId("recipient-message").textContent).toMatch(/À propos de Bistro p1/);
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it("removes after a confirmation that says what it does, with the person's reason", async () => {
+    api.post.mockResolvedValue({ data: { data: { removed: true, changed: true, cancelled: 0 } } });
+    await show("/app/journey?id=J1");
+    await click(within(row("p1"), "recipient-remove"));
+    expect(api.post).not.toHaveBeenCalled(); // opening the confirmation does nothing
+    expect(byId("recipient-remove-confirm").textContent).toMatch(/n'est pas remplacé/);
+    await type(byId("recipient-remove-reason"), "  Déjà client  ");
+    await click(byId("recipient-remove-yes"));
+    expect(api.post).toHaveBeenCalledWith("/journeys/J1/recipients/p1/remove", { reason: "Déjà client" });
+    expect(toast.success).toHaveBeenCalled();
+  });
+
+  it("restores only when the server allows it, and shows a refusal as the server says it", async () => {
+    api.post.mockRejectedValue({ response: { status: 409, data: { detail: { code: "approval_in_force", message: "Une approbation est en vigueur : révoquez-la." } } } });
+    await show("/app/journey?id=J1");
+    await click(within(row("p3"), "recipient-restore"));
+    expect(api.post).toHaveBeenCalledWith("/journeys/J1/recipients/p3/restore");
+    expect(byId("recipient-action-error").textContent).toMatch(/approbation est en vigueur/);
+    table["/journeys/J1/recipients"] = { data: RECIPIENTS([RECIPIENT("p3", "removed", { can_restore: false })]) };
+    clear();
+    act(() => root.unmount());
+    root = createRoot(container);
+    await show("/app/journey?id=J1");
+    expect(within(row("p3"), "recipient-restore")).toBeNull();
+    expect(within(row("p3"), "recipient-restore-hint").textContent).toMatch(/révoquez-la/);
+  });
+
+  it("lets a member read the recipients but neither remove nor restore", async () => {
+    global.__user = member;
+    await show("/app/journey?id=J1");
+    expect(container.querySelectorAll('[data-testid="recipient"]').length).toBe(4);
+    expect(byId("recipient-remove")).toBeNull();
+    expect(byId("recipient-restore")).toBeNull();
+  });
+
+  it("says nothing invented while the list is unavailable", async () => {
+    delete table["/journeys/J1/recipients"];
+    await show("/app/journey?id=J1");
+    expect(byId("recipients-error")).not.toBeNull();
+    expect(byId("recipients-counts")).toBeNull();
   });
 });
