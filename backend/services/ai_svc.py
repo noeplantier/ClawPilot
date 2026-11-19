@@ -338,4 +338,5 @@ async def generate_message(
         "body": answer.get("body") or "",
         "whatsapp": answer.get("whatsapp"),
         "language": language,
+        "usage": answer.get("usage"),  # {"model", "tokens"}: recorded with the credits, never sent back to the browser
     }

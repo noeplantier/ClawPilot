@@ -1,4 +1,4 @@
-import { costText, meter, messagesLeft, tightest, untilText } from "@/lib/creditsFormat";
+import { aiUsageLines, costText, meter, messagesLeft, tightest, untilText } from "@/lib/creditsFormat";
 
 const NOW = new Date("2026-11-13T09:00:00Z");
 
@@ -29,4 +29,25 @@ test("a model says its cost and how many messages are left", () => {
   expect(costText({ credits: 2 })).toBe("2 crédits par message");
   expect(messagesLeft({ credits: 2 }, w)).toBe("2 messages possibles maintenant");
   expect(messagesLeft({ credits: 0 }, w)).toMatch(/illimité/);
+});
+
+
+test("today's real AI usage says what the provider counted and never invents a number", () => {
+  expect(aiUsageLines(undefined)).toBeNull();
+  expect(aiUsageLines({ models: [], unattributed: 0 })).toBeNull();
+  const lines = aiUsageLines({
+    models: [
+      { ai_model: "openai/gpt-oss-20b", spends: 12, tokens: 4210, without_tokens: 0 },
+      { ai_model: "openai/gpt-oss-120b", spends: 1, tokens: null, without_tokens: 1 },
+      { ai_model: "mistral-small-latest", spends: 3, tokens: 900, without_tokens: 1 },
+    ],
+    unattributed: 2,
+  });
+  expect(lines.map((l) => [l.model, l.text])).toEqual([
+    ["openai/gpt-oss-20b", `12 demandes · ${(4210).toLocaleString("fr-FR")} tokens`],
+    ["openai/gpt-oss-120b", "1 demande · tokens non rapportés"],
+    ["mistral-small-latest", "3 demandes · au moins 900 tokens (1 sans chiffre du fournisseur)"],
+    ["modèle non enregistré", "2 demandes · tokens non rapportés"],
+  ]);
+  expect(JSON.stringify(lines)).not.toMatch(/\b0 tokens/);
 });

@@ -69,3 +69,21 @@ test("a member reads the models but cannot change them", async () => {
   expect(byId("model-gabarit").disabled).toBe(true);
   expect(document.body.textContent).toContain("Seul un propriétaire ou un administrateur change le modèle.");
 });
+
+
+test("today's real AI usage is shown as the server counted it, and an empty day says so", async () => {
+  await show();
+  expect(byId("usage-ai-empty").textContent).toBe("Aucun appel à l'IA aujourd'hui."); // no ai_usage: nothing invented
+  act(() => root.unmount());
+  clear();
+  root = createRoot(container);
+  api.get.mockResolvedValue({
+    data: { ...STATE(), ai_usage: { since: "2099-01-01T00:00:00Z", models: [{ ai_model: "openai/gpt-oss-20b", spends: 2, tokens: 640, without_tokens: 0 }], unattributed: 0 } },
+  });
+  await show();
+  const lines = document.querySelectorAll('[data-testid="usage-ai-line"]');
+  expect(lines).toHaveLength(1);
+  expect(lines[0].textContent).toContain("openai/gpt-oss-20b");
+  expect(lines[0].textContent).toContain("2 demandes · 640 tokens");
+  expect(byId("usage-ai-empty")).toBeNull();
+});

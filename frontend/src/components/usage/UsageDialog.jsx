@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { useAuth } from "@/contexts/AuthContext";
 import { canDecide, usageApi, useAsync } from "@/lib/outreach";
 import { describeApiError } from "@/lib/outreachFormat";
-import { costText, meter, messagesLeft } from "@/lib/creditsFormat";
+import { aiUsageLines, costText, meter, messagesLeft } from "@/lib/creditsFormat";
 import { ErrorBlock } from "@/components/outreach/States";
 
 const BAR = { ok: "bg-brand-violet", warn: "bg-amber-400", danger: "bg-red-500" };
@@ -61,6 +61,23 @@ export default function UsageDialog({ open, onOpenChange }) {
                   </div>
                 );
               })}
+            </section>
+
+            <section aria-label="Usage réel chez le fournisseur" className="space-y-2" data-testid="usage-ai">
+              <h3 className="font-display text-base font-bold">Aujourd&apos;hui, chez le fournisseur</h3>
+              {aiUsageLines(d.ai_usage) ? (
+                <ul className="space-y-1 text-sm">
+                  {aiUsageLines(d.ai_usage).map((l) => (
+                    <li key={l.key} className="flex flex-wrap items-baseline justify-between gap-x-3" data-testid="usage-ai-line">
+                      <span className="font-mono text-xs">{l.model}</span>
+                      <span className="text-soft">{l.text}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-soft" data-testid="usage-ai-empty">Aucun appel à l&apos;IA aujourd&apos;hui.</p>
+              )}
+              <p className="text-[11px] text-faint">Tokens comptés par le fournisseur lui-même ; jamais estimés ici.</p>
             </section>
 
             <section aria-label="Modèles d'outreach" className="space-y-2" data-testid="usage-models">
