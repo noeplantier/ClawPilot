@@ -183,6 +183,7 @@ describe("pause, revocation and the report", () => {
   it("reads the compact report and the journal with the reasons in words", async () => {
     table["/mandates/M1/report"] = { data: {
       mandate: MANDATE({ status: "active" }), last_24h: { sent: 3 }, total: { sent: 9 }, remaining: { messages: 51, days: 13 },
+      progress: { states: { scheduled: 4, sending: 1, accepted: 6, replied: 1, opted_out: 0, bounced: 1, unknown: 1 } },
       note: "Ce mode n'a rien élargi : zone, offre, modèle, expéditeur, plafonds et budget sont ceux de l'autorisation.",
       journal: [
         { at: "2026-11-11T11:00:00Z", action: "held", actor: "system", detail: { reason: "kill_switch" } },
@@ -191,7 +192,11 @@ describe("pause, revocation and the report", () => {
     } };
     await show();
     await click(byId("mandate-report-open"));
-    expect(byId("mandate-report").textContent).toMatch(/Dernières 24 h : 3 envoyés\. Au total : 9\. Il reste 51 messages et 13 jours/);
+    expect(byId("mandate-report").textContent).toMatch(/Dernières 24 h : 3 messages partis ou en cours\. Au total : 9 messages partis ou en cours\. Il reste 51 messages et 13 jours/);
+    expect(byId("mandate-outcome-accepted").textContent).toMatch(/Acceptés par le fournisseur \(pas une preuve de livraison\)6/);
+    expect(byId("mandate-outcome-unknown").textContent).toMatch(/Issue inconnue/);
+    expect(document.querySelector('[data-testid="mandate-outcome-opted_out"]')).toBeNull(); // a zero is not shown
+    expect(byId("mandate-outcomes").textContent).toMatch(/pas livré/);
     expect(byId("mandate-report").textContent).toMatch(/n'a rien élargi/);
     expect(byId("mandate-journal").textContent).toMatch(/Rien envoyé ce tour-ci : Arrêt d'urgence actif \(SEND_KILL_SWITCH\) · automatique/);
     expect(byId("mandate-journal").textContent).toMatch(/Autorisation donnée .* par une personne/);

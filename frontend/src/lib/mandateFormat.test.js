@@ -1,4 +1,4 @@
-import { ACK_TEXT, activationBlock, formDefaults, journalLine, remainingLine, statusOf, toPayload, validateForm } from "@/lib/mandateFormat";
+import { ACK_TEXT, OUTCOME_LABELS, activationBlock, formDefaults, journalLine, outcomeLines, remainingLine, sentLine, statusOf, toPayload, validateForm } from "@/lib/mandateFormat";
 
 const LIMITS = { max_daily: 50, max_total: 100, max_days: 30, zones: 1, min_delay_seconds: 30, min_search_hours: 6 };
 const OVERVIEW = (over = {}) => ({ enabled: true, why_disabled: null, reply_collection_configured: true, acknowledgements: ["bounded", "real_sending", "provider_terms", "can_revoke"], limits: LIMITS, ...over });
@@ -65,5 +65,31 @@ describe("status, journal and what is left", () => {
     expect(remainingLine({ remaining: { messages: 1, days: 1 } })).toBe("Il reste 1 message et 1 jour avant l'expiration.");
     expect(remainingLine({ remaining: { messages: 80, days: 12 } })).toContain("80 messages et 12 jours");
     expect(remainingLine(null)).toBe("");
+  });
+});
+
+describe("what became of the messages, never « delivered »", () => {
+  it("lists the non-zero states in the honest order, with the server's counts", () => {
+    const report = { progress: { states: { unknown: 1, accepted: 6, scheduled: 4, opted_out: 0, bounced: 2 } } };
+    expect(outcomeLines(report)).toEqual([
+      { state: "scheduled", label: "Planifiés", count: 4 },
+      { state: "accepted", label: "Acceptés par le fournisseur (pas une preuve de livraison)", count: 6 },
+      { state: "bounced", label: "Rebonds", count: 2 },
+      { state: "unknown", label: "Issue inconnue (jamais renvoyés d'eux-mêmes)", count: 1 },
+    ]);
+  });
+  it("shows nothing without counts or when every state is zero (no invented 0)", () => {
+    expect(outcomeLines(null)).toBeNull();
+    expect(outcomeLines({})).toBeNull();
+    expect(outcomeLines({ progress: { states: { accepted: 0 } } })).toBeNull();
+  });
+  it("never has a « delivered » state or label", () => {
+    expect(Object.keys(OUTCOME_LABELS)).not.toContain("delivered");
+    expect(Object.values(OUTCOME_LABELS).join(" ")).not.toMatch(/\bLivrés?\b/);
+  });
+  it("says « left or in progress », not « sent », for what the server counts", () => {
+    expect(sentLine({ last_24h: { sent: 1 }, total: { sent: 9 } })).toBe("Dernières 24 h : 1 message parti ou en cours. Au total : 9 messages partis ou en cours.");
+    expect(sentLine({ last_24h: { sent: 0 } })).toBe("Dernières 24 h : 0 message parti ou en cours.");
+    expect(sentLine(null)).toBe("");
   });
 });
