@@ -6,7 +6,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { canDecide, outboundApi, prospectsApi, useAsync } from "@/lib/outreach";
 import { LIVE_MS } from "@/lib/live";
 import {
-  LIMIT_RANGES, MESSAGE_STATUS_CHIP, describeApiError, describeInboxSync, describeTestSend, describeWhatsappTest, formatDateTime, limitsPatch,
+  LIMIT_RANGES, MESSAGE_STATUS_CHIP, MESSAGE_STATUS_LABEL, describeApiError, describeInboxSync, describeTestSend, describeWhatsappTest, formatDateTime, limitsPatch,
   validateLimits,
 } from "@/lib/outreachFormat";
 import { statusSummary } from "@/lib/sendingFormat";
@@ -64,7 +64,7 @@ function LimitsForm({ limits, canEdit, onSaved }) {
     setError(null);
     try {
       await outboundApi.putLimits(patch);
-      toast.success("Limits saved");
+      toast.success("Limites enregistrées");
       await onSaved();
     } catch (err) {
       setError(describeApiError(err));
@@ -78,7 +78,7 @@ function LimitsForm({ limits, canEdit, onSaved }) {
     setError(null);
     try {
       await outboundApi.putLimits({ sending_paused: !limits.sending_paused });
-      toast.success(limits.sending_paused ? "Sending resumed" : "Sending paused");
+      toast.success(limits.sending_paused ? "Envoi repris" : "Envoi mis en pause");
       await onSaved();
     } catch (err) {
       setError(describeApiError(err));
@@ -91,12 +91,12 @@ function LimitsForm({ limits, canEdit, onSaved }) {
     <section className="surface p-5 space-y-4" data-testid="limits-panel">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <h2 className="font-display text-xl font-bold">Limits</h2>
-          <p className="text-sm text-soft">Applied before every dispatch. The day is the calendar day in the organisation’s timezone.</p>
+          <h2 className="font-display text-xl font-bold">Limites</h2>
+          <p className="text-sm text-soft">Appliquées avant chaque envoi. Le jour est le jour calendaire dans le fuseau horaire du compte.</p>
         </div>
         <button className={limits.sending_paused ? "btn-primary" : "btn-ghost"} onClick={togglePause} disabled={!canEdit || busy} data-testid="toggle-pause"
-          title="Stops all dispatches for this organisation until resumed">
-          {limits.sending_paused ? <><Play size={14} weight="fill" /> RESUME SENDING</> : <><Pause size={14} weight="fill" /> PAUSE SENDING</>}
+          title="Arrête tous les envois de ce compte jusqu'à la reprise">
+          {limits.sending_paused ? <><Play size={14} weight="fill" /> REPRENDRE L&apos;ENVOI</> : <><Pause size={14} weight="fill" /> METTRE L&apos;ENVOI EN PAUSE</>}
         </button>
       </div>
       <form onSubmit={save} className="space-y-3">
@@ -112,8 +112,8 @@ function LimitsForm({ limits, canEdit, onSaved }) {
         </div>
         {error && <div role="alert" className="text-sm text-red-300 bg-red-500/10 border border-red-400/40 rounded-md p-3" data-testid="limits-error">{error}</div>}
         <div className="flex items-center gap-3">
-          <button className="btn-ink" type="submit" disabled={!canEdit || busy || !dirty || Object.keys(errors).length > 0} data-testid="save-limits">SAVE LIMITS</button>
-          {!canEdit && <span className="mono-accent text-faint">requires owner or admin</span>}
+          <button className="btn-ink" type="submit" disabled={!canEdit || busy || !dirty || Object.keys(errors).length > 0} data-testid="save-limits">ENREGISTRER LES LIMITES</button>
+          {!canEdit && <span className="mono-accent text-faint">réservé au propriétaire ou à un administrateur</span>}
         </div>
       </form>
     </section>
@@ -132,7 +132,7 @@ function MessageRow({ message, canEdit, onChanged }) {
     setError(null);
     try {
       await outboundApi.simulate(message.id, event, text);
-      toast.success(event === "bounced" ? "Bounce simulated: address suppressed" : "Reply simulated");
+      toast.success(event === "bounced" ? "Rebond simulé : adresse supprimée" : "Réponse simulée");
       setText("");
       await onChanged();
       detail.reload();
@@ -144,36 +144,36 @@ function MessageRow({ message, canEdit, onChanged }) {
   };
 
   const events = detail.data
-    ? detail.data.events.map((e) => ({ key: e.id, at: e.created_at, label: e.event_type, actor: "provider (simulated)", detail: e.detail }))
+    ? detail.data.events.map((e) => ({ key: e.id, at: e.created_at, label: e.event_type, actor: "fournisseur (simulé)", detail: e.detail }))
     : [];
 
   return (
     <Fragment>
       <tr className="border-b border-border hover:bg-white/[0.04] cursor-pointer" onClick={() => setOpen(!open)} data-testid="message-row">
         <td className="p-3 font-mono text-xs">{formatDateTime(message.dispatched_at)}</td>
-        <td className="p-3">{message.to_email || <span className="text-faint">erased</span>}</td>
+        <td className="p-3">{message.to_email || <span className="text-faint">effacée</span>}</td>
         <td className="p-3 hidden md:table-cell truncate max-w-xs">{message.subject}</td>
-        <td className="p-3"><span className={`chip ${MESSAGE_STATUS_CHIP[message.status] || "chip"}`}>{message.status}</span></td>
-        <td className="p-3">{message.dry_run ? <span className="chip chip-ink">dry-run</span> : <span className="chip chip-warn">live</span>}</td>
+        <td className="p-3"><span className={`chip ${MESSAGE_STATUS_CHIP[message.status] || "chip"}`}>{MESSAGE_STATUS_LABEL[message.status] || message.status}</span></td>
+        <td className="p-3">{message.dry_run ? <span className="chip chip-ink">simulation</span> : <span className="chip chip-warn">réel</span>}</td>
       </tr>
       {open && (
         <tr className="bg-white/[0.04] border-b border-border" data-testid="message-detail">
           <td colSpan={5} className="p-4 space-y-3">
             <div className="flex flex-wrap gap-3 text-sm">
-              <Link to={`/app/prospects/${message.lead_id}`} className="underline">open the prospect</Link>
-              <span className="mono-accent text-soft">adapter {message.adapter} · id {message.provider_message_id || "—"}</span>
+              <Link to={`/app/prospects/${message.lead_id}`} className="underline">ouvrir le prospect</Link>
+              <span className="mono-accent text-soft">canal {message.adapter} · id {message.provider_message_id || "—"}</span>
             </div>
-            {detail.loading && <LoadingBlock label="Loading events…" />}
+            {detail.loading && <LoadingBlock label="Chargement des événements…" />}
             {detail.error && <ErrorBlock message={detail.error} onRetry={detail.reload} />}
             {detail.data && <HistoryTimeline items={events} />}
             {message.dry_run && canEdit && message.status !== "bounced" && message.status !== "failed" && (
               <div className="border-t border-border pt-3 space-y-2" data-testid="simulate-box">
-                <p className="mono-accent">simulation · stands in for the provider webhook, same effects</p>
+                <p className="mono-accent">simulation · remplace le retour du fournisseur, mêmes effets</p>
                 {error && <div role="alert" className="text-sm text-red-300" data-testid="simulate-error">{error}</div>}
                 <div className="flex flex-wrap gap-2 items-center">
-                  <input className="neo-input !w-72" placeholder="Reply text (try: STOP)" value={text} onChange={(e) => setText(e.target.value)} data-testid="simulate-text" />
-                  <button className="btn-ghost" disabled={busy || !text.trim()} onClick={() => simulate("replied")} data-testid="simulate-reply">SIMULATE REPLY</button>
-                  <button className="btn-ghost" disabled={busy} onClick={() => simulate("bounced")} data-testid="simulate-bounce">SIMULATE HARD BOUNCE</button>
+                  <input className="neo-input !w-72" placeholder="Texte de la réponse (essayez : STOP)" value={text} onChange={(e) => setText(e.target.value)} data-testid="simulate-text" />
+                  <button className="btn-ghost" disabled={busy || !text.trim()} onClick={() => simulate("replied")} data-testid="simulate-reply">SIMULER UNE RÉPONSE</button>
+                  <button className="btn-ghost" disabled={busy} onClick={() => simulate("bounced")} data-testid="simulate-bounce">SIMULER UN REBOND DÉFINITIF</button>
                 </div>
               </div>
             )}
@@ -207,13 +207,13 @@ function InboxSyncPanel({ onDone }) {
 
   return (
     <section className="surface p-5 space-y-3" data-testid="inbox-sync">
-      <h2 className="font-display text-xl font-bold">Replies and bounces</h2>
+      <h2 className="font-display text-xl font-bold">Réponses et rebonds</h2>
       <p className="text-sm text-soft">
-        Reads the sending mailbox over IMAP (needs IMAP_HOST, IMAP_USERNAME and IMAP_PASSWORD). A reply is recorded with a short
-        excerpt, a STOP from the recipient opts them out, and only a permanent delivery failure suppresses an address.
-        Where a worker runs, this also happens every 5 minutes.
+        Lit la boîte d&apos;envoi en IMAP (IMAP_HOST, IMAP_USERNAME et IMAP_PASSWORD). Une réponse est enregistrée avec un court extrait,
+        un STOP du destinataire le désinscrit, et seul un échec de remise définitif supprime une adresse. Là où un worker tourne, cela se
+        fait aussi toutes les 5 minutes. Sous Resend, les rebonds arrivent par son webhook signé, pas par cette boîte.
       </p>
-      <button className="btn-ghost" disabled={busy} onClick={sync} data-testid="inbox-sync-run">{busy ? "READING…" : "READ MAILBOX NOW"}</button>
+      <button className="btn-ghost" disabled={busy} onClick={sync} data-testid="inbox-sync-run">{busy ? "LECTURE…" : "LIRE LA BOÎTE MAINTENANT"}</button>
       {result && <div role="status" className="text-sm text-emerald-300" data-testid="inbox-sync-result">{result}</div>}
       {error && <div role="alert" className="text-sm text-red-300" data-testid="inbox-sync-error">{error}</div>}
     </section>
@@ -242,16 +242,17 @@ function SmtpTestPanel({ onDone }) {
 
   return (
     <section className="surface p-5 space-y-3" data-testid="smtp-test">
-      <h2 className="font-display text-xl font-bold">Test the real e-mail connection</h2>
+      <h2 className="font-display text-xl font-bold">Tester le canal e-mail réel</h2>
       <p className="text-sm text-soft">
-        Sends one technical message (not prospecting) to the sender&apos;s own address or to the sandbox allowlist, through the
-        same limits and kill switch. Needs live sending and the SMTP settings; otherwise it is refused and nothing is sent.
+        Envoie un message technique (pas de prospection) à l&apos;adresse de l&apos;expéditeur ou à la liste autorisée du bac à sable, par le
+        canal réel (Resend, puis Brevo, puis SMTP, selon la configuration), avec les mêmes limites et le même arrêt d&apos;urgence. Il faut
+        l&apos;envoi réel activé et un canal configuré ; sinon c&apos;est refusé et rien ne part.
       </p>
       <div className="flex gap-2 flex-wrap items-center">
         <input className="neo-input !w-72" type="email" placeholder="founder@plantiers.com" value={to}
           onChange={(e) => setTo(e.target.value)} data-testid="smtp-test-to" />
         <button className="btn-ghost" disabled={busy || !to.trim()} onClick={send} data-testid="smtp-test-send">
-          {busy ? "SENDING…" : "SEND TEST E-MAIL"}
+          {busy ? "ENVOI…" : "ENVOYER L’E-MAIL DE TEST"}
         </button>
       </div>
       {result && <div role="status" className={`text-sm ${TONE_TEXT[result.tone]}`} data-testid="smtp-test-result">{result.text}</div>}
@@ -282,16 +283,16 @@ function WhatsappTestPanel({ onDone }) {
 
   return (
     <section className="surface p-5 space-y-3" data-testid="whatsapp-test">
-      <h2 className="font-display text-xl font-bold">Test the real WhatsApp connection</h2>
+      <h2 className="font-display text-xl font-bold">Tester le canal WhatsApp réel</h2>
       <p className="text-sm text-soft">
-        Sends one technical message (not prospecting) to a number listed in <code>OUTREACH_LIVE_PHONES</code> (your own phone), through the same
-        limits and kill switch. Needs the Twilio settings; otherwise it is refused and nothing is sent.
+        Envoie un message technique (pas de prospection) à un numéro listé dans <code>OUTREACH_LIVE_PHONES</code> (votre propre téléphone), avec
+        les mêmes limites et le même arrêt d&apos;urgence. Il faut les réglages Twilio ; sinon c&apos;est refusé et rien ne part.
       </p>
       <div className="flex gap-2 flex-wrap items-center">
         <input className="neo-input !w-72" type="tel" placeholder="+33612345678" value={to}
           onChange={(e) => setTo(e.target.value)} data-testid="whatsapp-test-to" />
         <button className="btn-ghost" disabled={busy || !to.trim()} onClick={send} data-testid="whatsapp-test-send">
-          {busy ? "SENDING…" : "SEND TEST WHATSAPP"}
+          {busy ? "ENVOI…" : "ENVOYER LE WHATSAPP DE TEST"}
         </button>
       </div>
       {result && <div role="status" className={`text-sm ${TONE_TEXT[result.tone]}`} data-testid="whatsapp-test-result">{result.text}</div>}
@@ -328,7 +329,7 @@ export default function Sending() {
       details={tools}
       detailsLabel="Tests et outils (e-mail, WhatsApp, boîte de réception)"
     >
-      {page.loading && !page.data && <LoadingBlock label="Loading sending status…" />}
+      {page.loading && !page.data && <LoadingBlock label="Chargement de l'état d'envoi…" />}
       {page.error && <ErrorBlock message={page.error} onRetry={page.reload} />}
 
       {page.data && (
@@ -337,18 +338,18 @@ export default function Sending() {
           <ProviderSwitch />
           <LimitsForm key={JSON.stringify(page.data.limits)} limits={page.data.limits} canEdit={edit} onSaved={page.reload} />
           <section className="space-y-3" data-testid="messages-panel">
-            <h2 className="font-display text-xl font-bold">Dispatched messages</h2>
+            <h2 className="font-display text-xl font-bold">Messages envoyés</h2>
             {page.data.messages.length === 0 ? (
-              <EmptyBlock title="No message has been dispatched" testId="messages-empty">
-                <p>Approve a prospect, prepare and approve a draft, then dispatch it from the prospect page. It will appear here.</p>
-                <Link to="/app/prospects" className="btn-ink inline-flex">GO TO PROSPECTS</Link>
+              <EmptyBlock title="Aucun message envoyé" testId="messages-empty">
+                <p>Approuvez un prospect, préparez et approuvez un brouillon, puis envoyez-le depuis la fiche du prospect. Il apparaîtra ici.</p>
+                <Link to="/app/prospects" className="btn-ink inline-flex">VOIR LES PROSPECTS</Link>
               </EmptyBlock>
             ) : (
               <div className="surface overflow-hidden">
                 <table className="w-full text-sm" data-testid="messages-table">
                   <thead className="bg-white/[0.04] border-b border-border">
                     <tr className="text-left mono-accent">
-                      <th className="p-3">when</th><th className="p-3">to</th><th className="p-3 hidden md:table-cell">subject</th><th className="p-3">status</th><th className="p-3">mode</th>
+                      <th className="p-3">quand</th><th className="p-3">à</th><th className="p-3 hidden md:table-cell">objet</th><th className="p-3">statut</th><th className="p-3">mode</th>
                     </tr>
                   </thead>
                   <tbody>

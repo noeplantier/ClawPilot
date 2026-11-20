@@ -14,6 +14,8 @@ export const REVIEW_META = {
 };
 
 export const MESSAGE_STATUS_CHIP = { sending: "chip-warn", sent: "chip-ink", failed: "chip-danger", bounced: "chip-danger", replied: "chip-success" };
+// The ledger's status in words. "sent" is accepted by the provider, never "delivered"; "sending" has an unknown outcome.
+export const MESSAGE_STATUS_LABEL = { sending: "en cours · issue inconnue", sent: "accepté", failed: "échec", bounced: "rebond", replied: "réponse" };
 
 export function scoreBand(score) {
   if (score === null || score === undefined) return "none";
@@ -88,18 +90,23 @@ const BLOCK_TEXT = {
   not_delivered: "This message was never sent.",
 };
 
-// What a test e-mail result means. "sent" only says the SMTP server accepted it, not that it reached an inbox.
+// The channel that carried a test e-mail, from the server's answer (adapter: resend, brevo or smtp).
+export const CHANNEL_NAMES = { resend: "Resend", brevo: "Brevo", smtp: "le serveur SMTP", dry_run_email: "la simulation" };
+const channelName = (adapter) => CHANNEL_NAMES[adapter] || "le fournisseur d'envoi";
+
+// What a test e-mail result means. "sent" says the provider accepted it, never that it was delivered.
 export function describeTestSend(result) {
+  const by = channelName(result.adapter);
   if (result.status === "sent") {
     return {
       tone: "ok",
-      text: `Accepted by the SMTP server for ${result.to}. Check the inbox and the spam folder, then open the original message: SPF, DKIM and DMARC should read "pass".`,
+      text: `Accepté par ${by} pour ${result.to} (accepté ne veut pas dire livré). Vérifiez la boîte de réception et les indésirables, puis ouvrez le message d'origine : SPF, DKIM et DMARC doivent indiquer « pass ».`,
     };
   }
   if (result.status === "unknown") {
-    return { tone: "warn", text: `Outcome unknown (${result.error}). Check the mailbox's Sent folder before trying again.` };
+    return { tone: "warn", text: `Issue inconnue (${result.error}). Vérifiez les messages envoyés avant de réessayer : rien n'est renvoyé automatiquement.` };
   }
-  return { tone: "danger", text: `Not sent: ${result.error || "the SMTP server refused the message"}` };
+  return { tone: "danger", text: `Non envoyé : ${result.error || `${by} a refusé le message`}` };
 }
 
 // What a WhatsApp test result means. "sent" says Twilio accepted it; delivery to the phone is confirmed there.
@@ -107,22 +114,23 @@ export function describeWhatsappTest(result) {
   if (result.status === "sent") {
     return {
       tone: "ok",
-      text: `Accepted by Twilio for ${result.to}. It should arrive on that phone within seconds; on the Twilio sandbox, the number must first have joined it.`,
+      text: `Accepté par Twilio pour ${result.to}. Il devrait arriver sur ce téléphone en quelques secondes ; avec le bac à sable Twilio, le numéro doit d'abord l'avoir rejoint.`,
     };
   }
-  return { tone: "danger", text: `Not sent: ${result.error || "Twilio refused the message"}` };
+  return { tone: "danger", text: `Non envoyé : ${result.error || "Twilio a refusé le message"}` };
 }
 
 // What a mailbox read did, in the numbers the API returned. Zero everywhere is said plainly, never dressed up.
 export function describeInboxSync(r) {
+  const plural = (n, one, many) => `${n} ${n > 1 ? many : one}`;
   const parts = [];
-  if (r.replies) parts.push(`${r.replies} repl${r.replies === 1 ? "y" : "ies"}`);
-  if (r.opt_outs) parts.push(`${r.opt_outs} opt-out${r.opt_outs === 1 ? "" : "s"} applied`);
-  if (r.bounces) parts.push(`${r.bounces} hard bounce${r.bounces === 1 ? "" : "s"} (address suppressed)`);
-  if (r.unmatched) parts.push(`${r.unmatched} not linked to a message of ours`);
-  if (r.duplicates) parts.push(`${r.duplicates} already recorded`);
-  if (!r.fetched) return "Mailbox read: no new message.";
-  return `Mailbox read: ${r.fetched} new message${r.fetched === 1 ? "" : "s"}. ${parts.length ? parts.join(", ") : "Nothing to record."}`;
+  if (r.replies) parts.push(plural(r.replies, "réponse", "réponses"));
+  if (r.opt_outs) parts.push(plural(r.opt_outs, "désinscription appliquée", "désinscriptions appliquées"));
+  if (r.bounces) parts.push(plural(r.bounces, "rebond définitif (adresse supprimée)", "rebonds définitifs (adresses supprimées)"));
+  if (r.unmatched) parts.push(plural(r.unmatched, "message sans lien avec nos envois", "messages sans lien avec nos envois"));
+  if (r.duplicates) parts.push(plural(r.duplicates, "déjà enregistré", "déjà enregistrés"));
+  if (!r.fetched) return "Boîte lue : aucun nouveau message.";
+  return `Boîte lue : ${plural(r.fetched, "nouveau message", "nouveaux messages")}. ${parts.length ? parts.join(", ") : "Rien à enregistrer."}`;
 }
 
 export function blockText(code) {
@@ -213,9 +221,9 @@ export function detailSummary(detail) {
 }
 
 export const LIMIT_RANGES = {
-  max_per_day: { min: 0, max: 100000, label: "Messages per day" },
-  max_per_hour: { min: 0, max: 100000, label: "Messages per hour" },
-  min_delay_seconds: { min: 0, max: 86400, label: "Minimum delay between messages (seconds)" },
+  max_per_day: { min: 0, max: 100000, label: "Messages par jour" },
+  max_per_hour: { min: 0, max: 100000, label: "Messages par heure" },
+  min_delay_seconds: { min: 0, max: 86400, label: "Délai minimal entre deux messages (secondes)" },
 };
 
 // Returns an error message per invalid field (empty object = valid). Mirrors the API ranges.
@@ -224,8 +232,8 @@ export function validateLimits(values) {
   Object.entries(LIMIT_RANGES).forEach(([key, { min, max, label }]) => {
     const raw = values[key];
     const n = Number(raw);
-    if (raw === "" || raw === null || raw === undefined || !Number.isInteger(n)) errors[key] = `${label}: enter a whole number`;
-    else if (n < min || n > max) errors[key] = `${label}: must be between ${min} and ${max}`;
+    if (raw === "" || raw === null || raw === undefined || !Number.isInteger(n)) errors[key] = `${label} : saisissez un nombre entier`;
+    else if (n < min || n > max) errors[key] = `${label} : entre ${min} et ${max}`;
   });
   return errors;
 }

@@ -1,6 +1,6 @@
 import {
   auditLabel, blockText, coverageLabel, describeApiError, detailSummary, domainOf, explainTotal, formatRetry,
-  limitsPatch, mergeTimeline, scoreBand, validateLimits, describeTestSend, describeWhatsappTest, describeInboxSync,
+  limitsPatch, mergeTimeline, scoreBand, validateLimits, describeTestSend, describeWhatsappTest, describeInboxSync, MESSAGE_STATUS_LABEL,
 } from "./outreachFormat";
 
 const NOW = new Date("2026-06-01T14:00:00Z");
@@ -121,34 +121,37 @@ describe("limits form", () => {
 });
 
 describe("describeTestSend", () => {
-  it("never claims delivery for an accepted message", () => {
-    const out = describeTestSend({ status: "sent", to: "founder@plantiers.com" });
+  it("names the channel that really carried it, and never claims delivery", () => {
+    const out = describeTestSend({ status: "sent", to: "founder@plantiers.com", adapter: "resend" });
     expect(out.tone).toBe("ok");
-    expect(out.text).toMatch(/Accepted by the SMTP server/);
-    expect(out.text).toMatch(/spam/);
-    expect(out.text).not.toMatch(/delivered/i);
+    expect(out.text).toMatch(/^Accepté par Resend pour founder@plantiers\.com \(accepté ne veut pas dire livré\)/);
+    expect(out.text).toMatch(/indésirables/);
+    expect(describeTestSend({ status: "sent", to: "a@b.example", adapter: "brevo" }).text).toMatch(/^Accepté par Brevo/);
+    expect(describeTestSend({ status: "sent", to: "a@b.example", adapter: "smtp" }).text).toMatch(/^Accepté par le serveur SMTP/);
+    expect(describeTestSend({ status: "sent", to: "a@b.example", adapter: "new" }).text).toMatch(/^Accepté par le fournisseur d'envoi/);
   });
   it("tells a failure from an unknown outcome", () => {
-    expect(describeTestSend({ status: "failed", error: "authentication failed (535)" })).toEqual({
+    expect(describeTestSend({ status: "failed", error: "authentication failed (535)", adapter: "smtp" })).toEqual({
       tone: "danger",
-      text: "Not sent: authentication failed (535)",
+      text: "Non envoyé : authentication failed (535)",
     });
+    expect(describeTestSend({ status: "failed", adapter: "resend" }).text).toBe("Non envoyé : Resend a refusé le message");
     const unknown = describeTestSend({ status: "unknown", error: "connection lost while sending" });
     expect(unknown.tone).toBe("warn");
-    expect(unknown.text).toMatch(/Sent folder/);
+    expect(unknown.text).toMatch(/rien n'est renvoyé automatiquement/);
   });
 });
 
 describe("describeInboxSync", () => {
   test("an empty mailbox is said plainly", () => {
-    expect(describeInboxSync({ fetched: 0 })).toBe("Mailbox read: no new message.");
+    expect(describeInboxSync({ fetched: 0 })).toBe("Boîte lue : aucun nouveau message.");
   });
   test("counts only what the API returned", () => {
     const text = describeInboxSync({ fetched: 4, replies: 2, opt_outs: 1, bounces: 1, unmatched: 0, duplicates: 0 });
-    expect(text).toBe("Mailbox read: 4 new messages. 2 replies, 1 opt-out applied, 1 hard bounce (address suppressed)");
+    expect(text).toBe("Boîte lue : 4 nouveaux messages. 2 réponses, 1 désinscription appliquée, 1 rebond définitif (adresse supprimée)");
   });
   test("mail that changed nothing says so", () => {
-    expect(describeInboxSync({ fetched: 1, replies: 0 })).toBe("Mailbox read: 1 new message. Nothing to record.");
+    expect(describeInboxSync({ fetched: 1, replies: 0 })).toBe("Boîte lue : 1 nouveau message. Rien à enregistrer.");
   });
 });
 
@@ -156,7 +159,7 @@ describe("describeWhatsappTest", () => {
   test("a sent test says Twilio accepted it, not that it was read", () => {
     const out = describeWhatsappTest({ status: "sent", to: "+33666167788" });
     expect(out.tone).toBe("ok");
-    expect(out.text).toContain("Accepted by Twilio for +33666167788");
+    expect(out.text).toContain("Accepté par Twilio pour +33666167788");
   });
   test("a failure gives the provider's own reason and never a success tone", () => {
     const out = describeWhatsappTest({ status: "failed", to: "+33666167788", error: "Twilio refused the message: unverified number" });
@@ -177,5 +180,19 @@ describe("refusals that replace the old pretend sends", () => {
   });
   test("the AI composer being off is a refusal, not a canned text", () => {
     expect(describeApiError(refused("ai_not_configured"))).toContain("AI composer is off");
+  });
+});
+
+describe("the ledger status in words", () => {
+  test("accepted is never « delivered », and sending says its outcome is unknown", () => {
+    expect(MESSAGE_STATUS_LABEL.sent).toBe("accepté");
+    expect(MESSAGE_STATUS_LABEL.sending).toMatch(/issue inconnue/);
+    expect(Object.values(MESSAGE_STATUS_LABEL).join(" ")).not.toMatch(/livré/);
+  });
+  test("the limits errors are in French", () => {
+    expect(validateLimits({ max_per_day: "abc", max_per_hour: "100", min_delay_seconds: "999999" })).toEqual({
+      max_per_day: "Messages par jour : saisissez un nombre entier",
+      min_delay_seconds: "Délai minimal entre deux messages (secondes) : entre 0 et 86400",
+    });
   });
 });
