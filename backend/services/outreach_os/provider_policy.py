@@ -243,8 +243,10 @@ def identify(
         host=None,
         cold_outreach=NOT_CONFIGURED,
         restriction=(
-            "Aucun fournisseur e-mail n'est configuré (SMTP_HOST, SMTP_USERNAME, SMTP_PASSWORD, ou SENDGRID_API_KEY) : "
-            "rien ne peut partir pour de vrai, seule la simulation (dry-run) est possible."
+            # Variable names come last: a name followed by « : » reads as a credential to secret scanners.
+            "Aucun fournisseur e-mail n'est configuré : rien ne peut partir pour de vrai, seule la simulation "
+            "(dry-run) est possible. À poser sur le serveur : RESEND_API_KEY, ou BREVO_API_KEY, ou les variables "
+            "SMTP_HOST, SMTP_USERNAME et SMTP_PASSWORD."
         ),
     )
 

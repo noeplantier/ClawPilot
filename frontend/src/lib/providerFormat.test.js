@@ -1,4 +1,4 @@
-import { providerVerdict, serverLines } from "@/lib/providerFormat";
+import { activeApi, apiLine, providerVerdict, serverLines } from "@/lib/providerFormat";
 
 test("the server lines carry the public settings and never a secret", () => {
   const lines = serverLines({ host: "smtp-relay.brevo.com", port: 587, security: "starttls" });
@@ -12,4 +12,14 @@ test("a shared mailbox, a relay and nothing say different things", () => {
   expect(providerVerdict({ id: "smtp_brevo", is_relay: true }).tone).toBe("success");
   expect(providerVerdict({ id: "none" }).tone).toBe("danger");
   expect(providerVerdict({ id: "smtp" }).tone).toBe("ink");
+  expect(providerVerdict({ id: "resend_api", is_api: true })).toEqual({ tone: "success", label: "Service d'envoi par API : conditions à vérifier par vous, puis envoi possible." });
+});
+
+test("the API channel in use, and its server line, named but never filled in", () => {
+  const data = { api_channels: [{ id: "resend", variable: "RESEND_API_KEY", active: false }, { id: "brevo", variable: "BREVO_API_KEY", active: true }] };
+  expect(activeApi(data).id).toBe("brevo");
+  expect(activeApi({ api_channels: [] })).toBeNull();
+  expect(activeApi(null)).toBeNull();
+  expect(apiLine({ variable: "RESEND_API_KEY" })).toBe("RESEND_API_KEY=<à saisir sur le serveur>");
+  expect(apiLine(null)).toBe("");
 });
