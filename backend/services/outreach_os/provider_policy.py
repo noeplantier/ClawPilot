@@ -243,8 +243,8 @@ def identify(
         host=None,
         cold_outreach=NOT_CONFIGURED,
         restriction=(
-            "Aucun fournisseur e-mail n'est configuré (SMTP_HOST, SMTP_USERNAME, SMTP_PASSWORD, ou SENDGRID_API_KEY) : "
-            "rien ne peut partir pour de vrai, seule la simulation (dry-run) est possible."
+            "Aucun fournisseur e-mail n'est configuré (RESEND_API_KEY, BREVO_API_KEY, ou SMTP_HOST, SMTP_USERNAME et "
+            "SMTP_PASSWORD) : rien ne peut partir pour de vrai, seule la simulation (dry-run) est possible."
         ),
     )
 

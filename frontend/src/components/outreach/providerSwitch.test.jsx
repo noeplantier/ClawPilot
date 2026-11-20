@@ -46,3 +46,42 @@ test("says that a shared mailbox limits campaigns, and offers the recommended re
   expect(byId("relay-lines").textContent).toContain("SMTP_HOST=in-v3.mailjet.com");
   expect(byId("relay-lines").textContent).toContain("SMTP_PASSWORD=<à saisir sur le serveur>"); // named, never filled in
 });
+
+const RESEND = {
+  ...DATA,
+  current: { id: "resend_api", label: "Resend (API HTTPS)", host: "api.resend.com", restriction: "Resend : service d'envoi par API…", shared_mailbox: false, is_relay: false, is_api: true },
+  api_channels: [
+    { id: "resend", name: "Resend", variable: "RESEND_API_KEY", configured: true, active: true, recommended: true, note: "API HTTPS, essayé en premier." },
+    { id: "brevo", name: "Brevo", variable: "BREVO_API_KEY", configured: false, active: false, recommended: false, note: "API HTTPS, essayé après Resend." },
+  ],
+  server_variables: ["RESEND_API_KEY", "BREVO_API_KEY", "SMTP_HOST", "SMTP_PORT", "SMTP_SECURITY", "SMTP_USERNAME", "SMTP_PASSWORD"],
+};
+
+test("with Resend in use: says it sends, and folds the SMTP relays that would change nothing", async () => {
+  api.get.mockResolvedValue({ data: RESEND });
+  await act(async () => { root.render(<ProviderSwitch />); });
+  await act(async () => {});
+  expect(byId("provider-verdict").textContent).toMatch(/Service d'envoi par API/);
+  expect(byId("provider-verdict").textContent).not.toMatch(/inconnu/);
+  expect(byId("api-order").textContent).toContain("Resend est le premier configuré, c'est lui qui envoie");
+  expect(byId("api-resend-state").textContent).toBe("utilisé");
+  expect(byId("api-brevo-state").textContent).toBe("non configuré");
+  expect(byId("api-brevo").textContent).toContain("BREVO_API_KEY=<à saisir sur le serveur>"); // named, never filled in
+  expect(byId("smtp-relays").tagName).toBe("DETAILS");
+  expect(byId("smtp-relays").open).toBe(false);
+  expect(byId("smtp-relays").textContent).toContain("inutilisés tant que Resend est configuré");
+  expect(container.textContent).toContain("RESEND_API_KEY, BREVO_API_KEY, SMTP_HOST");
+});
+
+test("with nothing configured: the API keys come first, the SMTP relays as the alternative", async () => {
+  const none = { ...RESEND, current: { id: "none", label: "Aucun fournisseur configuré", host: null, restriction: "…", shared_mailbox: false, is_relay: false, is_api: false },
+    api_channels: RESEND.api_channels.map((c) => ({ ...c, configured: false, active: false })) };
+  api.get.mockResolvedValue({ data: none });
+  await act(async () => { root.render(<ProviderSwitch />); });
+  await act(async () => {});
+  expect(byId("provider-verdict").textContent).toMatch(/Aucun fournisseur/);
+  expect(container.textContent).toContain("Le plus simple : une clé d'API");
+  expect(byId("api-order").textContent).toContain("port 443");
+  expect(byId("smtp-relays").tagName).toBe("DIV");
+  expect(byId("smtp-relays").textContent).toContain("Ou un relais d'envoi B2B (SMTP)");
+});
