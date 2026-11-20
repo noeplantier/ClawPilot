@@ -50,8 +50,8 @@ export function KpiStrip({ kpis, limits }) {
 export function ActivityChart({ series }) {
   if (!seriesHasData(series)) {
     return (
-      <EmptyBlock title="No message sent in the selected period" testId="chart-empty">
-        <p>Dispatch an approved draft and it appears here, with the replies it receives.</p>
+      <EmptyBlock title="Aucun message envoyé sur la période" testId="chart-empty">
+        <p>Envoyez un brouillon approuvé : il apparaîtra ici, avec les réponses reçues.</p>
       </EmptyBlock>
     );
   }

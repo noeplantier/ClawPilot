@@ -1,6 +1,6 @@
 // Pure formatting of the merged pages (Campagnes, À traiter, Automatisations): no network, nothing invented.
 // Every number comes from an API answer; a missing one is "—", never 0.
-import { DASH, num, pct } from "@/lib/dashboardFormat";
+import { DASH, num, pct, seriesHasData } from "@/lib/dashboardFormat";
 
 // The live tiles of the « Campagnes » page, read from GET /dashboard/overview.
 export function pulseTiles(d) {
@@ -29,6 +29,11 @@ export function campaignBars(campaigns) {
     .slice(0, 6)
     .map((c) => ({ name: c.name, value: c.sent, fill: "var(--chart-sent, #9B74FA)" }));
 }
+
+// Is there anything to draw over the 14 days? Sends or replies in the series, or a campaign that really sent. Without it, the
+// page says so in one line instead of two empty charts.
+export const pulseHasActivity = (d) =>
+  Boolean(d) && (seriesHasData(d.series) || (d.campaigns || []).some((c) => typeof c.sent === "number" && c.sent > 0));
 
 // "Mis à jour à 14:03:12 · toutes les 10 s", or what is wrong with the refresh.
 export function liveLine({ updatedAt, stale, intervalMs }) {
