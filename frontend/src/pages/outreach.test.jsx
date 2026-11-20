@@ -300,10 +300,11 @@ describe("Sending", () => {
   it("shows real status, the dry-run mode and an empty message history", async () => {
     load();
     await show(<Sending />);
-    expect(byId("fact-mode").textContent).toContain("Dry-run");
-    expect(byId("fact-kill").textContent).toBe("off");
+    expect(byId("fact-mode").textContent).toBe("Simulation : rien ne part");
+    expect(byId("fact-kill").textContent).toBe("Arrêt d'urgence : inactif");
     expect(byId("fact-today").textContent).toBe("0");
-    expect(byId("fact-can-send").textContent).toBe("yes");
+    expect(byId("fact-can-send").textContent).toBe("Envoi possible maintenant, en simulation : rien ne part réellement.");
+    expect(byId("sending-page").querySelectorAll(".surface .grid > div").length).toBe(0); // no grid of tiles any more
     expect(byId("messages-empty")).toBeTruthy();
     expect(byId("usage")).toBeNull(); // no usage recorded: nothing invented
   });
@@ -311,10 +312,10 @@ describe("Sending", () => {
   it("says why sending is blocked and warns when the sender identity is missing", async () => {
     load([], { flags: {}, sender_configured: false, usage: {}, active_score_version: null }, { ...STATUS, kill_switch: true, blocked_by: "kill_switch" });
     await show(<Sending />);
-    expect(byId("fact-kill").textContent).toContain("ON");
-    expect(byId("fact-can-send").textContent).toContain("kill switch");
-    expect(byId("fact-sender").textContent).toBe("not configured");
-    expect(text()).toContain("no sender identity");
+    expect(byId("fact-kill").textContent).toBe("Arrêt d'urgence : ACTIVÉ");
+    expect(byId("fact-can-send").textContent).toBe("Envoi bloqué : arrêt d'urgence activé sur le serveur (SEND_KILL_SWITCH).");
+    expect(byId("fact-sender").textContent).toBe("Identité d'expéditeur : non configurée");
+    expect(text()).toContain("pas d'identité d'expéditeur");
   });
 
   it("validates the limits form like the API and only enables saving for a valid change", async () => {
@@ -362,6 +363,18 @@ describe("Sending", () => {
     load();
     await show(<Sending />);
     expect(byId("whatsapp-test")).toBeNull();
+    expect(byId("page-details")).toBeNull(); // no tools to show: no empty "Tests et outils"
+  });
+
+  it("puts the tests in « Tests et outils », folded, under the page", async () => {
+    load();
+    await show(<Sending />);
+    const details = byId("page-details");
+    expect(details.open).toBe(false);
+    expect(details.textContent).toContain("Tests et outils");
+    ["smtp-test", "whatsapp-test", "inbox-sync"].forEach((id) => expect(details.contains(byId(id))).toBe(true));
+    expect(text()).not.toContain("over SMTP only"); // Resend, then Brevo, then SMTP
+    expect(text()).toContain("Resend, puis Brevo, puis SMTP");
   });
 
   it("lists dispatched messages, marks dry-run, and shows erased addresses as such", async () => {

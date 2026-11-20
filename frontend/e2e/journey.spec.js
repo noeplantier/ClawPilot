@@ -113,7 +113,7 @@ test("complete journey: discovery → review → draft → dry-run dispatch → 
   // 5. Dispatch is a dry run: the message is recorded, nothing is delivered.
   await page.getByTestId("dispatch-draft").click();
   await page.goto("/app/sending");
-  await expect(page.getByTestId("status-panel")).toContainText("Dry-run");
+  await expect(page.getByTestId("status-panel")).toContainText("Simulation");
   await page.getByTestId("message-row").first().click();
   await expect(page.getByTestId("message-detail")).toContainText("dry run: true");
   await expect(page.getByTestId("message-detail")).toContainText("list unsubscribe: true");
@@ -135,6 +135,7 @@ test("complete journey: discovery → review → draft → dry-run dispatch → 
 test("real sending stays closed by default: test-send and import refuse, and say why", async ({ page }) => {
   await register(page);
   await page.goto("/app/sending");
+  await page.getByTestId("page-details").locator("summary").click(); // the tests live in « Tests et outils », folded
   await page.getByTestId("smtp-test-to").fill("founder@plantiers.com");
   await page.getByTestId("smtp-test-send").click();
   // 501 live_not_available, or 409 when this server has no sender identity: either way nothing was sent.
