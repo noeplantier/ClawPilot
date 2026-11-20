@@ -176,3 +176,20 @@ test("reduced motion: the sidebar folds without a transition", async ({ page }) 
   const label = await page.getByTestId("nav-leads").locator("span.shell-label").evaluate((el) => window.getComputedStyle(el).animationName);
   expect(label).toBe("none");
 });
+
+test("the map fills the whole height of the page, on a desktop and on a laptop window", async ({ page }) => {
+  await signIn(page);
+  // The real map (not its explanation page) needs the server's external-sources switch: answered here, nothing leaves.
+  await page.route("**/api/prospects/settings", (route) => route.fulfill({ json: {
+    flags: { external_sources: true, prospect_import: true }, sender_configured: true, usage: {}, active_score_version: null,
+  } }));
+  for (const [width, height] of [[1440, 900], [1280, 720]]) {
+    await page.setViewportSize({ width, height });
+    await page.goto("/app/map");
+    const map = page.locator('[data-testid="map-page"].map-stage');
+    await expect(map).toBeVisible();
+    const [mapBox, mainBox] = [await map.boundingBox(), await page.getByTestId("main").boundingBox()];
+    expect(Math.abs(mapBox.height - mainBox.height)).toBeLessThanOrEqual(2); // not cut at its 28rem minimum
+    expect(Math.abs(mapBox.y - mainBox.y)).toBeLessThanOrEqual(2);
+  }
+});

@@ -67,5 +67,7 @@ test("the page entrance is one short fade, with no delay, that leaves no transfo
 
 test("framer-motion follows the system setting, and every screen enters through the frame", () => {
   expect(layout).toMatch(/<MotionConfig reducedMotion="user">/);
-  expect(layout).toMatch(/<div key=\{pathname\} className="page-enter[^"]*">\s*<Outlet \/>/);
+  expect(layout).toMatch(/<div key=\{pathname\} className="page-enter h-full">\s*<Outlet \/>/);
+  // h-full, never min-h-full: a min-height is not a definite height, and the map (md:h-full) would shrink to its minimum.
+  expect(layout).not.toMatch(/className="page-enter[^"]*min-h-full/);
 });

@@ -94,8 +94,9 @@ export default function Layout() {
           <button ref={mobileToggleRef} type="button" onClick={() => setMobileOpen(true)} className={`flex h-9 items-center gap-2 rounded-lg px-3 text-sm text-sidebar-muted hover:bg-white/10 hover:text-white ${FOCUS}`} aria-haspopup="dialog" aria-expanded={mobileOpen} aria-label="Ouvrir la navigation" data-testid="mobile-nav-toggle"><List size={18} /> Menu</button>
         </header>
         <main className="grid-bg min-h-0 flex-1 overflow-y-auto" data-testid="main">
-          {/* Each screen enters once (index.css .page-enter): keyed by the path, so changing screen replays it. */}
-          <div key={pathname} className="page-enter min-h-full">
+          {/* Each screen enters once (index.css .page-enter): keyed by the path, so changing screen replays it. It takes the full
+              height of <main> (h-full, a definite height): a screen sized "h-full", like the map, must keep the whole window. */}
+          <div key={pathname} className="page-enter h-full">
             <Outlet />
           </div>
         </main>
