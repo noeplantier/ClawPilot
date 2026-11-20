@@ -148,3 +148,18 @@ def test_brevo_is_chosen_before_smtp_when_live_and_the_sandbox_still_applies(mon
     monkeypatch.setenv("FEATURE_LIVE_SENDING", "false")
     monkeypatch.setenv("BREVO_API_KEY", KEY)
     assert mail_provider.email_provider() != "brevo"  # dry-run: no real channel is named
+
+
+@pytest.mark.parametrize("status", [401, 403])
+def test_a_refused_key_starts_with_the_shared_words_that_stop_a_mandate(status):
+    from services.outreach_os.channels import AUTH_FAILED
+
+    result = adapter(Answer(status, {}))[0].send(message())
+    assert result.status == "failed" and result.error.startswith(AUTH_FAILED)
+
+
+@pytest.mark.parametrize("status", [400, 402, 429, 503])
+def test_a_refusal_that_is_not_about_the_key_never_reads_as_an_authentication_error(status):
+    from services.outreach_os.channels import AUTH_FAILED
+
+    assert not adapter(Answer(status, {}))[0].send(message()).error.startswith(AUTH_FAILED)

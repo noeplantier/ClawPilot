@@ -11,6 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import AutomationMandate, CampaignDispatch, MandateEvent, OutboundEvent, OutboundMessage
+from services.outreach_os.channels import AUTH_FAILED
 
 
 async def get(session: AsyncSession, account_id: uuid.UUID, mandate_id: uuid.UUID) -> Optional[AutomationMandate]:
@@ -129,14 +130,15 @@ async def message_counts(
 
 
 async def auth_error_since(session: AsyncSession, account_id: uuid.UUID, since: datetime) -> bool:
-    """Did the mail server refuse our credentials recently? (A failed message whose error says so.)"""
+    """Did the mail provider refuse our key or account recently (SMTP, Resend or Brevo)? A failed message whose error
+    starts with the adapters' shared `AUTH_FAILED` words."""
     count = (
         await session.execute(
             select(func.count()).where(
                 OutboundMessage.account_id == account_id,
                 OutboundMessage.status == "failed",
                 OutboundMessage.dispatched_at >= since,
-                OutboundMessage.error.ilike("authentication failed%"),
+                OutboundMessage.error.ilike(f"{AUTH_FAILED}%"),
             )
         )
     ).scalar_one()

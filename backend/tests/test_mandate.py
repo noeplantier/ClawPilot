@@ -401,6 +401,7 @@ def test_a_substantial_change_suspends_the_mandate_until_a_person_revalidates_it
     "setup,reason",
     [
         ("auth", "auth_error"),
+        ("resend_auth", "auth_error"),
         ("replies", "reply_collection_down"),
         ("bounce", "bounce_rate"),
         ("provider", "provider_changed"),
@@ -428,12 +429,18 @@ def test_each_stop_rule_suspends_the_mandate_and_nothing_more_leaves(monkeypatch
             await session.execute(update(OutboundMessage).where(OutboundMessage.id.in_(ids)).values(status="bounced"))
 
         _call(bounce)
-    if setup == "auth":
+    if setup in ("auth", "resend_auth"):
+        from services import resend_svc
+
+        # SMTP's 535, or Resend's 401 (the provider tried first): either one stops the mandate.
+        adapter, error = (
+            ("smtp", "authentication failed (535): refused") if setup == "auth" else ("resend", resend_svc.explain(401))
+        )
 
         async def refused(session):
             fields = dict(
                 account_id=org["account_id"], channel="email", to_email="x@y.example", subject="s", body="b",
-                adapter="smtp", dry_run=False, status="failed", error="authentication failed (535): refused",
+                adapter=adapter, dry_run=False, status="failed", error=error,
             )  # fmt: skip
             session.add(
                 OutboundMessage(

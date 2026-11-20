@@ -28,7 +28,7 @@ import requests
 
 from services import feature_flags
 from services.outreach_os import sandbox
-from services.outreach_os.channels import ChannelMessage, SendResult
+from services.outreach_os.channels import AUTH_FAILED, ChannelMessage, SendResult
 from services.outreach_os.normalize import normalize_email
 
 logger = logging.getLogger(__name__)
@@ -136,8 +136,8 @@ def _before_sending(exc: requests.ConnectionError) -> bool:
 def explain(code: int) -> str:
     if code in (401, 403):
         return (
-            f"Resend rejected the key or the sender (HTTP {code}): check RESEND_API_KEY and that the sender's domain "
-            "is verified in Resend"
+            f"{AUTH_FAILED} (Resend HTTP {code}): Resend rejected the key or the sender: check RESEND_API_KEY and that "
+            "the sender's domain is verified in Resend"
         )
     if code == 422:
         return "Resend refused the message (HTTP 422): the sender's domain may not be verified, or a field is invalid"
