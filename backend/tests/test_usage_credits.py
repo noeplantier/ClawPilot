@@ -130,3 +130,28 @@ def test_today_s_real_ai_usage_is_read_back_per_model_and_stays_in_its_organisat
     assert usage["models"] == [{"ai_model": "openai/gpt-oss-20b", "spends": 2, "tokens": 400, "without_tokens": 0}]
     assert usage["unattributed"] == 1 and usage["since"]
     assert _state(other_h)["ai_usage"]["models"] == []  # another organisation sees nothing of it
+
+
+def test_the_composer_records_its_real_usage_and_its_answer_does_not_change(monkeypatch):
+    from models import AIGenerateIn
+    from routes import ai
+    from tasks._bridge import run_async
+
+    _, h, me = _org()
+
+    async def fake(**kw):
+        body = {"subject": "Bonjour", "body": "Un message.", "whatsapp": None, "language": "fr"}
+        return {**body, "usage": {"model": "openai/gpt-oss-120b", "tokens": 512}}
+
+    monkeypatch.setattr(ai, "generate_message", fake)
+
+    async def go(session):
+        out = await ai.generate(AIGenerateIn(recipient_name="Ana", product="Site vitrine"), user=me, session=session)
+        await session.commit()
+        return out
+
+    out = run_async(go)
+    assert "usage" not in out and ai.AIGenerateOut(**out).subject == "Bonjour"  # the HTTP contract is unchanged
+    usage = _state(h)["ai_usage"]
+    assert usage["models"] == [{"ai_model": "openai/gpt-oss-120b", "spends": 1, "tokens": 512, "without_tokens": 0}]
+    assert usage["unattributed"] == 0

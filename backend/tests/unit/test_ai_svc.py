@@ -152,6 +152,7 @@ def test_the_request_goes_to_the_provider_with_the_key_and_only_the_fields_of_th
         "body": "Bonjour,\n\nVoici une idée.",
         "whatsapp": None,  # the model gave no WhatsApp text: none is made up
         "language": "fr",
+        "usage": {"model": "openai/gpt-oss-120b", "tokens": None},  # recorded by the route, never sent to the browser
     }
 
 
@@ -368,3 +369,13 @@ def test_the_rapide_writing_model_is_the_only_light_one():
         "equilibre": "main",
         "precision": "main",
     }
+
+
+def test_three_variants_are_one_spend_whose_tokens_are_known_only_if_each_call_reported_them():
+    combined = ai_route.combined_usage
+    same = {"model": "openai/gpt-oss-120b", "tokens": 100}
+    assert combined([same, same, {**same, "tokens": 50}]) == {"model": "openai/gpt-oss-120b", "tokens": 250}
+    assert combined([same, {**same, "tokens": None}, same]) == {"model": "openai/gpt-oss-120b", "tokens": None}
+    mixed = combined([same, {"model": "openai/gpt-oss-20b", "tokens": 10}, same])
+    assert mixed == {"model": "openai/gpt-oss-120b + openai/gpt-oss-20b", "tokens": 210}
+    assert combined([None, None, None]) is None and combined([same, None, same])["tokens"] is None

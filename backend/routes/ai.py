@@ -2,7 +2,7 @@
 
 import asyncio
 import uuid
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -90,7 +90,8 @@ async def generate(
         )
     except AIUnavailable as exc:
         raise _unavailable(exc)  # a failed call costs nothing
-    await credit_gate.spent(session, uuid.UUID(user["org_id"]), chosen, cost, "composer")
+    usage = out.pop("usage", None)  # the HTTP contract is unchanged: the usage is recorded, not returned
+    await credit_gate.spent(session, uuid.UUID(user["org_id"]), chosen, cost, "composer", usage=usage)
     return out
 
 
@@ -119,5 +120,17 @@ async def generate_variants(
         results = await asyncio.gather(*tasks)
     except AIUnavailable as exc:
         raise _unavailable(exc)
-    await credit_gate.spent(session, uuid.UUID(user["org_id"]), chosen, cost, "composer_variants")
+    usage = combined_usage([r.pop("usage", None) for r in results])
+    await credit_gate.spent(session, uuid.UUID(user["org_id"]), chosen, cost, "composer_variants", usage=usage)
     return VariantsOut(variants=results)
+
+
+def combined_usage(usages: List[Optional[dict]]) -> Optional[dict]:
+    """One spend for several calls: every model that answered, and the tokens only when each call reported them (a
+    partial sum would understate the usage: it stays unknown instead)."""
+    models = sorted({u["model"] for u in usages if u and isinstance(u.get("model"), str) and u["model"]})
+    if not models:
+        return None
+    tokens = [u.get("tokens") if u else None for u in usages]
+    known = all(isinstance(t, int) and not isinstance(t, bool) and t >= 0 for t in tokens)
+    return {"model": " + ".join(models), "tokens": sum(tokens) if known else None}

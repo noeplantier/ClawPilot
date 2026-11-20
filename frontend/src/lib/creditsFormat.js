@@ -45,3 +45,24 @@ export function messagesLeft(m, windows) {
   const n = Math.floor(remaining / m.credits);
   return `${n} message${n === 1 ? "" : "s"} possible${n === 1 ? "" : "s"} maintenant`;
 }
+
+// Today's real AI usage (GET /usage/credits → ai_usage), one line per model that really answered. The tokens are the
+// provider's own count: a total it did not report is said so, never shown as 0 or estimated. Null: nothing used today.
+const fmt = (n) => Number(n).toLocaleString("fr-FR");
+export function aiUsageLines(usage) {
+  const models = (usage && usage.models) || [];
+  const unattributed = (usage && usage.unattributed) || 0;
+  if (!models.length && !unattributed) return null;
+  const lines = models.map((m) => {
+    const requests = `${m.spends} demande${m.spends === 1 ? "" : "s"}`;
+    let tokens;
+    if (m.tokens === null || m.tokens === undefined) tokens = "tokens non rapportés";
+    else if (m.without_tokens) tokens = `au moins ${fmt(m.tokens)} tokens (${m.without_tokens} sans chiffre du fournisseur)`;
+    else tokens = `${fmt(m.tokens)} tokens`;
+    return { key: m.ai_model, model: m.ai_model, text: `${requests} · ${tokens}` };
+  });
+  if (unattributed) {
+    lines.push({ key: "unattributed", model: "modèle non enregistré", text: `${unattributed} demande${unattributed === 1 ? "" : "s"} · tokens non rapportés` });
+  }
+  return lines;
+}
