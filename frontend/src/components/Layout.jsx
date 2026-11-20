@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { Outlet, useNavigate } from "react-router-dom";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import { MotionConfig } from "framer-motion";
 import { List } from "@phosphor-icons/react";
 import { useAuth } from "@/contexts/AuthContext";
 import Footer from "@/components/Footer";
@@ -18,6 +19,7 @@ const UsageDialog = lazy(() => import("@/components/usage/UsageDialog")); // cre
 // AI composer) at its foot, and each page owns its title. This component only holds the state and the keyboard.
 export default function Layout() {
   const { user, org, logout } = useAuth();
+  const { pathname } = useLocation();
   const navigate = useNavigate();
   const [aiOpen, setAiOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -80,7 +82,9 @@ export default function Layout() {
   const common = { user, org, onCompose: () => { setMobileOpen(false); setAiOpen(true); }, onPalette: () => { setMobileOpen(false); setPaletteOpen(true); }, onLogout: logout,
     onUsage: () => { setMobileOpen(false); setUsageOpen(true); }, usage: meterOf };
 
+  // reducedMotion="user": every framer-motion animation below follows the system's "reduce motion" setting.
   return (
+    <MotionConfig reducedMotion="user">
     <div className="min-h-screen md:h-screen flex bg-sidebar text-foreground">
       <Sidebar folded={folded} onToggleFold={toggleFold} {...common} />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -90,7 +94,10 @@ export default function Layout() {
           <button ref={mobileToggleRef} type="button" onClick={() => setMobileOpen(true)} className={`flex h-9 items-center gap-2 rounded-lg px-3 text-sm text-sidebar-muted hover:bg-white/10 hover:text-white ${FOCUS}`} aria-haspopup="dialog" aria-expanded={mobileOpen} aria-label="Ouvrir la navigation" data-testid="mobile-nav-toggle"><List size={18} /> Menu</button>
         </header>
         <main className="grid-bg min-h-0 flex-1 overflow-y-auto" data-testid="main">
-          <Outlet />
+          {/* Each screen enters once (index.css .page-enter): keyed by the path, so changing screen replays it. */}
+          <div key={pathname} className="page-enter min-h-full">
+            <Outlet />
+          </div>
         </main>
         <Footer />
       </div>
@@ -106,5 +113,6 @@ export default function Layout() {
       {aiOpen && <Suspense fallback={null}><AIComposerModal open={aiOpen} onClose={() => setAiOpen(false)} /></Suspense>}
       {usageOpen && <Suspense fallback={null}><UsageDialog open={usageOpen} onOpenChange={setUsageOpen} /></Suspense>}
     </div>
+    </MotionConfig>
   );
 }
