@@ -1,6 +1,7 @@
 // Formatage pur de l'écran « Automatisation max » : le mode est borné, désactivé par défaut, et tout ce qui s'affiche
 // vient du serveur. Aucune valeur par défaut n'est inventée ici : les plafonds et les limites sont ceux de la réponse.
 import { formatDateTime } from "@/lib/outreachFormat";
+import { TRACKING_ORDER } from "@/lib/launchFormat";
 
 // Les quatre phrases à cocher, dans les mots de l'autorisation (le serveur les attend par leur code).
 export const ACK_TEXT = {
@@ -103,3 +104,39 @@ export function activationBlock(overview, acked) {
 
 export const remainingLine = (report) =>
   report && report.remaining ? `Il reste ${report.remaining.messages} message${report.remaining.messages === 1 ? "" : "s"} et ${report.remaining.days} jour${report.remaining.days === 1 ? "" : "s"} avant l'expiration.` : "";
+
+// Ce que sont devenus les messages du mandat, état par état, à partir des compteurs du serveur (`progress.states`).
+// Jamais « livré » : personne ne l'observe. Un état à zéro n'est pas affiché ; sans compteurs, rien (pas de 0 inventé).
+export const OUTCOME_LABELS = {
+  scheduled: "Planifiés",
+  sending: "En cours d'envoi",
+  accepted: "Acceptés par le fournisseur (pas une preuve de livraison)",
+  simulated: "Simulés (envoi réel désactivé)",
+  replied: "Réponses",
+  opted_out: "Oppositions",
+  bounced: "Rebonds",
+  failed: "Échecs",
+  unknown: "Issue inconnue (jamais renvoyés d'eux-mêmes)",
+  skipped: "Écartés",
+  cancelled: "Annulés",
+};
+
+export function outcomeLines(report) {
+  const states = report && report.progress && report.progress.states;
+  if (!states) return null;
+  const known = TRACKING_ORDER.filter((s) => states[s] > 0).map((s) => ({ state: s, label: OUTCOME_LABELS[s], count: states[s] }));
+  const others = Object.keys(states).filter((s) => !TRACKING_ORDER.includes(s) && states[s] > 0).map((s) => ({ state: s, label: s, count: states[s] }));
+  const lines = [...known, ...others];
+  return lines.length ? lines : null;
+}
+
+export const OUTCOME_NOTE = "« Accepté » veut dire pris en charge par le fournisseur d'envoi, pas livré. Une issue inconnue n'est jamais renvoyée d'elle-même.";
+
+// La phrase des dernières 24 h et du total : le serveur compte les messages partis ou en cours (issue pas encore connue).
+export function sentLine(report) {
+  if (!report) return "";
+  const part = (n) => `${n} message${n > 1 ? "s" : ""} parti${n > 1 ? "s" : ""} ou en cours`; // 0 et 1 au singulier
+  return [report.last_24h ? `Dernières 24 h : ${part(report.last_24h.sent)}.` : "", report.total ? `Au total : ${part(report.total.sent)}.` : ""]
+    .filter(Boolean)
+    .join(" ");
+}

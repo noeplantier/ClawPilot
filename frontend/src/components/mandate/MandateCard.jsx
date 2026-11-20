@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Pause, ShieldWarning, Stop } from "@phosphor-icons/react";
-import { ACK_TEXT, activationBlock, journalLine, remainingLine, statusOf } from "@/lib/mandateFormat";
+import { ACK_TEXT, OUTCOME_NOTE, activationBlock, journalLine, outcomeLines, remainingLine, sentLine, statusOf } from "@/lib/mandateFormat";
 import { zoneSummary } from "@/lib/mapSearch";
 import { formatDateTime } from "@/lib/outreachFormat";
 
@@ -69,7 +69,20 @@ export default function MandateCard({ mandate, overview, report, decide, owner, 
         <button className="btn-ghost" onClick={() => onReport(mandate.id)} aria-expanded={Boolean(report)} data-testid="mandate-report-open">{report ? "ACTUALISER LE RAPPORT" : "VOIR LE RAPPORT ET LE JOURNAL"}</button>
         {report && (
           <div className="mt-3 space-y-2 text-sm" data-testid="mandate-report">
-            <p>{report.last_24h ? `Dernières 24 h : ${report.last_24h.sent} envoyé${report.last_24h.sent === 1 ? "" : "s"}.` : ""} {report.total ? `Au total : ${report.total.sent}.` : ""} {remainingLine(report)}</p>
+            <p>{sentLine(report)} {remainingLine(report)}</p>
+            {outcomeLines(report) && (
+              <div data-testid="mandate-outcomes">
+                <ul className="grid gap-x-6 gap-y-0.5 sm:grid-cols-2">
+                  {outcomeLines(report).map((o) => (
+                    <li key={o.state} className="flex justify-between gap-3" data-testid={`mandate-outcome-${o.state}`}>
+                      <span className="text-soft">{o.label}</span>
+                      <span className="font-mono">{o.count}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-1 text-xs text-faint">{OUTCOME_NOTE}</p>
+              </div>
+            )}
             <p className="text-xs text-faint">{report.note}</p>
             <ol className="space-y-1 text-xs text-soft" aria-label="Journal du mandat" data-testid="mandate-journal">
               {(report.journal || []).map((e, i) => <li key={`${e.at}-${i}`}>{journalLine(e, labels)}</li>)}
