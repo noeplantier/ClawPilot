@@ -24,7 +24,7 @@ import requests
 
 from services import feature_flags
 from services.outreach_os import sandbox
-from services.outreach_os.channels import ChannelMessage, SendResult
+from services.outreach_os.channels import AUTH_FAILED, ChannelMessage, SendResult
 from services.outreach_os.normalize import normalize_email
 
 logger = logging.getLogger(__name__)
@@ -129,7 +129,8 @@ def _before_sending(exc: requests.ConnectionError) -> bool:
 def explain(code: int) -> str:
     if code in (401, 403):
         return (
-            f"Brevo rejected the key or the sender (HTTP {code}): check BREVO_API_KEY and the sender verified in Brevo"
+            f"{AUTH_FAILED} (Brevo HTTP {code}): Brevo rejected the key or the sender: check BREVO_API_KEY and the "
+            "sender verified in Brevo"
         )
     if code == 400:
         return "Brevo refused the message (HTTP 400): the sender may not be verified in Brevo, or a field is invalid"

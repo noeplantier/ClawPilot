@@ -38,8 +38,9 @@ pas approuvée. Le refus est écrit dans le journal **avant** de répondre en er
 
 ## Ce qui arrête le mandat
 
-**Fixes, non désactivables** : arrêt d'urgence (`SEND_KILL_SWITCH` : le mandat est retenu, rien ne part, sans être terminé), erreur d'authentification du serveur de messagerie, réponses non
-lues, changement du modèle, de la zone, de l'offre, de l'expéditeur ou du fournisseur (revalidation requise), expiration, plafond total.
+**Fixes, non désactivables** : arrêt d'urgence (`SEND_KILL_SWITCH` : le mandat est retenu, rien ne part, sans être terminé), refus de la clé ou du compte par le fournisseur d'envoi
+(SMTP 535, Resend ou Brevo HTTP 401/403, dont un domaine d'expéditeur non vérifié chez Resend : tous écrivent `authentication failed`,
+`channels.AUTH_FAILED`), réponses non lues, changement du modèle, de la zone, de l'offre, de l'expéditeur ou du fournisseur (revalidation requise), expiration, plafond total.
 **Configurables dans les bornes** : taux de rebonds et d'oppositions. Chaque tour revérifie tout ; un arrêt est un état visible avec sa
 raison dans le journal, jamais un échec silencieux. Chaque message passe en plus **toutes** les portes habituelles du moteur d'envoi.
 

@@ -31,7 +31,7 @@ from typing import Optional
 
 from services import feature_flags
 from services.outreach_os import sandbox
-from services.outreach_os.channels import ChannelMessage, SendResult
+from services.outreach_os.channels import AUTH_FAILED, ChannelMessage, SendResult
 from services.outreach_os.normalize import normalize_email
 
 logger = logging.getLogger(__name__)
@@ -166,7 +166,7 @@ class SmtpEmailAdapter:
             phase = "send"
             client.send_message(msg, from_addr=from_addr, to_addrs=[to_addr])
         except smtplib.SMTPAuthenticationError as exc:
-            return self._failed(f"authentication failed ({exc.smtp_code}): {_reply_text(exc, secrets)}")
+            return self._failed(f"{AUTH_FAILED} ({exc.smtp_code}): {_reply_text(exc, secrets)}")
         except smtplib.SMTPRecipientsRefused:
             return self._failed("the server refused the recipient address")
         except smtplib.SMTPSenderRefused as exc:
@@ -224,7 +224,7 @@ def check_connection(config: Optional[SmtpConfig] = None) -> dict:
         return {
             "ok": False,
             "phase": phase,
-            "error": f"authentication failed ({exc.smtp_code}): {_reply_text(exc, secrets)}",
+            "error": f"{AUTH_FAILED} ({exc.smtp_code}): {_reply_text(exc, secrets)}",
         }
     except smtplib.SMTPResponseException as exc:
         return {
