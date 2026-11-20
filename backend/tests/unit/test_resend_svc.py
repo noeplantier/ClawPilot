@@ -178,3 +178,77 @@ def test_a_refusal_that_is_not_about_the_key_never_reads_as_an_authentication_er
     from services.outreach_os.channels import AUTH_FAILED
 
     assert not adapter(Answer(status, {}))[0].send(message()).error.startswith(AUTH_FAILED)
+
+
+# ---- webhook signature (Svix scheme) ----------------------------------------------------------
+def _secret():
+    import base64
+    import secrets
+
+    return "whsec_" + base64.b64encode(secrets.token_bytes(24)).decode()  # random per run: no literal secret
+
+
+def _signed(body, secret, msg_id="msg_1", stamp=1_700_000_000):
+    import base64
+    import hashlib
+    import hmac
+
+    key = base64.b64decode(secret.removeprefix("whsec_"))
+    sig = base64.b64encode(hmac.new(key, f"{msg_id}.{stamp}.".encode() + body, hashlib.sha256).digest()).decode()
+    return {"svix-id": msg_id, "svix-timestamp": str(stamp), "svix-signature": f"v1,{sig}"}
+
+
+BODY = b'{"type":"email.bounced","data":{"email_id":"e1","to":["a@b.example"]}}'
+NOW = 1_700_000_000
+
+
+def test_a_valid_signature_is_accepted_among_several_entries():
+    from services import resend_svc
+
+    secret = _secret()
+    headers = _signed(BODY, secret)
+    headers["svix-signature"] = "v1,bm90LXRoaXMtb25l " + headers["svix-signature"]  # a rotated key: any entry may match
+    assert resend_svc.verify_webhook(BODY, headers, secret, now=NOW + 30)
+
+
+def test_a_forged_tampered_stale_or_incomplete_event_is_refused():
+    from services import resend_svc
+
+    secret = _secret()
+    good = _signed(BODY, secret)
+    assert not resend_svc.verify_webhook(BODY, _signed(BODY, _secret()), secret, now=NOW)  # another secret
+    assert not resend_svc.verify_webhook(BODY.replace(b"e1", b"e2"), good, secret, now=NOW)  # body changed
+    assert not resend_svc.verify_webhook(BODY, {**good, "svix-id": "msg_2"}, secret, now=NOW)  # id changed
+    assert not resend_svc.verify_webhook(BODY, good, secret, now=NOW + resend_svc.WEBHOOK_TOLERANCE + 1)  # replayed
+    assert not resend_svc.verify_webhook(BODY, good, secret, now=NOW - resend_svc.WEBHOOK_TOLERANCE - 1)  # ahead
+    assert not resend_svc.verify_webhook(BODY, {**good, "svix-signature": good["svix-signature"][3:]}, secret, now=NOW)
+    for missing in ("svix-id", "svix-timestamp", "svix-signature"):
+        assert not resend_svc.verify_webhook(BODY, {k: v for k, v in good.items() if k != missing}, secret, now=NOW)
+    assert not resend_svc.verify_webhook(BODY, good, "", now=NOW)
+    assert not resend_svc.verify_webhook(BODY, good, "whsec_not base64!", now=NOW)
+
+
+def test_the_route_guard_fails_closed_in_production_and_accepts_only_a_valid_signature(monkeypatch):
+    import time
+
+    from fastapi import Depends, FastAPI
+    from fastapi.testclient import TestClient
+
+    from routes.webhooks import require_resend_signature
+
+    app = FastAPI()
+
+    @app.post("/hook", dependencies=[Depends(require_resend_signature)])
+    async def hook():
+        return {"ok": True}
+
+    client = TestClient(app)
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.delenv("RESEND_WEBHOOK_SECRET", raising=False)
+    assert client.post("/hook", content=BODY).status_code == 403  # no secret in production: refused
+    secret = _secret()
+    monkeypatch.setenv("RESEND_WEBHOOK_SECRET", secret)
+    now = int(time.time())
+    assert client.post("/hook", content=BODY).status_code == 403  # unsigned
+    assert client.post("/hook", content=BODY, headers=_signed(BODY, _secret(), stamp=now)).status_code == 403
+    assert client.post("/hook", content=BODY, headers=_signed(BODY, secret, stamp=now)).status_code == 200

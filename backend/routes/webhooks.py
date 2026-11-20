@@ -1,4 +1,4 @@
-"""Webhook endpoints for SendGrid and Twilio — public (no JWT).
+"""Webhook endpoints for SendGrid, Twilio and Resend — public (no JWT).
 
 Every inbound call is logged to `webhook_events` first (fast, durable receipt)
 before any processing — see repositories/outreach_repo.py. Processing updates
@@ -8,6 +8,7 @@ entry, replacing the legacy polymorphic `messages` Mongo collection.
 
 import logging
 import os
+import time
 import uuid
 from typing import List
 
@@ -16,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.session import get_db_session
 from repositories import activity_repo, campaign_repo, consent_repo, lead_repo, outreach_repo
-from services import sendgrid_svc, twilio_svc
+from services import resend_svc, resend_webhook, sendgrid_svc, twilio_svc
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
@@ -144,6 +145,41 @@ async def sendgrid_webhook(request: Request, session: AsyncSession = Depends(get
         processed += 1
 
     return {"ok": True, "processed": processed, "total": len(events)}
+
+
+async def require_resend_signature(request: Request) -> None:
+    """Reject Resend events without a valid signature (fails closed in production, like Twilio's and SendGrid's).
+
+    A forged event could mark a message bounced or opt a prospect out. Needs RESEND_WEBHOOK_SECRET; the signature
+    covers the raw body, so it is read unparsed.
+    """
+    secret = resend_svc.webhook_secret()
+    if not secret:
+        return _reject_or_warn_unverifiable("resend", "RESEND_WEBHOOK_SECRET")
+    if not resend_svc.verify_webhook(await request.body(), request.headers, secret, now=int(time.time())):
+        logger.warning("resend webhook rejected: invalid, missing or expired signature")
+        raise HTTPException(status_code=403, detail="Invalid signature")
+
+
+@router.post("/resend", dependencies=[Depends(require_resend_signature)])
+async def resend_webhook_events(request: Request, session: AsyncSession = Depends(get_db_session)):
+    """Resend's events: permanent bounces and complaints are applied (`services/resend_webhook`), the rest ignored.
+
+    Configure in Resend: Webhooks → Add endpoint → URL = /api/webhooks/resend,
+    events email.bounced and email.complained.
+    """
+    event_id = request.headers.get("svix-id") or ""
+    if not event_id:
+        return {"ok": False, "error": "missing svix-id"}
+    try:
+        event = await request.json()
+    except ValueError:
+        return {"ok": False, "error": "invalid json"}
+    if not isinstance(event, dict):
+        return {"ok": False, "error": "expected one event object"}
+    outcome = await resend_webhook.apply(session, event, event_id)
+    logger.info("resend webhook %s: %s", str(event.get("type"))[:40], outcome)  # never the recipient
+    return {"ok": True, "outcome": outcome}
 
 
 async def require_twilio_signature(request: Request) -> None:

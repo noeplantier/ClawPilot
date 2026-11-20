@@ -57,6 +57,7 @@ TRACKED_ENV = (
     "OUTREACH_SENDER_EMAIL",
     "OUTREACH_SENDER_WHATSAPP",
     "RESEND_API_KEY",
+    "RESEND_WEBHOOK_SECRET",
     "BREVO_API_KEY",
     "SMTP_HOST",
     "SMTP_USERNAME",
@@ -113,6 +114,7 @@ class Facts:
     sender_configured: bool = False
     sender_email: Optional[str] = None
     resend_configured: bool = False
+    resend_webhook_configured: bool = False
     brevo_configured: bool = False
     smtp_configured: bool = False
     smtp_host: Optional[str] = None
@@ -418,8 +420,15 @@ def _sending_mode(f: Facts) -> dict[str, Any]:
     )
 
 
+def _resend_bounces(f: Facts) -> str:
+    """Under Resend the bounce reports go back to Resend: only its signed webhook brings bounces and complaints here."""
+    if f.resend_webhook_configured:
+        return "signed webhook /api/webhooks/resend (not tested: Resend sends the events)"
+    return "not received: add the webhook in Resend and set RESEND_WEBHOOK_SECRET"
+
+
 def _resend(f: Facts) -> dict[str, Any]:
-    names = ("RESEND_API_KEY",)
+    names = ("RESEND_API_KEY", "RESEND_WEBHOOK_SECRET")
     summary = (
         "Sends e-mail through Resend's HTTPS API (port 443), first when set (before Brevo and SMTP): the real channel "
         "where outbound SMTP ports are closed (a free Render instance). The sender is OUTREACH_SENDER_EMAIL, on a "
@@ -434,7 +443,11 @@ def _resend(f: Facts) -> dict[str, Any]:
             "CONFIGURED · NOT TESTED",
             summary,
             env=names,
-            facts=[("sender.email", f.sender_email or "—"), ("used", "first" if f.live_sending else "dry-run")],
+            facts=[
+                ("sender.email", f.sender_email or "—"),
+                ("used", "first" if f.live_sending else "dry-run"),
+                ("bounces", _resend_bounces(f)),
+            ],
             test="server",
             hint="The test reads the account's domains; it never sends a message.",
         )
@@ -446,7 +459,7 @@ def _resend(f: Facts) -> dict[str, Any]:
         "OPTIONAL · NOT SET",
         summary,
         env=names,
-        needs=list(names),
+        needs=["RESEND_API_KEY"],
         test="server",
     )
 

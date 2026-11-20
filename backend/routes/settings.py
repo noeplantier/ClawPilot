@@ -101,6 +101,7 @@ async def integrations(user: dict = Depends(get_current_user), session: AsyncSes
             sender_configured=sender is not None,
             sender_email=sender.reply_to if sender else None,
             resend_configured=resend_svc.is_configured(),
+            resend_webhook_configured=bool(resend_svc.webhook_secret()),
             brevo_configured=brevo_svc.is_configured(),
             smtp_configured=smtp["configured"],
             smtp_host=smtp["host"],
