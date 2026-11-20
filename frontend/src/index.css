@@ -6,6 +6,11 @@
 @tailwind utilities;
 
 :root {
+  /* Motion: one curve and three durations for every transition and entrance (src/motion.test.js keeps loops cheap). */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --dur-slow: 320ms;
   /* Plantiers identity */
   --void: #07060B;
   --void-elevated: #0C0A14;
@@ -428,14 +433,6 @@ select option { background: var(--void-surface); color: var(--text-primary); }
 /* Tabular number for metrics */
 .tabular { font-variant-numeric: tabular-nums; }
 
-/* Flash pulse ring for notifications */
-@keyframes flash-pulse {
-  0% { box-shadow: 0 0 0 0 rgba(124, 58, 237, 0.55); }
-  70% { box-shadow: 0 0 0 14px rgba(124, 58, 237, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(124, 58, 237, 0); }
-}
-.flash-pulse { animation: flash-pulse 1.8s ease-out infinite; }
-
 /* Spinner */
 @keyframes spin-slow { to { transform: rotate(360deg); } }
 .spin-slow { animation: spin-slow 1.4s linear infinite; }
@@ -461,16 +458,25 @@ select option { background: var(--void-surface); color: var(--text-primary); }
 .pos-kpi-cyan   { --pos-edge-a: var(--pos-cyan);   --pos-edge-b: var(--pos-blue); }
 .pos-signal-chip { animation: pos-chip-in 0.4s ease both; }
 @keyframes pos-chip-in { from { opacity: 0; transform: translateY(4px) scale(0.98); } to { opacity: 1; transform: none; } }
-.pos-live-dot { width: 8px; height: 8px; border-radius: 9999px; background: var(--leaf); box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.5); animation: pos-live 2s ease-out infinite; }
-@keyframes pos-live { 70% { box-shadow: 0 0 0 8px rgba(74, 222, 128, 0); } 100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); } }
+/* The live dot: its ring scales and fades (transform + opacity only, composited: no repaint on every frame). */
+.pos-live-dot { position: relative; flex-shrink: 0; width: 8px; height: 8px; border-radius: 9999px; background: var(--leaf); }
+.pos-live-dot::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: var(--leaf); opacity: 0;
+  animation: pos-live 2s var(--ease-out) infinite; will-change: transform, opacity; pointer-events: none; }
+@keyframes pos-live { 0% { transform: scale(1); opacity: 0.55; } 70%, 100% { transform: scale(3); opacity: 0; } }
 @keyframes pos-pulse { 70% { box-shadow: 0 0 0 8px rgba(109, 66, 193, 0); } 100% { box-shadow: 0 0 0 0 rgba(109, 66, 193, 0); } }
 @media (prefers-reduced-motion: reduce) {
   .pos-kpi, .pos-kpi:hover { transition: none; transform: none; }
-  .pos-signal-chip, .pos-live-dot, .flash-pulse, .pulse-dot, .border-beam::before { animation: none; }
+  .pos-signal-chip, .pos-live-dot::after, .pulse-dot, .border-beam::before { animation: none; }
   .btn-primary, .btn-ghost, .btn-purple, .btn-ink { transition: none; }
   .surface::after { display: none; }
   .btn-primary:hover, .btn-primary:active, .btn-ghost:active { transform: none; }
 }
+
+/* A page enters once: a fade and 6 px, 200 ms, no delay (content is there at once). "backwards", not "both": no transform is
+   left on the page afterwards (a transform would become the containing block of the dialogs it holds). */
+.page-enter { animation: page-enter var(--dur-base) var(--ease-out) backwards; }
+@keyframes page-enter { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .page-enter { animation: none; } }
 
 /* Sidebar: the width and the labels move together (one 200 ms ease, the aside's own transition); no loop, and none at all with reduced motion. */
 .shell-label { animation: shell-label-in 0.2s ease both; }
