@@ -352,7 +352,7 @@ describe("Sending", () => {
     api.post.mockResolvedValue({ data: { status: "sent", to: "+33666167788", provider_message_id: "SM1", error: null } });
     await act(async () => byId("whatsapp-test-send").click());
     expect(api.post).toHaveBeenCalledWith("/outbound/test-whatsapp", { to: "+33666167788" });
-    expect(byId("whatsapp-test-result").textContent).toContain("Accepted by Twilio");
+    expect(byId("whatsapp-test-result").textContent).toContain("Accepté par Twilio");
     api.post.mockRejectedValue({ response: { status: 409, data: { detail: { code: "provider_not_configured", message: "x", retry_at: null } } } });
     await act(async () => byId("whatsapp-test-send").click());
     expect(byId("whatsapp-test-error").textContent).toContain("Settings > Integrations");
@@ -375,6 +375,9 @@ describe("Sending", () => {
     ["smtp-test", "whatsapp-test", "inbox-sync"].forEach((id) => expect(details.contains(byId(id))).toBe(true));
     expect(text()).not.toContain("over SMTP only"); // Resend, then Brevo, then SMTP
     expect(text()).toContain("Resend, puis Brevo, puis SMTP");
+    expect(byId("smtp-test-send").textContent).toBe("ENVOYER L’E-MAIL DE TEST");
+    expect(byId("toggle-pause").textContent).toContain("METTRE L'ENVOI EN PAUSE");
+    expect(text()).not.toMatch(/&apos;|&amp;|&quot;/); // no HTML entity shown as is
   });
 
   it("lists dispatched messages, marks dry-run, and shows erased addresses as such", async () => {
@@ -385,7 +388,10 @@ describe("Sending", () => {
     await show(<Sending />);
     expect(container.querySelectorAll('[data-testid="message-row"]').length).toBe(2);
     expect(text()).toContain("a@b.example");
-    expect(text()).toContain("erased");
-    expect(text()).toContain("dry-run");
+    expect(text()).toContain("effacée");
+    expect(text()).toContain("simulation");
+    expect(text()).toContain("accepté"); // "sent" in words: accepted by the provider, never "delivered"
+    expect(text()).toContain("réponse");
+    expect(text()).not.toMatch(/livré/);
   });
 });
