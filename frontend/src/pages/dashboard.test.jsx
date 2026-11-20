@@ -57,7 +57,7 @@ test("with no data, every widget shows an explicit empty state and no invented n
   expect(byId("funnel-score").textContent).toContain("— (rien de scoré)");
   expect(byId("kpi-replies-hint").textContent).toBe("aucun message envoyé");
   for (const id of ["chart-empty", "signals-empty", "campaigns-empty", "inbox-empty", "top-signals-empty", "geo-empty"]) expect(byId(id)).not.toBeNull();
-  expect(byId("limits-mode").textContent).toBe("DRY-RUN");
+  expect(byId("limits-mode").textContent).toBe("SIMULATION");
 });
 
 test("with data, the widgets show the real figures and link to the prospect", async () => {

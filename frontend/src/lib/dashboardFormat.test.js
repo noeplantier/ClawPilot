@@ -25,13 +25,13 @@ test("five cards that help decide, the real counts and the remaining quota", () 
 });
 
 test("the most restrictive sending state wins", () => {
-  expect(modeOf({ ...L, kill_switch: true, paused: true }).label).toMatch(/KILL SWITCH/);
-  expect(modeOf({ ...L, paused: true }).label).toBe("PAUSED");
-  expect(modeOf(L).label).toBe("DRY-RUN");
-  expect(modeOf({ ...L, dry_run: false }).label).toBe("LIVE FLAG ON · NO E-MAIL CHANNEL");
-  expect(modeOf({ ...L, dry_run: false, email_channel: null, smtp_configured: true }).label).toBe("LIVE FLAG ON · NO E-MAIL CHANNEL");
-  expect(modeOf({ ...L, dry_run: false, email_channel: "resend", allowlist_size: 1 }).label).toBe("LIVE · SANDBOX (1 ALLOWED)");
-  expect(modeOf({ ...L, dry_run: false, smtp_configured: true, allowlist_size: 2 }).label).toBe("LIVE · SANDBOX (2 ALLOWED)");
+  expect(modeOf({ ...L, kill_switch: true, paused: true }).label).toBe("ARRÊT D'URGENCE");
+  expect(modeOf({ ...L, paused: true }).label).toBe("EN PAUSE");
+  expect(modeOf(L).label).toBe("SIMULATION");
+  expect(modeOf({ ...L, dry_run: false }).label).toBe("RÉEL · AUCUN CANAL E-MAIL");
+  expect(modeOf({ ...L, dry_run: false, email_channel: null, smtp_configured: true }).label).toBe("RÉEL · AUCUN CANAL E-MAIL");
+  expect(modeOf({ ...L, dry_run: false, email_channel: "resend", allowlist_size: 1 }).label).toBe("RÉEL · BAC À SABLE (1 AUTORISÉ)");
+  expect(modeOf({ ...L, dry_run: false, smtp_configured: true, allowlist_size: 2 }).label).toBe("RÉEL · BAC À SABLE (2 AUTORISÉS)");
   expect(modeOf({ ...L, dry_run: false, smtp_configured: true, sandbox: false }).tone).toBe("danger");
 });
 

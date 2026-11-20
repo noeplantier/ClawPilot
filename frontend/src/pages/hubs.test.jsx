@@ -84,6 +84,18 @@ describe("Campagnes: zone, individuelle and séquences on one live page", () => 
     expect(byId("pulse-campaigns").textContent).toContain("Lyon 6");
     expect(byId("pulse-live").textContent).toMatch(/En direct · mis à jour à .* · toutes les 10 s/);
     expect(api.get).toHaveBeenCalledWith("/dashboard/overview", { params: { days: 14 } });
+    expect(byId("pulse-tiles").tagName).toBe("DL"); // one line of facts, not a grid of cards
+    expect(byId("pulse-tiles").querySelectorAll(".surface")).toHaveLength(0);
+    expect(byId("pulse-quiet")).toBeNull();
+  });
+  it("with nothing sent over 14 days, says so in one line instead of two empty charts", async () => {
+    table["/dashboard/overview"] = { ...table["/dashboard/overview"], series: [{ day: "2026-11-19", sent: 0, replied: 0, acquired: 0 }], campaigns: [{ id: "c1", name: "Lyon 6", sent: 0 }] };
+    await show(<CampaignsHub tab="campaigns" />, "/app/campaigns");
+    expect(byId("pulse-quiet").textContent).toBe("Aucun envoi sur 14 jours : les graphiques apparaîtront au premier message.");
+    expect(byId("pulse-activity")).toBeNull();
+    expect(byId("pulse-campaigns")).toBeNull();
+    expect(byId("pulse-sent-today-value")).not.toBeNull(); // the facts stay
+    expect(byId("pulse-mode").textContent).not.toMatch(/DRY-RUN|LIVE|HALTED/);
   });
   it("a count the API did not give is not drawn, never an invented 0", async () => {
     table["/launches"] = undefined;

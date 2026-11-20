@@ -78,7 +78,7 @@ test("complete journey: discovery → review → draft → dry-run dispatch → 
   await expect(page.getByTestId("funnel-score")).toContainText("rien de scoré"); // the average score: unknown, not 0
   await expect(page.getByTestId("kpi-prospects-value")).toHaveText("0");
   await expect(page.getByTestId("chart-empty")).toBeVisible();
-  await expect(page.getByTestId("limits-mode")).toHaveText("DRY-RUN");
+  await expect(page.getByTestId("limits-mode")).toHaveText("SIMULATION");
 
   // 2. Discovery from the fictional fixture directory (nothing leaves the process). The app no longer offers it: the test asks
   //    the API directly, as an operator script would.
@@ -147,7 +147,7 @@ test("real sending stays closed by default: test-send and import refuse, and say
 test("the pause switch on the dashboard stops sending and is reversible", async ({ page }) => {
   await register(page);
   await page.getByTestId("limits-toggle-pause").click();
-  await expect(page.getByTestId("limits-mode")).toHaveText("PAUSED");
+  await expect(page.getByTestId("limits-mode")).toHaveText("EN PAUSE");
   const token = await page.evaluate(() => localStorage.getItem("outreachos_token"));
   const refused = await page.request.post(`${API}/api/messages/email`, {
     headers: { authorization: `Bearer ${token}` },
@@ -155,7 +155,7 @@ test("the pause switch on the dashboard stops sending and is reversible", async 
   });
   expect(refused.status()).toBe(423); // the legacy single send obeys the same pause
   await page.getByTestId("limits-toggle-pause").click();
-  await expect(page.getByTestId("limits-mode")).toHaveText("DRY-RUN");
+  await expect(page.getByTestId("limits-mode")).toHaveText("SIMULATION");
 });
 
 test("a visitor without a session is sent to the login page", async ({ page }) => {

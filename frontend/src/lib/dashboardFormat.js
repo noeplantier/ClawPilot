@@ -30,12 +30,12 @@ export function channelOf(l) {
 
 // Sending mode as an operator should read it. The order matters: the most restrictive state wins.
 export function modeOf(l) {
-  if (l.kill_switch) return { tone: "danger", label: "HALTED · KILL SWITCH" };
-  if (l.paused) return { tone: "warn", label: "PAUSED" };
-  if (l.dry_run) return { tone: "ink", label: "DRY-RUN" };
-  if (!channelOf(l)) return { tone: "danger", label: "LIVE FLAG ON · NO E-MAIL CHANNEL" };
-  if (l.sandbox) return { tone: "warn", label: `LIVE · SANDBOX (${l.allowlist_size} ALLOWED)` };
-  return { tone: "danger", label: "LIVE · OPEN" };
+  if (l.kill_switch) return { tone: "danger", label: "ARRÊT D'URGENCE" };
+  if (l.paused) return { tone: "warn", label: "EN PAUSE" };
+  if (l.dry_run) return { tone: "ink", label: "SIMULATION" };
+  if (!channelOf(l)) return { tone: "danger", label: "RÉEL · AUCUN CANAL E-MAIL" };
+  if (l.sandbox) return { tone: "warn", label: `RÉEL · BAC À SABLE (${l.allowlist_size} AUTORISÉ${l.allowlist_size > 1 ? "S" : ""})` };
+  return { tone: "danger", label: "RÉEL · OUVERT" };
 }
 
 export function quotaShare(l) {
