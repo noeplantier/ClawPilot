@@ -404,6 +404,7 @@ def test_a_substantial_change_suspends_the_mandate_until_a_person_revalidates_it
         ("resend_auth", "auth_error"),
         ("replies", "reply_collection_down"),
         ("bounce", "bounce_rate"),
+        ("resend_bounce", "bounce_rate"),
         ("provider", "provider_changed"),
     ],
 )
@@ -413,6 +414,25 @@ def test_each_stop_rule_suspends_the_mandate_and_nothing_more_leaves(monkeypatch
     _approved_and_running(org, mid)
     recorder = Recorder()
     now = _base() + timedelta(minutes=10)
+    if setup == "resend_bounce":  # Resend's signed events, not the IMAP mailbox, bring the bounces back
+        assert _pump(org, now, recorder, rounds=8) == 6
+        now = now + timedelta(seconds=800)
+
+        async def resend_bounces(session):
+            from services import resend_webhook
+
+            sent = (
+                await session.execute(select(OutboundMessage).where(OutboundMessage.account_id == org["account_id"]))
+            ).scalars()
+            for n, message in enumerate(sent):
+                message.adapter, message.provider_message_id = "resend", f"re-{uuid.uuid4()}"
+                await session.flush()  # the session does not autoflush: the lookup below reads the database
+                if n < 2:
+                    data = {"email_id": message.provider_message_id, "to": [message.to_email]}
+                    event = {"type": "email.bounced", "data": {**data, "bounce": {"type": "Permanent"}}}
+                    assert await resend_webhook.apply(session, event, f"msg_{n}") == "bounced"
+
+        _call(resend_bounces)
     if setup == "bounce":
         assert _pump(org, now, recorder, rounds=8) == 6
         now = now + timedelta(seconds=800)

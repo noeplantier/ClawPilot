@@ -96,6 +96,15 @@ Mêmes règles que SMTP : un destinataire par message, sans copie, en-têtes `Li
 une connexion perdue après l'envoi est une issue inconnue, jamais renvoyée. « Accepté par Resend » ne veut pas dire « livré ».
 L'offre gratuite a un plafond quotidien et des conditions d'usage : un quota disponible ne vaut pas autorisation d'envoyer.
 
+**Rebonds et plaintes (`RESEND_WEBHOOK_SECRET`)** — sous Resend, l'avis de rebond revient à Resend, pas à la boîte IMAP. Dans
+Resend › Webhooks, ajoutez l'URL `https://<API>/api/webhooks/resend` avec les événements `email.bounced` et `email.complained`,
+puis posez son secret de signature (`whsec_…`) dans `RESEND_WEBHOOK_SECRET`. La signature (schéma Svix, 5 min de tolérance) est
+vérifiée avant toute lecture de la base ; sans secret, la production refuse. Effets (`services/resend_webhook.py`) : un rebond
+**permanent** passe le message en `bounced` et supprime l'adresse ; une plainte vaut opposition du prospect. Un rebond temporaire,
+un destinataire différent ou un événement déjà reçu ne changent rien ; « livré » n'est jamais enregistré. Ces événements comptent
+dans les arrêts du mandat (taux de rebonds, taux d'oppositions). La carte dit si le webhook est configuré, pas qu'il a reçu un
+événement.
+
 <a id="brevo"></a>
 ### Brevo (API HTTPS, facultatif)
 `BREVO_API_KEY` (Brevo › SMTP & API › API Keys). Envoie l'e-mail par l'API transactionnelle de Brevo (`POST /v3/smtp/email`,

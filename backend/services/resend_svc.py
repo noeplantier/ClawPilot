@@ -11,18 +11,24 @@ Without `RESEND_API_KEY`, `adapter_from_env()` returns None and the caller falls
   accepted the message, is `unknown`: the caller keeps the message in `sending` and never retries it by itself.
 - While the sandbox is on, any recipient outside the allowlist is refused here too (dispatch checks first).
 
-    RESEND_API_KEY   required (Resend > API Keys); the sender is OUTREACH_SENDER_*, on a domain verified in Resend
+    RESEND_API_KEY          required (Resend > API Keys); sender OUTREACH_SENDER_*, on a domain verified in Resend
+    RESEND_WEBHOOK_SECRET   optional (Resend > Webhooks, « whsec_… »): signs the bounce and complaint events
+                            posted to /api/webhooks/resend (`verify_webhook`); production refuses them without it
 
 Resend's own limits (the free plan's daily cap) and terms apply: a quota left is not an authorization to send.
 """
 
 from __future__ import annotations
 
+import base64
+import binascii
+import hashlib
+import hmac
 import logging
 import os
 import re
 from dataclasses import dataclass, field
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Mapping, Optional
 
 import requests
 
@@ -36,6 +42,7 @@ logger = logging.getLogger(__name__)
 API_ROOT = "https://api.resend.com"
 HOST = "api.resend.com"
 TIMEOUT = (5, 20)  # connect, read (seconds)
+WEBHOOK_TOLERANCE = 300  # seconds: an event signed longer ago (or ahead) than this is refused (replay)
 
 
 @dataclass(frozen=True)
@@ -156,3 +163,31 @@ def adapter_from_env(extra_allowed: tuple[str, ...] = ()) -> Optional[ResendEmai
     return ResendEmailAdapter(
         config, (*feature_flags.live_allowlist(), *extra_allowed) if feature_flags.sandbox() else None
     )
+
+
+# ---------------------------------------------------------------------------------------------- webhook signature
+def webhook_secret() -> str:
+    return os.environ.get("RESEND_WEBHOOK_SECRET", "").strip()
+
+
+def verify_webhook(body: bytes, headers: Mapping[str, str], secret: str, *, now: int) -> bool:
+    """Resend signs its webhooks the Svix way: HMAC-SHA256, keyed by the base64 part of `whsec_…`, over
+    `{svix-id}.{svix-timestamp}.{raw body}`, sent as space-separated `v1,<base64>` entries. Pure (`now` in seconds);
+    constant-time comparison; refuses a missing header, an unusable secret and a timestamp outside the tolerance."""
+    msg_id, stamp, signatures = (headers.get(h) for h in ("svix-id", "svix-timestamp", "svix-signature"))
+    if not (secret and msg_id and stamp and signatures):
+        return False
+    try:
+        key = base64.b64decode(secret.removeprefix("whsec_"), validate=True)
+        sent_at = int(stamp)
+    except (ValueError, binascii.Error):
+        return False
+    if not key or abs(now - sent_at) > WEBHOOK_TOLERANCE:
+        return False
+    signed = msg_id.encode() + b"." + stamp.encode() + b"." + body
+    expected = base64.b64encode(hmac.new(key, signed, hashlib.sha256).digest()).decode()
+    for entry in signatures.split():
+        version, _, value = entry.partition(",")
+        if version == "v1" and hmac.compare_digest(value, expected):
+            return True
+    return False
