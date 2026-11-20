@@ -1,62 +1,47 @@
 import { Fragment, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
-import { ArrowsClockwise, Pause, Play, Warning } from "@phosphor-icons/react";
+import { ArrowsClockwise, CheckCircle, Pause, Play, Warning } from "@phosphor-icons/react";
 import { useAuth } from "@/contexts/AuthContext";
 import { canDecide, outboundApi, prospectsApi, useAsync } from "@/lib/outreach";
 import { LIVE_MS } from "@/lib/live";
 import {
-  LIMIT_RANGES, MESSAGE_STATUS_CHIP, describeApiError, describeInboxSync, describeTestSend, describeWhatsappTest, formatDateTime, formatRetry, limitsPatch,
+  LIMIT_RANGES, MESSAGE_STATUS_CHIP, describeApiError, describeInboxSync, describeTestSend, describeWhatsappTest, formatDateTime, limitsPatch,
   validateLimits,
 } from "@/lib/outreachFormat";
+import { statusSummary } from "@/lib/sendingFormat";
 import HistoryTimeline from "@/components/outreach/HistoryTimeline";
+import PageShell from "@/components/PageShell";
 import ProviderSwitch from "@/components/outreach/ProviderSwitch";
 import { EmptyBlock, ErrorBlock, LoadingBlock } from "@/components/outreach/States";
 
-const BLOCKED_TEXT = {
-  kill_switch: "kill switch (environment)",
-  paused: "paused for this organisation",
-  daily: "daily limit reached",
-  hourly: "hourly limit reached",
-  delay: "minimum delay not elapsed",
-};
-
-function Fact({ label, children, testId }) {
-  return (
-    <div className="border border-border rounded-md p-3 bg-card">
-      <div className="mono-accent">{label}</div>
-      <div className="font-display font-semibold mt-1" data-testid={testId}>{children}</div>
-    </div>
-  );
-}
-
+// The decision first (can a message leave now, and if not why), then the state as chips and the volumes on one line:
+// everything from GET /outbound/status (lib/sendingFormat.js), nothing invented.
 function StatusPanel({ status, settings }) {
-  const blocked = status.blocked_by;
-  const next = formatRetry(status.next_allowed_at);
+  const summary = statusSummary(status, settings);
   return (
-    <section className="surface p-5 space-y-4" data-testid="status-panel">
-      <h2 className="font-display text-xl font-bold">Status</h2>
-      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        <Fact label="mode" testId="fact-mode">{status.dry_run ? "Dry-run (nothing is delivered)" : "Live"}</Fact>
-        <Fact label="kill switch" testId="fact-kill">{status.kill_switch ? "ON: all sending halted" : "off"}</Fact>
-        <Fact label="this organisation" testId="fact-paused">{status.paused ? "paused" : "active"}</Fact>
-        <Fact label="can send now" testId="fact-can-send">
-          {blocked ? `no: ${BLOCKED_TEXT[blocked] || blocked}${next ? ` · try again ${next}` : ""}` : "yes"}
-        </Fact>
-        <Fact label="dispatched today" testId="fact-today">{status.sent_today}</Fact>
-        <Fact label="last hour" testId="fact-hour">{status.sent_last_hour}</Fact>
-        <Fact label="last dispatch">{status.last_dispatched_at ? formatDateTime(status.last_dispatched_at) : "none yet"}</Fact>
-        <Fact label="sender identity" testId="fact-sender">{settings && settings.sender_configured ? "configured" : "not configured"}</Fact>
-      </div>
+    <section className="space-y-3" data-testid="status-panel" aria-label="État de l'envoi">
+      <p className={`flex items-start gap-2 text-lg font-semibold ${summary.canSend ? "text-foreground" : "text-brand-300"}`} role="status" data-testid="fact-can-send">
+        {summary.canSend ? <CheckCircle size={20} weight="fill" className="mt-1 shrink-0 text-brand-400" /> : <Warning size={20} weight="fill" className="mt-1 shrink-0" />}
+        {summary.headline}
+      </p>
+      <ul className="flex flex-wrap gap-2" aria-label="État">
+        {summary.chips.map((c) => <li key={c.key} className={`chip ${c.tone}`} data-testid={c.testId}>{c.label}</li>)}
+      </ul>
+      <dl className="flex flex-wrap gap-x-6 gap-y-1 text-sm" aria-label="Volumes">
+        {summary.volumes.map((v) => (
+          <div key={v.key}><dt className="inline text-faint">{v.label} : </dt><dd className="inline font-mono" data-testid={v.testId}>{v.value}</dd></div>
+        ))}
+      </dl>
       {settings && !settings.sender_configured && (
-        <p className="text-sm text-amber-300 bg-amber-500/10 border border-amber-400/40 rounded-md p-3 flex gap-2" role="alert">
-          <Warning size={16} className="shrink-0 mt-0.5" />
-          The server has no sender identity (OUTREACH_SENDER_NAME, _COMPANY, _ADDRESS, _EMAIL), so no draft can be prepared or dispatched.
+        <p className="flex gap-2 rounded-md border border-border bg-card p-3 text-sm text-soft" role="alert">
+          <Warning size={16} className="mt-0.5 shrink-0" />
+          Le serveur n&apos;a pas d&apos;identité d&apos;expéditeur (OUTREACH_SENDER_NAME, _COMPANY, _ADDRESS, _EMAIL) : aucun brouillon ne peut être préparé ni envoyé.
         </p>
       )}
       {settings && Object.keys(settings.usage).length > 0 && (
         <p className="text-sm text-soft" data-testid="usage">
-          Recorded usage: {Object.entries(settings.usage).map(([k, v]) => `${k.replace(/_/g, " ")} ${v}`).join(" · ")}
+          Usage enregistré : {Object.entries(settings.usage).map(([k, v]) => `${k.replace(/_/g, " ")} ${v}`).join(" · ")}
         </p>
       )}
     </section>
@@ -325,17 +310,24 @@ export default function Sending() {
     return { status, limits, messages, settings };
   }, [], { key: "sending", intervalMs: LIVE_MS });
 
-  return (
-    <div className="p-6 md:p-10 space-y-6 max-w-5xl" data-testid="sending-page">
-      <div className="flex items-start justify-between flex-wrap gap-3">
-        <div>
-          <div className="eyebrow">controlled.sending</div>
-          <h1 className="mt-3 text-4xl font-bold tracking-tight leading-[1.15]">Sending</h1>
-          <p className="text-soft mt-1 max-w-2xl">Limits, emergency stop and the history of dispatched messages. Dry-run by default; real e-mail leaves over SMTP only when live sending is enabled. A message stuck in “sending” has an unknown outcome: check the mailbox before sending again.</p>
-        </div>
-        <button className="btn-ghost" onClick={page.reload} data-testid="refresh"><ArrowsClockwise size={14} /> REFRESH</button>
-      </div>
+  const tools = page.data && edit ? (
+    <>
+      <SmtpTestPanel onDone={page.reload} />
+      <WhatsappTestPanel onDone={page.reload} />
+      <InboxSyncPanel onDone={page.reload} />
+    </>
+  ) : null;
 
+  return (
+    <PageShell
+      testId="sending-page"
+      kicker="outreach · canaux"
+      title="Canaux d'envoi"
+      lead="Ce qui permet à un message de partir maintenant, les limites, l'arrêt d'urgence et l'historique. Simulation par défaut ; en envoi réel, l'e-mail part par Resend, puis Brevo, puis SMTP, selon ce qui est configuré. Un message resté « sending » a une issue inconnue : vérifiez la boîte d'envoi avant de renvoyer."
+      action={<button className="btn-ghost" onClick={page.reload} data-testid="refresh"><ArrowsClockwise size={14} /> ACTUALISER</button>}
+      details={tools}
+      detailsLabel="Tests et outils (e-mail, WhatsApp, boîte de réception)"
+    >
       {page.loading && !page.data && <LoadingBlock label="Loading sending status…" />}
       {page.error && <ErrorBlock message={page.error} onRetry={page.reload} />}
 
@@ -344,9 +336,6 @@ export default function Sending() {
           <StatusPanel status={page.data.status} settings={page.data.settings} />
           <ProviderSwitch />
           <LimitsForm key={JSON.stringify(page.data.limits)} limits={page.data.limits} canEdit={edit} onSaved={page.reload} />
-          {edit && <SmtpTestPanel onDone={page.reload} />}
-          {edit && <WhatsappTestPanel onDone={page.reload} />}
-          {edit && <InboxSyncPanel onDone={page.reload} />}
           <section className="space-y-3" data-testid="messages-panel">
             <h2 className="font-display text-xl font-bold">Dispatched messages</h2>
             {page.data.messages.length === 0 ? (
@@ -371,6 +360,6 @@ export default function Sending() {
           </section>
         </>
       )}
-    </div>
+    </PageShell>
   );
 }
