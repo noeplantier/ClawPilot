@@ -27,6 +27,8 @@ Tous en lecture seule : **aucun message n'est envoyé à une personne**. Un test
 | `database` | un aller-retour `SELECT 1`, latence mesurée |
 | `osm` | une requête d'état par serveur Overpass, l'un après l'autre (jamais en rafale) |
 | `registry` | une requête d'exemple au registre des entreprises ; ignoré si `FEATURE_EXTERNAL_SOURCES` est coupé |
+| `resend` | lecture des domaines du compte (`GET /domains`), **sans envoi** : seul l'état du domaine de `OUTREACH_SENDER_EMAIL` est renvoyé (vérifié, en attente, absent), jamais les autres domaines ; une clé « envoi seul » est reconnue mais ne permet pas cette lecture (le domaine reste à vérifier dans Resend) |
+| `brevo` | lecture du compte (`GET /v3/account`), **sans envoi** ; la réponse (société, e-mail, offre) n'est jamais renvoyée |
 | `smtp` | connexion TLS + authentification, **sans envoi** (pas de `MAIL FROM`) |
 | `imap` | connexion TLS + ouverture du dossier **en lecture seule** ; aucun message lu, marqué ou modifié |
 | `sendgrid` | lecture des permissions de la clé |
@@ -81,6 +83,38 @@ autorisée ; le kill switch arrête tout. Procédure : `docs/go-live-email.md`.
 ### IMAP
 `IMAP_HOST`, `IMAP_USERNAME`, `IMAP_PASSWORD` (+ `IMAP_PORT`, `IMAP_FOLDER`). Lit réponses, rebonds et STOP dans la boîte d'envoi ; sans lui, tout se traite à la main.
 
+<a id="resend"></a>
+### Resend (API HTTPS, recommandé)
+`RESEND_API_KEY` (Resend › API Keys). Envoie l'e-mail par l'API de Resend (`POST /emails`, port 443) **en premier** quand la clé
+est posée et `FEATURE_LIVE_SENDING` actif (avant Brevo, puis SMTP) : c'est le canal réel là où les ports SMTP sortants sont fermés
+(une instance Render gratuite bloque 25, 465 et 587). L'expéditeur est `OUTREACH_SENDER_EMAIL`, sur un domaine **ajouté et
+vérifié dans Resend** (Resend › Domains : enregistrements DNS SPF + DKIM, MX de retour) ; sinon Resend refuse (HTTP 403/422,
+raison affichée). Le test de la carte lit la liste des domaines et dit si celui de l'expéditeur est vérifié ; il n'envoie rien.
+Une clé « Sending access » suffit pour envoyer, mais ne peut pas lire les domaines : le test la reconnaît et vous laisse vérifier
+le domaine dans Resend (une clé « Full access » permet le contrôle complet).
+Mêmes règles que SMTP : un destinataire par message, sans copie, en-têtes `List-Unsubscribe`, bac à sable, kill switch, limites ;
+une connexion perdue après l'envoi est une issue inconnue, jamais renvoyée. « Accepté par Resend » ne veut pas dire « livré ».
+L'offre gratuite a un plafond quotidien et des conditions d'usage : un quota disponible ne vaut pas autorisation d'envoyer.
+
+**Rebonds et plaintes (`RESEND_WEBHOOK_SECRET`)** — sous Resend, l'avis de rebond revient à Resend, pas à la boîte IMAP. Dans
+Resend › Webhooks, ajoutez l'URL `https://<API>/api/webhooks/resend` avec les événements `email.bounced` et `email.complained`,
+puis posez son secret de signature (`whsec_…`) dans `RESEND_WEBHOOK_SECRET`. La signature (schéma Svix, 5 min de tolérance) est
+vérifiée avant toute lecture de la base ; sans secret, la production refuse. Effets (`services/resend_webhook.py`) : un rebond
+**permanent** passe le message en `bounced` et supprime l'adresse ; une plainte vaut opposition du prospect. Un rebond temporaire,
+un destinataire différent ou un événement déjà reçu ne changent rien ; « livré » n'est jamais enregistré. Ces événements comptent
+dans les arrêts du mandat (taux de rebonds, taux d'oppositions). La carte dit si le webhook est configuré, pas qu'il a reçu un
+événement.
+
+<a id="brevo"></a>
+### Brevo (API HTTPS, facultatif)
+`BREVO_API_KEY` (Brevo › SMTP & API › API Keys). Envoie l'e-mail par l'API transactionnelle de Brevo (`POST /v3/smtp/email`,
+port 443) **après Resend et avant** SMTP quand la clé est posée et `FEATURE_LIVE_SENDING` actif : c'est le canal réel là où les ports SMTP
+sortants sont fermés (une instance Render gratuite bloque 25, 465 et 587). L'expéditeur est `OUTREACH_SENDER_EMAIL`, qui doit
+être **vérifié dans Brevo** (idéalement le domaine, SPF + DKIM), sinon Brevo refuse (HTTP 400/403, raison affichée).
+Mêmes règles que SMTP : un destinataire par message, en-têtes `List-Unsubscribe`, bac à sable, kill switch, limites ;
+une connexion perdue après l'envoi est une issue inconnue, jamais renvoyée. La politique fournisseur le classe « non vérifié » :
+lisez ses conditions avant toute prospection (base légale, désinscription, volume) ; un quota disponible ne vaut pas autorisation.
+
 <a id="sendgrid"></a>
 ### SendGrid (facultatif)
 `SENDGRID_API_KEY`, `SENDGRID_FROM_EMAIL`. Alternative à SMTP pour les messages CRM et les campagnes (SMTP passe en premier quand il est complet). Sans clé : refus explicite, rien n'est envoyé ni enregistré comme envoyé.
@@ -111,6 +145,13 @@ aucun texte tout fait qui ferait semblant d'être un message) et la page affiche
 - **Limites** : une offre gratuite a un quota par minute et par jour ; l'API répond alors 429 `ai_rate_limited` avec le délai. Côté serveur,
   30 appels par minute et par organisation au maximum (les 3 variantes comptent pour 3).
 - **Test** : « TEST NOW » demande au fournisseur la liste de ses modèles avec la clé : prouve la clé, l'adresse et le modèle, sans rien générer ni
-  envoyer. Un modèle absent de la liste donne `failed` avec « set AI_MODEL ».
+  envoyer. Un modèle absent de la liste donne `failed` avec « set AI_MODEL ». Le test vérifie aussi le modèle léger : s'il manque, le test
+  reste `passed` (les messages courts passent alors par `AI_MODEL`) et propose les modèles disponibles pour `AI_MODEL_LIGHT`.
+- **Modèle léger** : `AI_MODEL_LIGHT` (facultatif) est un modèle plus léger **du même fournisseur, avec la même clé**, utilisé pour le modèle
+  d'écriture « Plantiers Rapide ». Groq a une valeur par défaut (`openai/gpt-oss-20b`) ; ailleurs, sans elle, tout passe par `AI_MODEL`.
+  Un modèle léger inconnu ou retiré (HTTP 400/404) : une seule nouvelle demande au modèle principal, jamais l'inverse ; une limite (429) n'est
+  jamais contournée. La carte l'affiche sur la ligne `model.light`.
+- **Usage réel** : chaque brouillon enregistre, avec ses crédits, le modèle qui l'a vraiment écrit et les tokens rapportés par le fournisseur.
+  `GET /api/usage/credits` en donne le total du jour (Europe/Paris) par modèle (`ai_usage`) ; sans chiffre du fournisseur, rien n'est estimé.
 - **Mise en route gratuite** : créer une clé sur Groq (console.groq.com) ou Mistral (console.mistral.ai), puis dans Render poser `AI_PROVIDER` et
   `AI_API_KEY`.

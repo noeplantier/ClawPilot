@@ -35,7 +35,9 @@ def _flag(expression: Any) -> Any:
     return func.coalesce(expression, false())
 
 
-def _flagged(account_id: uuid.UUID, now: Optional[datetime]):  # type: ignore[no-untyped-def]
+def _flagged(  # type: ignore[no-untyped-def]
+    account_id: uuid.UUID, now: Optional[datetime], zone: Optional[dict[str, Any]] = None
+):
     """Prospect + the four facts the selection needs, computed by the same SQL as the map (one policy, one decision)."""
     src = eligibility_sql.latest_source(account_id)
     scores = heat_sql.latest_scores()
@@ -51,6 +53,11 @@ def _flagged(account_id: uuid.UUID, now: Optional[datetime]):  # type: ignore[no
         .outerjoin(scores, scores.c.lead_id == Lead.id)
         .where(Lead.account_id == account_id, ACTIVE, IN_DISCOVERY)
     )
+    if zone is not None:  # only prospects positioned inside the perimeter (a prospect with no position is outside)
+        stmt = stmt.where(
+            src.c.lat.between(float(zone["south"]), float(zone["north"])),
+            src.c.lon.between(float(zone["west"]), float(zone["east"])),
+        )
     rank = (
         eligibility_sql.hot(src, now).desc(),
         heat_sql.heat_sql(scores.c.score).desc(),
@@ -60,9 +67,11 @@ def _flagged(account_id: uuid.UUID, now: Optional[datetime]):  # type: ignore[no
     return stmt, rank
 
 
-async def pool(session: AsyncSession, account_id: uuid.UUID, now: datetime, limit: int) -> list[Any]:
-    """Approved prospects, best first: rows of (lead, qualified, suppressed, opted_out, demo)."""
-    stmt, rank = _flagged(account_id, now)
+async def pool(
+    session: AsyncSession, account_id: uuid.UUID, now: datetime, limit: int, zone: Optional[dict[str, Any]] = None
+) -> list[Any]:
+    """Approved prospects, best first: rows of (lead, qualified, suppressed, opted_out, demo). `zone` = a perimeter."""
+    stmt, rank = _flagged(account_id, now, zone)
     rows = await session.execute(stmt.where(Lead.review_status == "approved").order_by(*rank).limit(limit))
     return list(rows.all())
 
@@ -191,6 +200,7 @@ async def taken_elsewhere(
             Campaign.account_id == account_id,
             Campaign.deleted_at.is_(None),
             CampaignLead.lead_id.in_(ids),
+            CampaignLead.removed_at.is_(None),  # removed from that campaign by the person: it holds nothing any more
             other_campaign,
             or_(
                 Campaign.status == "running",
@@ -412,6 +422,67 @@ async def selection_of(session: AsyncSession, account_id: uuid.UUID, campaign_id
         .order_by(CampaignLead.assigned_at, CampaignLead.lead_id)
     )
     return list(rows.scalars())
+
+
+async def removed_of(session: AsyncSession, account_id: uuid.UUID, campaign_id: uuid.UUID) -> dict[uuid.UUID, Any]:
+    """The recipients the person removed from the campaign: {lead_id: (removed_at, removed_by_user_id, reason)}.
+    They stay in `selection_of` (a top-up never picks them again) and are excluded from the audience."""
+    rows = await session.execute(
+        select(
+            CampaignLead.lead_id, CampaignLead.removed_at, CampaignLead.removed_by_user_id, CampaignLead.removed_reason
+        )
+        .join(Campaign, Campaign.id == CampaignLead.campaign_id)
+        .where(
+            CampaignLead.campaign_id == campaign_id,
+            Campaign.account_id == account_id,
+            CampaignLead.removed_at.is_not(None),
+        )
+    )
+    return {lead_id: (at, by, reason) for lead_id, at, by, reason in rows.all()}
+
+
+async def set_removed(
+    session: AsyncSession,
+    account_id: uuid.UUID,
+    campaign_id: uuid.UUID,
+    lead_id: uuid.UUID,
+    *,
+    removed: bool,
+    user_id: Optional[uuid.UUID],
+    reason: Optional[str],
+    now: datetime,
+) -> bool:
+    """Mark a recipient removed (or included again). False when it is not a recipient of this campaign of this
+    account. The row itself is never deleted."""
+    owned = select(Campaign.id).where(Campaign.id == campaign_id, Campaign.account_id == account_id)
+    values: dict[str, Any] = (
+        {"removed_at": now, "removed_by_user_id": user_id, "removed_reason": reason}
+        if removed
+        else {"removed_at": None, "removed_by_user_id": None, "removed_reason": None}
+    )
+    result = await session.execute(
+        update(CampaignLead)
+        .where(CampaignLead.campaign_id.in_(owned), CampaignLead.lead_id == lead_id)
+        .values(**values)
+    )
+    return bool(result.rowcount)  # type: ignore[attr-defined]
+
+
+async def cancel_scheduled_for(
+    session: AsyncSession, account_id: uuid.UUID, campaign_id: uuid.UUID, lead_id: uuid.UUID, now: datetime
+) -> int:
+    """Cancel the planned message of one recipient (what is in flight or sent is not touched: it cannot be recalled)."""
+    result = await session.execute(
+        update(CampaignDispatch)
+        .where(
+            CampaignDispatch.account_id == account_id,
+            CampaignDispatch.campaign_id == campaign_id,
+            CampaignDispatch.lead_id == lead_id,
+            CampaignDispatch.status == "scheduled",
+        )
+        .values(status="cancelled", last_reason="removed_by_reviewer", updated_at=now)
+    )
+    return int(result.rowcount or 0)  # type: ignore[attr-defined]
 
 
 async def launches(session: AsyncSession, account_id: uuid.UUID) -> list[Campaign]:

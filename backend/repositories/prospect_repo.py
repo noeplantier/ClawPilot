@@ -13,7 +13,7 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import Subquery, and_, case, func, not_, or_, select, text, update
+from sqlalchemy import Subquery, and_, case, func, not_, or_, select, text, true, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -539,7 +539,11 @@ async def detected_by_lead(
 
 
 async def list_positions(
-    session: AsyncSession, account_id: uuid.UUID, limit: int = 2000, now: Optional[datetime] = None
+    session: AsyncSession,
+    account_id: uuid.UUID,
+    limit: int = 2000,
+    now: Optional[datetime] = None,
+    review_status: Optional[str] = None,
 ) -> list[dict]:
     """What the commercial map draws: the discovery prospects the common eligibility policy qualifies (e-mail, phone,
     address and position on a fresh non-demo source, a fit score), decided in SQL before the limit, never by the page.
@@ -556,6 +560,7 @@ async def list_positions(
             .join(src, src.c.lead_id == Lead.id)
             .outerjoin(latest, latest.c.lead_id == Lead.id)
             .where(Lead.account_id == account_id, ACTIVE, IN_DISCOVERY, eligibility_sql.qualified(src, now))
+            .where(Lead.review_status == review_status if review_status else true())
             .order_by(
                 hot.desc(), heat_value.desc(), heat_sql.known(Lead.website).desc(), Lead.created_at.desc(), Lead.id
             )
@@ -563,6 +568,10 @@ async def list_positions(
         )
     ).all()
     detected = await detected_by_lead(session, account_id, [row[0].id for row in rows])
+    hot_ids = [row[0].id for row in rows if row[-1]]
+    why_hot: dict[uuid.UUID, str] = {}
+    if hot_ids:  # why each one is hot: the quoted, sourced evidence the decision rests on, in one query
+        why_hot = dict((await session.execute(eligibility_sql.intent_evidence(account_id, hot_ids, now))).all())
     out: list[dict] = []
     for lead, address, lat, lon, external_id, score, is_hot in rows:
         out.append(
@@ -583,6 +592,7 @@ async def list_positions(
                 "map_ready": True,  # kept for older clients: it now means "qualified by the common policy"
                 "priority": "hot" if is_hot else "qualified",
                 "priority_label": "Hot — intention observée" if is_hot else "Qualifié prioritaire",
+                "intent_evidence": why_hot.get(lead.id) if is_hot else None,
                 "fit_score": lead.fit_score,
                 "review_status": lead.review_status,
                 "external_id": external_id,

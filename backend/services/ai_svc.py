@@ -6,7 +6,8 @@ company, the offer and the goal. Never the e-mail address, the phone number or a
 
     AI_PROVIDER  groq | gemini | mistral | custom      (no default: the choice of who receives names is yours)
     AI_API_KEY   the provider's key (never shown, never logged)
-    AI_MODEL            optional: overrides the provider's default model
+    AI_MODEL            optional: overrides the provider's default model (the "main" one)
+    AI_MODEL_LIGHT      optional: a lighter model of the SAME provider for the "Rapide" tier (Groq has a default)
     AI_MODEL_PRECISION  optional: a second, more capable model reserved for the best Hot Leads
     AI_BASE_URL         only for `custom`: https://…/v1 (the API root that serves /chat/completions and /models)
 """
@@ -18,6 +19,7 @@ import json
 import logging
 import os
 import re
+import time
 from dataclasses import dataclass
 from typing import Any, Optional
 from urllib.parse import urlsplit
@@ -26,14 +28,22 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-# provider -> (API root, default model). Models change: AI_MODEL overrides; the Settings test checks the model exists.
+# provider -> (API root, default model). Models change: AI_MODEL overrides; the Settings test checks the model exists
+# and, when it does not, lists the ones the key can use. Groq retired its Llama chat models in 2026 (gpt-oss replaced
+# them).
 PROVIDERS: dict[str, tuple[Optional[str], Optional[str]]] = {
-    "groq": ("https://api.groq.com/openai/v1", "llama-3.3-70b-versatile"),
+    "groq": ("https://api.groq.com/openai/v1", "openai/gpt-oss-120b"),
     "gemini": ("https://generativelanguage.googleapis.com/v1beta/openai", "gemini-2.5-flash"),
     "mistral": ("https://api.mistral.ai/v1", "mistral-small-latest"),
     "custom": (None, None),
 }
+# provider -> the lighter model of the same provider, used for the "light" tier (short messages). A provider without
+# one here uses its main model unless AI_MODEL_LIGHT names one. If the light model is unknown or retired (HTTP 400 or
+# 404), the message is asked once from the main model: never the other way round.
+LIGHT_MODELS: dict[str, str] = {"groq": "openai/gpt-oss-20b"}
+TIERS = ("main", "light")
 TIMEOUT = (5, 40)  # connect, read (seconds)
+RETRY_PAUSE = 1.0  # seconds before the one retry after a provider-side failure (HTTP 5xx)
 MAX_TOKENS = 700
 LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
 
@@ -54,6 +64,10 @@ class AIConfig:
     base_url: str
     model: str
     key: str = ""
+    light_model: str = ""  # empty: the light tier uses the main model
+
+    def model_for(self, tier: str = "main") -> str:
+        return (self.light_model or self.model) if tier == "light" else self.model
 
     @property
     def host(self) -> str:
@@ -82,7 +96,8 @@ def _read() -> tuple[Optional[AIConfig], Optional[str]]:
         return None, "AI_BASE_URL must start with https:// (the key travels in every request)"
     if not parts.hostname:
         return None, "AI_BASE_URL is not a valid address"
-    return AIConfig(provider, base_url, model, key), None
+    light = os.environ.get("AI_MODEL_LIGHT", "").strip() or LIGHT_MODELS.get(provider, "")
+    return AIConfig(provider, base_url, model, key, light if light != model else ""), None
 
 
 def config() -> Optional[AIConfig]:
@@ -102,6 +117,7 @@ def status() -> dict[str, Any]:
         "key_configured": bool(os.environ.get("AI_API_KEY", "").strip()),
         "provider": cfg.provider if cfg else (os.environ.get("AI_PROVIDER", "").strip().lower() or None),
         "model": cfg.model if cfg else None,
+        "model_light": cfg.model_for("light") if cfg else None,
         "host": cfg.host if cfg else None,
         "active": cfg is not None,
         "mode": "live" if cfg else "off",
@@ -124,10 +140,23 @@ def explain_http_error(status_code: int, retry_after: Optional[str] = None) -> t
     if status_code in (401, 403):
         return "ai_failed", f"The AI provider rejected the key (HTTP {status_code}). Check AI_API_KEY."
     if status_code == 404:
-        return "ai_failed", "The AI provider does not know this model or address (HTTP 404). Check AI_MODEL."
+        return "ai_failed", (
+            "The AI provider does not know this model or address (HTTP 404). The test in Settings > Integrations "
+            "lists the models your key can use: set AI_MODEL to one of them."
+        )
     if status_code == 429:
         wait = f" Try again in {retry_after} s." if retry_after and retry_after.isdigit() else " Try again in a moment."
         return "ai_rate_limited", f"The AI provider's free limit is reached (HTTP 429).{wait}"
+    if status_code == 400:
+        return "ai_failed", (
+            "The AI provider refused the request (HTTP 400): the model may have been retired or a setting is not "
+            "accepted. Check AI_MODEL with the test in Settings > Integrations. Nothing was generated."
+        )
+    if status_code >= 500:
+        return "ai_failed", (
+            f"The AI provider is failing on its side (HTTP {status_code}), even after one retry. Nothing was "
+            "generated: try again later."
+        )
     return "ai_failed", f"The AI provider answered HTTP {status_code}. Nothing was generated."
 
 
@@ -168,7 +197,8 @@ def build_messages(
 
 
 def parse_answer(raw: str) -> dict[str, Optional[str]]:
-    """{"subject", "body", "whatsapp"} from the model's text: JSON (even in a fence or prose), else the text itself as the body."""
+    """{"subject", "body", "whatsapp"} from the model's text: JSON (even in a fence or prose), else the text itself as
+    the body."""
     text = (raw or "").strip()
     match = re.search(r"\{[\s\S]*\}", text)
     if match:
@@ -187,38 +217,92 @@ def parse_answer(raw: str) -> dict[str, Optional[str]]:
     return {"subject": None, "body": text, "whatsapp": None}
 
 
-def _generate_sync(cfg: AIConfig, messages: list[dict[str, str]], model: Optional[str] = None) -> str:
+class Generated(str):
+    """The provider's text, with the model that really wrote it and the tokens the provider reported (None when it
+    reported none: never estimated)."""
+
+    model: str = ""
+    tokens: Optional[int] = None
+
+
+def _ask(cfg: AIConfig, model: str, messages: list[dict[str, str]], max_tokens: int, temperature: float):
     payload: dict[str, Any] = {
-        "model": model or cfg.model,
+        "model": model,
         "messages": messages,
-        "temperature": 0.7,
-        "max_tokens": MAX_TOKENS,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
         "response_format": {"type": "json_object"},
     }
+    if "gpt-oss" in model:  # a reasoning model: keep its thinking short, so the answer fits in max_tokens
+        payload["reasoning_effort"] = "low"
     response = _post(cfg, payload)
     if response.status_code == 400:  # a provider or model without JSON mode: ask again in plain mode, once
         payload.pop("response_format")
         response = _post(cfg, payload)
+    if response.status_code >= 500:  # the provider's own failure: one bounded retry (nothing is stored or spent before)
+        time.sleep(RETRY_PAUSE)
+        response = _post(cfg, payload)
+    return response
+
+
+def _tokens(data: Any) -> Optional[int]:
+    usage = data.get("usage") if isinstance(data, dict) else None
+    total = usage.get("total_tokens") if isinstance(usage, dict) else None
+    return total if isinstance(total, int) and not isinstance(total, bool) and total >= 0 else None
+
+
+def _generate_sync(
+    cfg: AIConfig,
+    messages: list[dict[str, str]],
+    max_tokens: Optional[int] = None,
+    temperature: Optional[float] = None,
+    tier: str = "main",
+    explicit_model: Optional[str] = None,
+) -> Generated:
+    # `explicit_model` is the optional precision tier: it is an internal override, never user input. An invalid
+    # precision model is refused by the provider and fails closed (no silent fallback to a weaker model).
+    model = explicit_model or cfg.model_for(tier)
+    budget, warmth = max_tokens or MAX_TOKENS, 0.7 if temperature is None else temperature
+    response = _ask(cfg, model, messages, budget, warmth)
+    if explicit_model is None and response.status_code in (400, 404) and model != cfg.model:  # light model retired
+        logger.warning(
+            "AI provider=%s light model=%s answered HTTP %s: main model used", cfg.provider, model, response.status_code
+        )
+        model = cfg.model
+        response = _ask(cfg, model, messages, budget, warmth)
     if response.status_code != 200:
+        # What the operator needs to fix it, in the server log: the provider, the model and the status (never the key
+        # nor the body, which can echo the request).
+        logger.warning("AI provider=%s model=%s answered HTTP %s", cfg.provider, model, response.status_code)
         after = response.headers.get("Retry-After", "")
         code, message = explain_http_error(response.status_code, after)
         # A provider limit has a known delay; surface it so the UI can say when to try again.
         raise AIUnavailable(code, message, int(after) if code == "ai_rate_limited" and after.isdigit() else None)
     try:
-        content = response.json()["choices"][0]["message"]["content"]
+        data = response.json()
+        content = data["choices"][0]["message"]["content"]
     except (ValueError, KeyError, IndexError, TypeError):
         raise AIUnavailable("ai_failed", "The AI provider answered in a format this server does not understand.")
     if not isinstance(content, str) or not content.strip():
         raise AIUnavailable("ai_failed", "The AI provider returned an empty message. Nothing was generated.")
-    return content
+    out = Generated(content)
+    out.model, out.tokens = model, _tokens(data)
+    return out
 
 
 async def complete(
-    messages: list[dict[str, str]], *, model: Optional[str] = None
-) -> dict[str, Optional[str]]:
-    """The provider's answer to `messages` as {"subject", "body"}, or `AIUnavailable` saying why (not configured,
-    rejected, limit, unreachable). The one place that talks to the provider, for the composer and the automatic drafts.
-    `model` is an internal override used only for the configured precision tier; it is never taken from user input.
+    messages: list[dict[str, str]],
+    *,
+    max_tokens: Optional[int] = None,
+    temperature: Optional[float] = None,
+    tier: str = "main",
+    model: Optional[str] = None,
+) -> dict[str, Any]:
+    """The provider's answer to `messages` as {"subject", "body", "whatsapp", "usage"}, or `AIUnavailable` saying why
+    (not configured, rejected, limit, unreachable). The one place that talks to the provider, for the composer and the
+    automatic drafts. `tier` "light" asks the provider's lighter model (see LIGHT_MODELS). `usage` is
+    {"model", "tokens"}: the model that really wrote the answer and the tokens the provider reported (or None).
+    `model` is an internal override used only for the configured precision tier; never taken from user input.
     """
     cfg, reason = _read()
     if cfg is None:
@@ -227,7 +311,15 @@ async def complete(
             f"The AI composer is off: {reason}. Write the message yourself, or set it up in Settings > Integrations.",
         )
     try:
-        raw = await asyncio.to_thread(_generate_sync, cfg, messages, model)  # blocking socket: never on the event loop
+        raw = await asyncio.to_thread(
+            _generate_sync,
+            cfg,
+            messages,
+            max_tokens,
+            temperature,
+            tier if tier in TIERS else "main",
+            model,
+        )  # blocking socket: never on the event loop
     except AIUnavailable:
         raise
     except requests.Timeout:
@@ -235,7 +327,7 @@ async def complete(
     except requests.RequestException as exc:
         logger.warning("AI provider unreachable: %s", type(exc).__name__)
         raise AIUnavailable("ai_unreachable", "The AI provider could not be reached. Nothing was generated.")
-    return parse_answer(raw)
+    return {**parse_answer(raw), "usage": {"model": raw.model, "tokens": raw.tokens}}
 
 
 async def generate_message(
@@ -246,12 +338,25 @@ async def generate_message(
     channel: str = "email",
     goal: str | None = None,
     company: str | None = None,
+    style: Any = None,
 ) -> dict:
-    """A message from the provider, or `AIUnavailable` saying why (not configured, rejected, limit, unreachable)."""
-    answer = await complete(build_messages(recipient_name, product, language, tone, channel, goal, company))
+    """A message from the provider, or `AIUnavailable` saying why (not configured, rejected, limit, unreachable).
+    `style`: the outreach model (services/outreach_os/credits.py) whose length and tone are asked for."""
+    messages = build_messages(recipient_name, product, language, tone, channel, goal, company)
+    if style is not None:
+        from services.outreach_os.credits import with_instruction
+
+        messages = with_instruction(messages, style)
+    answer = await complete(
+        messages,
+        max_tokens=getattr(style, "max_tokens", None),
+        temperature=getattr(style, "temperature", None),
+        tier=getattr(style, "tier", "main"),
+    )
     return {
         "subject": answer.get("subject") if channel == "email" else None,
         "body": answer.get("body") or "",
         "whatsapp": answer.get("whatsapp"),
         "language": language,
+        "usage": answer.get("usage"),  # {"model", "tokens"}: recorded with the credits, never sent back to the browser
     }

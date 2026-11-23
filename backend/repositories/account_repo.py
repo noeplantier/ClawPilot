@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import Account, User
@@ -58,3 +58,18 @@ async def create_account_with_owner(
     session.add(user)
     await session.flush()  # populates user.id/created_at for the response
     return account, user
+
+
+# ---- Autopilot (services/outreach_os/autopilot.py): one JSON row per account, None = never configured (off) ----
+async def autopilot_of(session: AsyncSession, account_id: uuid.UUID) -> Optional[dict]:
+    return (await session.execute(select(Account.autopilot).where(Account.id == account_id))).scalar_one_or_none()
+
+
+async def set_autopilot(session: AsyncSession, account_id: uuid.UUID, row: dict) -> None:
+    await session.execute(update(Account).where(Account.id == account_id).values(autopilot=row))
+
+
+async def autopilot_accounts(session: AsyncSession) -> list[uuid.UUID]:
+    """The accounts whose autopilot is on (a JSON flag, read by the scheduled run)."""
+    rows = await session.execute(select(Account.id).where(Account.autopilot["enabled"].astext == "true"))
+    return [r[0] for r in rows.all()]

@@ -37,7 +37,8 @@ test("a returning visitor sees the app and the last data at once, even while the
   await page.getByTestId("nav-outreach").click();
   await page.getByTestId("tab-campaigns").click();
   await expect(page).toHaveURL(/\/app\/campaigns/);
-  await expect(page.getByRole("heading", { name: "Campaigns", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Campagnes", exact: true })).toBeVisible(); // zone, individuelle, séquences: one page
+  await expect(page.getByTestId("hub-tab-campaigns")).toHaveAttribute("aria-selected", "true");
 });
 
 test("signing out leaves nothing of the organisation in the browser", async ({ page }) => {
@@ -74,14 +75,17 @@ test("complete journey: discovery → review → draft → dry-run dispatch → 
   await register(page);
 
   // 1. A new organisation sees honest empty states, not invented figures.
-  await expect(page.getByTestId("kpi-avg_score-value")).toHaveText("—");
+  await expect(page.getByTestId("funnel-score")).toContainText("rien de scoré"); // the average score: unknown, not 0
   await expect(page.getByTestId("kpi-prospects-value")).toHaveText("0");
   await expect(page.getByTestId("chart-empty")).toBeVisible();
-  await expect(page.getByTestId("limits-mode")).toHaveText("DRY-RUN");
+  await expect(page.getByTestId("limits-mode")).toHaveText("SIMULATION");
 
-  // 2. Discovery from the fictional fixture directory (nothing leaves the process).
+  // 2. Discovery from the fictional fixture directory (nothing leaves the process). The app no longer offers it: the test asks
+  //    the API directly, as an operator script would.
   await page.goto("/app/prospects");
-  await page.getByTestId("empty-run-discovery").click();
+  await expect(page.getByTestId("empty-run-discovery")).toHaveCount(0);
+  await apiPost(page, "/prospects/discovery/run", { source: "fixture_directory" });
+  await page.reload();
   await expect(page.getByTestId("prospects-table")).toBeVisible();
   await page.getByRole("link", { name: /La Table d'Alice/ }).first().click();
 
@@ -109,7 +113,7 @@ test("complete journey: discovery → review → draft → dry-run dispatch → 
   // 5. Dispatch is a dry run: the message is recorded, nothing is delivered.
   await page.getByTestId("dispatch-draft").click();
   await page.goto("/app/sending");
-  await expect(page.getByTestId("status-panel")).toContainText("Dry-run");
+  await expect(page.getByTestId("status-panel")).toContainText("Simulation");
   await page.getByTestId("message-row").first().click();
   await expect(page.getByTestId("message-detail")).toContainText("dry run: true");
   await expect(page.getByTestId("message-detail")).toContainText("list unsubscribe: true");
@@ -131,6 +135,7 @@ test("complete journey: discovery → review → draft → dry-run dispatch → 
 test("real sending stays closed by default: test-send and import refuse, and say why", async ({ page }) => {
   await register(page);
   await page.goto("/app/sending");
+  await page.getByTestId("page-details").locator("summary").click(); // the tests live in « Tests et outils », folded
   await page.getByTestId("smtp-test-to").fill("founder@plantiers.com");
   await page.getByTestId("smtp-test-send").click();
   // 501 live_not_available, or 409 when this server has no sender identity: either way nothing was sent.
@@ -142,7 +147,7 @@ test("real sending stays closed by default: test-send and import refuse, and say
 test("the pause switch on the dashboard stops sending and is reversible", async ({ page }) => {
   await register(page);
   await page.getByTestId("limits-toggle-pause").click();
-  await expect(page.getByTestId("limits-mode")).toHaveText("PAUSED");
+  await expect(page.getByTestId("limits-mode")).toHaveText("EN PAUSE");
   const token = await page.evaluate(() => localStorage.getItem("outreachos_token"));
   const refused = await page.request.post(`${API}/api/messages/email`, {
     headers: { authorization: `Bearer ${token}` },
@@ -150,7 +155,7 @@ test("the pause switch on the dashboard stops sending and is reversible", async 
   });
   expect(refused.status()).toBe(423); // the legacy single send obeys the same pause
   await page.getByTestId("limits-toggle-pause").click();
-  await expect(page.getByTestId("limits-mode")).toHaveText("DRY-RUN");
+  await expect(page.getByTestId("limits-mode")).toHaveText("SIMULATION");
 });
 
 test("a visitor without a session is sent to the login page", async ({ page }) => {
@@ -250,40 +255,18 @@ test("the map shows real places from the search, marks what is published and nev
   await expect(page.getByTestId("map-import-off")).toContainText("FEATURE_PROSPECT_IMPORT"); // import stays closed without its flag
 });
 
-test("sources: discover from the world demo, see explained signals, page, add to the review queue; live sources say why they are off", async ({ page }) => {
+test("sources: only real sources are offered, never the demo directory, and live sources say why they are off", async ({ page }) => {
   await register(page);
   await page.getByTestId("nav-prospecting").click();
   await page.getByTestId("tab-sources").click();
   await expect(page.getByTestId("sources-page")).toBeVisible();
+  // The test server enables FEATURE_DEMO_DATA, yet the fictional directory is not offered: only real providers are listed.
+  await expect(page.getByText("local demo")).toHaveCount(0);
+  await expect(page.getByTestId("source-world_fixture")).toHaveCount(0);
   // The server runs with the flags off: live providers are shown but disabled, with the reason.
   await expect(page.getByTestId("source-openstreetmap-off")).toContainText("FEATURE_EXTERNAL_SOURCES");
   await expect(page.getByTestId("source-registry_fr-off")).toContainText("FEATURE_EXTERNAL_SOURCES");
-
-  await page.getByTestId("source-limit").fill("30");
-  await page.getByTestId("source-discover").click();
-  await expect(page.getByTestId("source-summary")).toContainText("places");
-  await expect(page.getByTestId("source-summary")).toContainText("Fictional data");
-  const rows = page.locator('[data-testid^="place-wf-"]');
-  await expect(rows.first()).toBeVisible();
-  await expect(rows.first()).toContainText("unknown"); // signals are explained and "unknown" stays unknown
-  const firstPage = await rows.count();
-  expect(firstPage).toBeGreaterThan(0);
-
-  if (await page.getByTestId("source-next").isEnabled()) {
-    await page.getByTestId("source-next").click();
-    await expect(page.getByTestId("source-range")).toContainText("26");
-    await page.getByTestId("source-prev").click();
-  }
-
-  await rows.first().getByRole("checkbox").check();
-  await rows.nth(1).getByRole("checkbox").check();
-  await expect(page.getByTestId("source-add")).toContainText("Add 2 to prospects");
-  await expect(page.getByTestId("source-add-run")).toBeDisabled(); // not before the attestation
-  await page.getByTestId("source-attest").check();
-  await page.getByTestId("source-add-run").click();
-  await expect(page.getByTestId("source-add-done")).toContainText("2 added");
-  await page.goto("/app/prospects");
-  await expect(page.getByTestId("prospect-row")).toHaveCount(2); // the two places added from the demo
+  await expect(page.getByTestId("source-form")).toBeVisible();
 });
 
 test("the prospects map clusters nearby prospects, filters them, refreshes by polling and starts a campaign from the selection", async ({ page }) => {
@@ -322,6 +305,12 @@ test("the prospects map clusters nearby prospects, filters them, refreshes by po
   await page.getByTestId("filter-score").fill("50");
   await expect(page.getByTestId("filter-summary")).toHaveText("2 of 4 prospects match the filters."); // "not scored" never passes a threshold
   await page.getByTestId("filter-clear").click();
+  // No observed intent here: « Hot » finds none and says why, it never calls a merely qualified prospect hot
+  await expect(page.getByTestId("filter-priority-hot")).toHaveText("Hot — intention observée (0)");
+  await page.getByTestId("filter-priority-hot").click();
+  await expect(page.getByTestId("filter-summary")).toHaveText("0 of 4 prospects match the filters.");
+  await expect(page.getByTestId("mine-none")).toHaveText("Aucun Hot Lead : aucune intention observée et sourcée parmi ces prospects qualifiés.");
+  await page.getByTestId("filter-priority-all").click();
 
   await page.locator(".map-cluster").dispatchEvent("click");
   await expect(page.getByTestId("map-mine-list")).toContainText("Cluster · 3 qualified prospects");
@@ -338,8 +327,8 @@ test("the prospects map clusters nearby prospects, filters them, refreshes by po
 
 test("a reviewer dismisses a wrong signal: it reads as unknown, the score is recomputed and the decision is reversible", async ({ page }) => {
   await register(page);
+  await apiPost(page, "/prospects/discovery/run", { source: "fixture_directory" });
   await page.goto("/app/prospects");
-  await page.getByTestId("empty-run-discovery").click();
   await page.getByRole("link", { name: /Le Petit Bouchon/ }).first().click();
   const before = await page.getByTestId("score-badge").first().innerText();
   await page.getByTestId("dismiss-no_website").click();
@@ -407,6 +396,10 @@ test("the last finished search comes back from the database after a reload, with
   await page.goto("/app/map");
   await expect(page.getByTestId("map-job")).toContainText("1 place saved from OpenStreetMap in 0.5 s");
   await expect(page.getByTestId("map-summary")).toContainText("1 place");
+  // one panel, in four steps, and what was left out is said with its reason
+  for (const step of ["map-step-zone", "map-step-search", "map-step-results", "map-step-campaign"]) await expect(page.getByTestId(step)).toBeVisible();
+  await expect(page.getByTestId("map-breakdown")).toContainText("1 lieu trouvé");
+  await expect(page.getByTestId("map-breakdown")).toContainText("1 exclu : téléphone ou e-mail non publié");
   await expect(page.getByTestId("map-cat-bakeries")).toHaveAttribute("aria-pressed", "true");
   await page.reload();
   await expect(page.getByTestId("map-job")).toContainText("1 place saved");
@@ -447,17 +440,21 @@ test("the sidebar folds and remembers it; the map has one real basemap and every
 
   await page.getByTestId("map-search").click();
   await expect(page.getByTestId("map-results")).toBeVisible();
-  // minimise the search card to a pill: the search stays one click away
+  // ONE panel holds the zone, the search, the results and the way to the campaign: no second drawer, no second overlay
+  await expect(page.getByRole("complementary", { name: "Prospection" })).toHaveCount(1);
+  await expect(page.getByTestId("map-panel-toggle")).toHaveCount(0);
+  await expect(page.getByTestId("map-panel-close")).toHaveCount(0);
+  await expect(page.getByTestId("map-zone")).toContainText("Périmètre recherché");
+  await expect(page.getByTestId("map-to-campaign")).toHaveAttribute("href", /\/app\/journey\?south=/);
+  // minimise the panel to a pill: the search stays one click away
   await page.getByTestId("map-search-minimise").click();
   await expect(page.getByTestId("map-search-card")).toHaveCount(0);
   await expect(page.getByTestId("map-search-pill")).toBeVisible();
+  await expect(page.getByTestId("map-pill-status")).toBeVisible(); // the status stays in the pill, not in a second overlay
+  await expect(page.getByTestId("map-job")).toHaveCount(0);
   await page.getByTestId("map-search-expand").click();
   await expect(page.getByTestId("map-search-card")).toBeVisible();
-  // close the results panel, then bring it back
-  await page.getByTestId("map-panel-close").click();
-  await expect(page.getByTestId("map-panel-toggle")).toHaveAttribute("aria-expanded", "false");
-  await page.getByTestId("map-panel-toggle").click();
-  await expect(page.getByTestId("map-panel-toggle")).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByTestId("map-results")).toBeVisible(); // the results come back with the panel, not separately
   // the whole map: every panel hidden with the button and with the H key
   await page.getByTestId("map-hide-panels").click();
   await expect(page.getByTestId("map-search-card")).toHaveCount(0);
@@ -486,13 +483,15 @@ test("the import form of a map selection can be minimised and closed, so the who
   await page.getByTestId("map-search").click();
   await showAllFound(page);
   await page.getByTestId("map-select-all").click();
-  await expect(page.getByTestId("map-import")).toContainText("Import 1 selected place");
-  await expect(page.getByTestId("map-attest")).toBeVisible();
+  await expect(page.getByTestId("map-import")).toContainText("1 établissement sélectionné");
+  await expect(page.getByTestId("map-attest")).toBeVisible(); // asked once on this browser
+  await expect(page.getByTestId("map-import-run")).toBeDisabled(); // nothing is added before the attestation
+  await expect(page.getByTestId("map-check-sites")).toBeVisible();
   await page.getByTestId("import-minimise").click();
-  await expect(page.getByTestId("map-attest")).toHaveCount(0); // minimised: only its title bar remains
-  await expect(page.getByTestId("map-import")).toBeVisible();
+  await expect(page.getByTestId("map-check-sites")).toHaveCount(0); // minimised: the details are folded, the one button stays
+  await expect(page.getByTestId("map-import-run")).toBeVisible();
   await page.getByTestId("import-minimise").click();
-  await expect(page.getByTestId("map-attest")).toBeVisible();
+  await expect(page.getByTestId("map-check-sites")).toBeVisible();
   await page.getByTestId("import-close").click(); // closing clears the selection
   await expect(page.getByTestId("map-import")).toHaveCount(0);
 });
@@ -552,6 +551,7 @@ test("the review queue is split into heat lanes counted by the server, hottest f
   await expect(page.getByTestId("queue-live")).toContainText("Live · updated");
   await expect(page.getByTestId("queue-known")).toContainText("Known:");
   // the first card is the hottest one
+  const hottest = await page.getByTestId("queue-name").innerText();
   const firstTier = await page.getByTestId("queue-card").getByTestId("heat-badge").getAttribute("data-tier");
   const order = ["hot", "warm", "cold"];
   for (const lane of order.slice(0, order.indexOf(firstTier))) expect(await n(lane)).toBe(0); // nothing hotter is waiting
@@ -562,6 +562,9 @@ test("the review queue is split into heat lanes counted by the server, hottest f
     await expect(page.getByTestId("queue-card").getByTestId("heat-badge")).toHaveAttribute("data-tier", lane);
   }
   await page.getByTestId("queue-lane-all").click();
+  // back to the whole queue: the card is the hottest prospect again. Waiting for it also keeps the next step from reading the
+  // "up next" list one render early (the card re-pins just after the lane changes).
+  await expect(page.getByTestId("queue-name")).toHaveText(hottest);
   if (all > 1) {
     await expect(page.getByTestId("queue-next")).toBeVisible();
     const next = page.getByTestId("queue-next-row").first();
@@ -575,7 +578,7 @@ test("campaign suggestions come from the real data, update on their own, and cre
   await page.clock.install();
   await register(page);
   await page.goto("/app/campaigns");
-  await expect(page.getByTestId("suggestions-empty")).toContainText("No suggestion yet"); // nothing invented for an empty organisation
+  await expect(page.getByTestId("suggestions-empty")).toContainText("Aucune suggestion pour l'instant"); // nothing invented for an empty organisation
 
   await apiPost(page, "/leads", { full_name: "Alice New", email: "alice@new.example", company: "Alice SAS" });
   await apiPost(page, "/leads", { full_name: "Bob New", phone: "+33 4 78 00 00 03", company: "Bob SAS" });
@@ -583,20 +586,26 @@ test("campaign suggestions come from the real data, update on their own, and cre
   const card = page.getByTestId("suggestion").first();
   await expect(card).toContainText("New leads still waiting for a first message");
   await expect(card.getByTestId("suggestion-new")).toBeVisible();
-  await expect(card.getByTestId("suggestion-ready")).toHaveText("2 of 2 can join a campaign today");
-  await expect(page.getByTestId("suggestions-basis")).toContainText("Computed from 0 prospects and 2 CRM leads");
+  await expect(card.getByTestId("suggestion-ready")).toHaveText("2 sur 2 peuvent rejoindre une campagne aujourd'hui");
+  await expect(page.getByTestId("suggestions-basis")).toContainText("Calculé à partir de 0 prospects et 2 leads du CRM");
 
   await apiPost(page, "/leads", { full_name: "Cleo New", email: "cleo@new.example", company: "Cleo SAS" });
   // Playwright's clock can apply a jump late, which leaves the next poll further away than one more jump (seen in ~10% of
   // runs): retry the jump until the page has polled, instead of assuming one jump equals one poll.
   await expect(async () => {
     await page.clock.fastForward(16000);
-    await expect(page.getByTestId("suggestion").first().getByTestId("suggestion-ready")).toHaveText("3 of 3 can join a campaign today", { timeout: 3000 });
+    await expect(page.getByTestId("suggestion").first().getByTestId("suggestion-ready")).toHaveText("3 sur 3 peuvent rejoindre une campagne aujourd'hui", { timeout: 3000 });
   }).toPass({ timeout: 30000 });
 
   await page.getByTestId("suggestion-create").first().click();
-  await expect(page.locator('[data-testid^="campaign-card-"]').first()).toContainText("New leads still waiting for a first message");
-  await expect(page.locator('[data-testid^="campaign-card-"]').first()).toContainText("draft");
+  // The draft opens at once, to write its first step: nothing is sent.
+  await expect(page).toHaveURL(/\/app\/campaigns\?campaign=/);
+  await expect(page.getByTestId("builder-note")).toContainText("3 destinataires assignés");
+  await page.getByTestId("close-campaign-builder").click();
+  const draft = page.getByTestId("campaigns-group-draft").locator('[data-testid^="campaign-card-"]').first();
+  await expect(draft).toContainText("New leads still waiting for a first message");
+  await expect(draft.getByTestId("campaign-status")).toHaveText("Brouillon");
+  await expect(draft.locator('[data-testid^="next-"]')).toHaveAttribute("data-action", "edit");
 });
 
 test("suggestions for discovery prospects say why no campaign can start yet instead of offering a dead button", async ({ page }) => {
@@ -607,7 +616,7 @@ test("suggestions for discovery prospects say why no campaign can start yet inst
   await expect(first).toBeVisible();
   await expect(first.getByTestId("suggestion-ready")).toContainText("dry-run");
   await expect(first.getByTestId("suggestion-create")).toBeDisabled();
-  await expect(first.getByTestId("suggestion-create")).toContainText("NOT READY");
+  await expect(first.getByTestId("suggestion-create")).toContainText("PAS ENCORE PRÊT");
 });
 
 test("settings lists every integration from the server, tests the database live and never fakes a configured key", async ({ page }) => {

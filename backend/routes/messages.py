@@ -19,12 +19,17 @@ from repositories import (
     audit_repo,
     campaign_repo,
     consent_repo,
+    draft_job_repo,
     lead_repo,
     outreach_repo,
+    prospect_repo,
 )
 from routes._refusal import block_detail, refusal
 from services import legacy_email, send_gate
 from services.mail_provider import send_email, send_whatsapp
+from services.outreach_os import ai_draft
+from services.outreach_os import heat as heat_rules
+from services.outreach_os.types import SignalState
 from services.templating import render as _render
 
 router = APIRouter(prefix="/messages", tags=["messages"])
@@ -97,8 +102,53 @@ async def _audit_batch_block(session: AsyncSession, user: dict, blocked: send_ga
 class BatchSendIn(BaseModel):
     lead_ids: List[str]
     subject: Optional[str] = None
-    body: str
+    body: str = ""
     campaign_id: Optional[str] = None
+    # Targeted: each lead receives the offer of its case (site unreachable, found, none identified, unknown), in the
+    # organisation's own words; subject and body are then ignored.
+    targeted: bool = False
+
+
+class TargetedPreviewIn(BaseModel):
+    lead_ids: List[str]
+
+
+async def _targeted(session: AsyncSession, account_id: uuid.UUID, leads: list[dict]) -> dict[str, dict]:
+    """lead id -> {state, kind, subject, body} (kind None when no offer is complete). The state is read as the drafts
+    read it: the website kept on the lead, and the signals detected now (a reviewer's dismissal applied)."""
+    raw = await draft_job_repo.offer_of(session, account_id)
+    out: dict[str, dict] = {}
+    for lead in leads:
+        results = await prospect_repo.effective_results(session, uuid.UUID(lead["id"]))
+        detected = {r.key: r.evidence for r in results if r.state is SignalState.DETECTED}
+        website = lead.get("website") if heat_rules.is_known(lead.get("website")) else None
+        state = ai_draft.site_state(website=website, detected=detected)
+        tpl = ai_draft.targeted_template(raw, state)
+        out[lead["id"]] = {"state": state, **(tpl or {"kind": None, "subject": None, "body": None})}
+    return out
+
+
+@router.post("/email/targeted-preview")
+async def targeted_preview(
+    payload: TargetedPreviewIn,
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Which offer each selected lead would receive in a targeted batch, and how many per offer. Sends nothing."""
+    account_id = uuid.UUID(user["org_id"])
+    leads = await lead_repo.get_leads_by_ids(session, account_id, payload.lead_ids)
+    plan = await _targeted(session, account_id, leads)
+    counts: dict[str, int] = {}
+    for item in plan.values():
+        key = item["kind"] or "none"
+        counts[key] = counts.get(key, 0) + 1
+    return {
+        "configured": any(item["kind"] for item in plan.values()),
+        "counts": counts,
+        "labels": {**ai_draft.KIND_LABELS, ai_draft.SINGLE: "Offre unique", "none": "Aucune offre complète"},
+        "items": [{"lead_id": lid, "state": item["state"], "kind": item["kind"]} for lid, item in plan.items()],
+        "not_sendable": len(payload.lead_ids) - len(leads),
+    }
 
 
 @router.get("", response_model=List[dict])
@@ -156,6 +206,7 @@ async def send_email_route(
         subject=payload.subject,
         body=prepared.body,
         status=result["status"],
+        provider=result.get("provider") or "none",
         provider_message_id=result.get("provider_id"),
         error=result.get("error"),
     )
@@ -237,12 +288,18 @@ async def batch_send_email(
     user: dict = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Send personalized emails to multiple leads in one call."""
-    if not payload.subject:
-        raise HTTPException(status_code=400, detail="Subject is required for email batch")
+    """Send personalized emails to multiple leads in one call: one recipient per message, every gate on each."""
+    if not payload.targeted and (not payload.subject or not payload.body):
+        raise HTTPException(status_code=400, detail="Subject and body are required for an email batch")
 
     account_id = uuid.UUID(user["org_id"])
     leads = await lead_repo.get_leads_by_ids(session, account_id, payload.lead_ids)
+    plan = await _targeted(session, account_id, leads) if payload.targeted else {}
+    if payload.targeted and not any(item["kind"] for item in plan.values()):
+        raise HTTPException(
+            status_code=409,
+            detail="No complete offer: describe your offers in Outreach > Offres before a targeted batch",
+        )
 
     results = []
     sent = failed = skipped = not_attempted = 0
@@ -264,13 +321,21 @@ async def batch_send_email(
                 results.append({"lead_id": rest["id"], "status": "blocked", "reason": blocked.code})
             await _audit_batch_block(session, user, blocked, "email")
             break
-        subj = _render(payload.subject, lead)
+        subject_tpl, body_tpl = payload.subject or "", payload.body
+        if payload.targeted:
+            item = plan.get(lead["id"]) or {}
+            if not item.get("kind"):
+                skipped += 1
+                results.append({"lead_id": lead["id"], "status": "skipped", "reason": "no_offer"})
+                continue
+            subject_tpl, body_tpl = item["subject"], item["body"]
+        subj = _render(subject_tpl, lead)
         try:
             prepared = await legacy_email.prepare(
                 session,
                 account_id,
                 to_email=lead["email"],
-                body=_render(payload.body, lead),
+                body=_render(body_tpl, lead),
                 lead_id=lead["id"],
                 source=lead.get("source"),
             )
@@ -291,6 +356,7 @@ async def batch_send_email(
             subject=subj,
             body=body,
             status=result["status"],
+            provider=result.get("provider") or "none",
             provider_message_id=result.get("provider_id"),
             error=result.get("error"),
         )
@@ -307,7 +373,10 @@ async def batch_send_email(
             sent += 1
         else:
             failed += 1
-        results.append({"lead_id": lead["id"], "email": lead["email"], "status": result["status"]})
+        entry = {"lead_id": lead["id"], "email": lead["email"], "status": result["status"]}
+        if payload.targeted:
+            entry["offer"] = plan[lead["id"]]["kind"]
+        results.append(entry)
 
     if payload.campaign_id:
         await campaign_repo.increment_counters(session, account_id, payload.campaign_id, sent=sent)
@@ -337,6 +406,8 @@ async def batch_send_whatsapp(
     user: dict = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
+    if payload.targeted or not payload.body:  # a targeted batch is e-mail only; WhatsApp needs the written message
+        raise HTTPException(status_code=400, detail="A WhatsApp batch needs its message (targeted batches are e-mail)")
     account_id = uuid.UUID(user["org_id"])
     leads = await lead_repo.get_leads_by_ids(session, account_id, payload.lead_ids)
 

@@ -18,8 +18,8 @@ export default function LegalLayout({ title, updated, children, testId }) {
         </Link>
       </header>
       <main className="flex-1 px-6 md:px-16 py-10 max-w-3xl w-full mx-auto" data-testid={testId}>
-        <div className="mono-accent">// legal</div>
-        <h1 className="text-4xl font-black tracking-tighter mt-1">{title}</h1>
+        <div className="eyebrow">legal</div>
+        <h1 className="mt-3 text-4xl font-bold tracking-tight leading-[1.15] mt-1">{title}</h1>
         <p className="text-sm text-soft mt-1">Dernière mise à jour : {updated}</p>
         {REVIEW_PENDING && (
           <p role="note" className="mt-4 text-sm text-amber-300 bg-amber-500/10 border border-amber-400/40 rounded-md p-3" data-testid="review-pending">

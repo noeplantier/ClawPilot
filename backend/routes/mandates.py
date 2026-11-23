@@ -1,547 +1,197 @@
-"""Bounded prospecting mandates.
+"""The bounded automatic mode "Automatisation max" (docs/automation-max.md).
 
-A mandate is the one authorisation an owner/admin gives once. Creating it is a draft and starts nothing: activation is
-a separate, explicit decision. This route only records and controls that decision — discovery, drafts and sending are
-other stages and are deliberately not wired here.
+OFF by default: the server flag FEATURE_AUTOMATION_MAX is off unless an operator turns it on, and nothing acts
+without an ACTIVE mandate. Creating, pausing, revoking: owner/admin. Activating (the explicit authorisation) and
+revalidating: owner. Revoking works whatever the flag says. Nothing here sends a message by itself.
 """
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, ConfigDict, Field, model_validator
-from sqlalchemy import desc, func, select
-from sqlalchemy.exc import IntegrityError
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.models.workspace import AuditLog
-from db.models.outbound import OutboundMessage
-from db.models.prospect import DraftJob, DRAFT_JOB_STATUSES
-from db.models.prospecting import Mandate, ProspectingBatch, ProspectingBatchItem
 from db.session import get_db_session
 from deps import get_current_user, require_roles
-from services import mandate_send
+from models import MandateActivateIn, MandateCreateIn, MandateOut
+from repositories import campaign_repo, mandate_repo
+from services import imap_svc, inbox_health, mandate
 
 router = APIRouter(prefix="/mandates", tags=["mandates"])
 decider = require_roles("owner", "admin")
+owner_only = require_roles("owner")
 
 
-class ZoneIn(BaseModel):
-    label: str = Field(min_length=1, max_length=200)
-    bbox: list[float] = Field(min_length=4, max_length=4)
-
-    @model_validator(mode="after")
-    def bounded(self):
-        south, west, north, east = self.bbox
-        if not (-90 <= south < north <= 90 and -180 <= west < east <= 180):
-            raise ValueError("Invalid bounding box")
-        if north - south > 0.12 or east - west > 0.12:
-            raise ValueError("Area exceeds the public Overpass search limit")
-        return self
+def _account(user: dict) -> uuid.UUID:
+    return uuid.UUID(user["org_id"])
 
 
-class WindowIn(BaseModel):
-    start_hour: int = Field(ge=0, le=23)  # UTC
-    end_hour: int = Field(ge=1, le=24)
-
-    @model_validator(mode="after")
-    def ordered(self):
-        if self.end_hour <= self.start_hour:
-            raise ValueError("end_hour must be after start_hour")
-        return self
+def _uid(user: dict) -> uuid.UUID:
+    return uuid.UUID(user["id"])
 
 
-class MandateIn(BaseModel):
-    zone: ZoneIn
-    sector: str = Field(min_length=1, max_length=120)
-    offer: str = Field(min_length=1, max_length=4000)
-    qualification_criteria: list[str] = Field(default_factory=list, max_length=20)
-    daily_volume: int = Field(ge=1, le=200)
-    total_volume: int = Field(ge=1, le=100_000)
-    ai_budget: float = Field(ge=0, le=10_000)
-    time_windows: list[WindowIn] = Field(min_length=1, max_length=7)
-    cadence_minutes: int = Field(ge=60, le=10_080)  # hourly at most, weekly at least
-    expires_at: datetime
-    stop_rules: list[str] = Field(default_factory=list, max_length=20)
-
-    @model_validator(mode="after")
-    def coherent(self):
-        if self.expires_at.tzinfo is None:
-            raise ValueError("expires_at must include a timezone")
-        if self.expires_at <= datetime.now(timezone.utc):
-            raise ValueError("expires_at must be in the future")
-        if self.daily_volume > self.total_volume:
-            raise ValueError("daily_volume cannot exceed total_volume")
-        return self
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
 
 
-class MandateOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: str
-    status: str
-    zone: dict
-    sector: str
-    offer: str
-    qualification_criteria: list
-    daily_volume: int
-    total_volume: int
-    ai_budget: float
-    time_windows: list
-    cadence_minutes: int
-    expires_at: datetime
-    stop_rules: list
-    approved_at: Optional[datetime] = None
-    created_at: datetime
-    updated_at: datetime
+def _refused(exc: mandate.MandateRefused, status: int = 409) -> HTTPException:
+    return HTTPException(status_code=status, detail={"code": exc.code, "message": exc.label})
 
 
-class BatchOut(BaseModel):
-    id: str
-    status: str
-    counters: dict
-    exclusion_reasons: dict
-    error_summary: Optional[str] = None
-    checkpoint: dict
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
-    created_at: datetime
-
-
-class BatchItemOut(BaseModel):
-    id: str
-    name: str
-    category: str
-    stage: str
-    exclusion_reason: Optional[str] = None
-    data: dict
-    created_at: datetime
-
-
-def _to_out(row: Mandate) -> MandateOut:
-    return MandateOut(
-        id=str(row.id),
-        status=row.status,
-        zone=row.zone,
-        sector=row.sector,
-        offer=row.offer,
-        qualification_criteria=row.qualification_criteria,
-        daily_volume=row.daily_volume,
-        total_volume=row.total_volume,
-        ai_budget=float(row.ai_budget),
-        time_windows=row.time_windows,
-        cadence_minutes=row.cadence_minutes,
-        expires_at=row.expires_at,
-        stop_rules=row.stop_rules,
-        approved_at=row.approved_at,
-        created_at=row.created_at,
-        updated_at=row.updated_at,
-    )
-
-
-async def _owned(session: AsyncSession, user: dict, mandate_id: str) -> Mandate:
+async def _get(session: AsyncSession, user: dict, mandate_id: str):  # type: ignore[no-untyped-def]
     try:
-        identifier = uuid.UUID(mandate_id)
+        key = uuid.UUID(mandate_id)
     except ValueError:
         raise HTTPException(status_code=404, detail="Mandate not found")
-    row = await session.scalar(
-        select(Mandate).where(
-            Mandate.id == identifier,
-            Mandate.account_id == uuid.UUID(user["org_id"]),
-        )
-    )
-    if row is None:
+    found = await mandate_repo.get(session, _account(user), key)
+    if found is None:
         raise HTTPException(status_code=404, detail="Mandate not found")
-    return row
+    return found
 
 
-def _transition(row: Mandate, allowed: tuple[str, ...], target: str) -> None:
-    if row.status not in allowed:
-        raise HTTPException(status_code=409, detail=f"Mandate is {row.status}: cannot move to {target}")
-    row.status = target
+@router.get("", response_model=MandateOut)
+async def overview(user: dict = Depends(get_current_user), session: AsyncSession = Depends(get_db_session)):
+    """Is the mode available on this server, what a mandate must say, and the mandates of the organisation."""
+    return MandateOut(data=await mandate.overview(session, _account(user)))
 
 
-@router.post("", response_model=MandateOut, status_code=201)
-async def create_mandate(
-    payload: MandateIn,
-    user: dict = Depends(decider),
-    session: AsyncSession = Depends(get_db_session),
+@router.post("", response_model=MandateOut)
+async def create(
+    payload: MandateCreateIn, user: dict = Depends(decider), session: AsyncSession = Depends(get_db_session)
 ):
-    """Record a bounded mandate as a draft. Nothing is discovered, drafted or sent by this call."""
-    row = Mandate(
-        account_id=uuid.UUID(user["org_id"]),
-        created_by_user_id=uuid.UUID(user["id"]),
-        status="draft",
-        zone=payload.zone.model_dump(),
-        sector=payload.sector,
-        offer=payload.offer,
-        qualification_criteria=payload.qualification_criteria,
-        daily_volume=payload.daily_volume,
-        total_volume=payload.total_volume,
-        ai_budget=payload.ai_budget,
-        time_windows=[window.model_dump() for window in payload.time_windows],
-        cadence_minutes=payload.cadence_minutes,
-        expires_at=payload.expires_at,
-        stop_rules=payload.stop_rules,
-    )
-    session.add(row)
-    await session.commit()
-    await session.refresh(row)
-    return _to_out(row)
-
-
-@router.get("", response_model=list[MandateOut])
-async def list_mandates(
-    user: dict = Depends(get_current_user),
-    session: AsyncSession = Depends(get_db_session),
-):
-    rows = (
-        await session.execute(
-            select(Mandate)
-            .where(Mandate.account_id == uuid.UUID(user["org_id"]))
-            .order_by(Mandate.created_at.desc())
-            .limit(50)
+    """Write a mandate down (a draft: nothing automatic happens). Unbounded or incoherent limits are refused."""
+    campaign = await campaign_repo.get_campaign(session, _account(user), payload.campaign_id)
+    if campaign is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "campaign_not_found",
+                "message": "Campagne introuvable dans votre compte.",
+                "retry_at": None,
+            },
         )
-    ).scalars().all()
-    return [_to_out(row) for row in rows]
+    if not isinstance(campaign.zone, dict):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "not_a_zone_campaign",
+                "message": "Un mandat repose sur une campagne par zone ; celle-ci n'a pas de zone (campagne "
+                "individuelle ou séquence). Choisissez une campagne par zone.",
+                "retry_at": None,
+            },
+        )
+    try:
+        created = await mandate.create(
+            session,
+            _account(user),
+            _uid(user),
+            campaign,
+            name=payload.name.strip(),
+            daily_cap=payload.daily_cap,
+            total_cap=payload.total_cap,
+            days=payload.days,
+            window=(payload.window_start_hour, payload.window_end_hour),
+            min_delay_seconds=payload.min_delay_seconds,
+            search_every_hours=payload.search_every_hours,
+            ai_budget=payload.ai_budget,
+            stop_rules=payload.stop_rules.model_dump(),
+            now=_now(),
+        )
+    except mandate.MandateRefused as exc:
+        raise _refused(exc)
+    return MandateOut(data=mandate.view(created))
 
 
 @router.get("/{mandate_id}", response_model=MandateOut)
-async def get_mandate(
-    mandate_id: str,
-    user: dict = Depends(get_current_user),
-    session: AsyncSession = Depends(get_db_session),
+async def detail(
+    mandate_id: str, user: dict = Depends(get_current_user), session: AsyncSession = Depends(get_db_session)
 ):
-    return _to_out(await _owned(session, user, mandate_id))
+    found = await _get(session, user, mandate_id)
+    return MandateOut(
+        data={
+            **mandate.view(found),
+            "journal": [
+                {"at": e.created_at, "action": e.action, "actor": e.actor_type, "detail": e.detail}
+                for e in await mandate_repo.events(session, found.id, 50)
+            ],
+        }
+    )
+
+
+async def _replies_read() -> bool:
+    return await asyncio.to_thread(inbox_health.reading_now, imap_svc.is_configured())
 
 
 @router.post("/{mandate_id}/activate", response_model=MandateOut)
-async def activate_mandate(
+async def activate(
     mandate_id: str,
-    user: dict = Depends(decider),
+    payload: MandateActivateIn,
+    user: dict = Depends(owner_only),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Approve the mandate. This authorises later stages within its limits; it sends nothing itself."""
-    row = await _owned(session, user, mandate_id)
-    _transition(row, ("draft",), "active")
-    if row.expires_at <= datetime.now(timezone.utc):
-        row.status = "expired"
-        await session.commit()
-        raise HTTPException(status_code=409, detail="Mandate has expired: it was not activated")
-    row.approved_at = datetime.now(timezone.utc)
-    row.approved_by_user_id = uuid.UUID(user["id"])
+    """THE explicit authorisation: the four acknowledgements, everything configured, the replies being read, the mode
+    available on this server. The mandate is pinned to what is true now; the run acts only inside it."""
+    found = await _get(session, user, mandate_id)
+    scheduler: dict[str, Any] = {}
     try:
+        done = await mandate.activate(
+            session,
+            found,
+            _uid(user),
+            acknowledgements=payload.acknowledgements,
+            now=_now(),
+            reply_collection_ok=await _replies_read(),
+            scheduler=scheduler,
+        )
+    except mandate.MandateRefused as exc:
+        # a refusal is recorded BEFORE the HTTP error: get_db_session rolls back on an exception
+        await mandate_repo.log(
+            session, found, "activation_refused", actor_user_id=_uid(user), detail={"code": exc.code}
+        )
         await session.commit()
-    except IntegrityError:
-        await session.rollback()
-        raise HTTPException(status_code=409, detail="Another mandate is already active for this account")
-    await session.refresh(row)
-    return _to_out(row)
+        raise _refused(exc, 403 if exc.code == "feature_disabled" else 409)
+    return MandateOut(data=mandate.view(done))
 
 
-@router.post("/{mandate_id}/pause", response_model=MandateOut)
-async def pause_mandate(
-    mandate_id: str,
-    user: dict = Depends(decider),
-    session: AsyncSession = Depends(get_db_session),
-):
-    row = await _owned(session, user, mandate_id)
-    _transition(row, ("active",), "paused")
-    await session.commit()
-    await session.refresh(row)
-    return _to_out(row)
-
-
-@router.post("/{mandate_id}/resume", response_model=MandateOut)
-async def resume_mandate(
-    mandate_id: str,
-    user: dict = Depends(decider),
-    session: AsyncSession = Depends(get_db_session),
-):
-    row = await _owned(session, user, mandate_id)
-    _transition(row, ("paused",), "active")
-    if row.expires_at <= datetime.now(timezone.utc):
-        row.status = "expired"
-        await session.commit()
-        raise HTTPException(status_code=409, detail="Mandate has expired: it was not resumed")
+@router.post("/{mandate_id}/suspend", response_model=MandateOut)
+async def suspend(mandate_id: str, user: dict = Depends(decider), session: AsyncSession = Depends(get_db_session)):
+    """The pause: nothing leaves, the plan stays; activate again to resume."""
+    found = await _get(session, user, mandate_id)
     try:
-        await session.commit()
-    except IntegrityError:
-        await session.rollback()
-        raise HTTPException(status_code=409, detail="Another mandate is already active for this account")
-    await session.refresh(row)
-    return _to_out(row)
+        return MandateOut(data=await mandate.suspend(session, found, _uid(user), now=_now()))
+    except mandate.MandateRefused as exc:
+        raise _refused(exc)
 
 
 @router.post("/{mandate_id}/revoke", response_model=MandateOut)
-async def revoke_mandate(
-    mandate_id: str,
-    user: dict = Depends(decider),
-    session: AsyncSession = Depends(get_db_session),
-):
-    """Immediate stop: no later stage may use a revoked mandate."""
-    row = await _owned(session, user, mandate_id)
-    if row.status != "revoked":
-        row.status = "revoked"
-        await session.commit()
-        await session.refresh(row)
-    return _to_out(row)
-
-
-class LiveCounts(BaseModel):
-    leads_discovered: int = 0
-    duplicates_excluded: int = 0
-    leads_qualified: int = 0
-    hot_leads: int = 0
-    errors: int = 0
-    discovery_in_progress: bool = False
-
-
-class LiveEvent(BaseModel):
-    id: str
-    action: str
-    at: datetime
-    detail: Optional[str] = None
-
-
-class LiveOut(BaseModel):
-    version: str
-    changed: bool = True
-    mandate_id: Optional[str] = None
-    status: Optional[str] = None
-    paused: bool = False
-    stopped: bool = False
-    latest_batch: Optional[dict] = None
-    counts: Optional[LiveCounts] = None
-    events: list[LiveEvent] = Field(default_factory=list)
-    streams: dict = Field(default_factory=dict)
-
-
-async def _mandate_hot_leads(session: AsyncSession, account_id, mandate_id) -> list:
-    return [
-        row for row in (
-            await session.execute(
-                select(ProspectingBatchItem.lead_id)
-                .join(ProspectingBatch, ProspectingBatchItem.batch_id == ProspectingBatch.id)
-                .where(
-                    ProspectingBatch.account_id == account_id,
-                    ProspectingBatch.config["mandate_id"].astext == str(mandate_id),
-                    ProspectingBatchItem.stage == "hot",
-                )
-            )
-        ).scalars().all()
-        if row is not None
-    ]
-
-
-async def _draft_stream(session: AsyncSession, account_id, hot_leads: list) -> dict:
-    """Real draft-job statuses for this mandate's Hot Leads; no fabricated zero for an unwired stream."""
-    counts = {status: 0 for status in DRAFT_JOB_STATUSES}
-    if hot_leads:
-        rows = (
-            await session.execute(
-                select(DraftJob.status, func.count(DraftJob.id))
-                .where(DraftJob.account_id == account_id, DraftJob.lead_id.in_(hot_leads))
-                .group_by(DraftJob.status)
-            )
-        ).all()
-        for status, total in rows:
-            if status in counts:
-                counts[status] = int(total)
-    return {"available": True, **counts, "total": sum(counts.values())}
-
-
-def _aggregate_batches(batches: list[ProspectingBatch]) -> dict:
-    """Sum only counters that the discovery engine really wrote; never manufacture a zero for an unwired stream."""
-    counts = {
-        "leads_discovered": 0,
-        "duplicates_excluded": 0,
-        "leads_qualified": 0,
-        "hot_leads": 0,
-        "errors": 0,
-        "discovery_in_progress": False,
-    }
-    for batch in batches:
-        counters = batch.counters or {}
-        reasons = batch.exclusion_reasons or {}
-        counts["leads_discovered"] += int(counters.get("entities", 0))
-        counts["duplicates_excluded"] += int(counters.get("duplicates_merged", 0)) + int(reasons.get("duplicate", 0))
-        counts["leads_qualified"] += int(counters.get("qualified_strict", 0))
-        counts["hot_leads"] += int(counters.get("hot", 0))
-        counts["errors"] += int(counters.get("failed", 0)) + (1 if batch.error_summary else 0)
-        counts["discovery_in_progress"] |= batch.status in ("queued", "discovering", "enriching", "qualifying")
-    return counts
-
-
-def _batch_out(row: ProspectingBatch) -> BatchOut:
-    return BatchOut(
-        id=str(row.id),
-        status=row.status,
-        counters=row.counters or {},
-        exclusion_reasons=row.exclusion_reasons or {},
-        error_summary=row.error_summary,
-        checkpoint=row.checkpoint or {},
-        started_at=row.started_at,
-        completed_at=row.completed_at,
-        created_at=row.created_at,
-    )
-
-
-@router.get("/{mandate_id}/batches", response_model=list[BatchOut])
-async def list_mandate_batches(
-    mandate_id: str,
-    user: dict = Depends(get_current_user),
-    session: AsyncSession = Depends(get_db_session),
-):
-    """Real discovery progress for this mandate. No batch exists until a bounded run actually happened."""
-    mandate = await _owned(session, user, mandate_id)
-    rows = (
-        await session.execute(
-            select(ProspectingBatch)
-            .where(
-                ProspectingBatch.account_id == mandate.account_id,
-                ProspectingBatch.config["mandate_id"].astext == str(mandate.id),
-            )
-            .order_by(desc(ProspectingBatch.created_at))
-            .limit(50)
-        )
-    ).scalars().all()
-    return [_batch_out(row) for row in rows]
-
-
-@router.get("/{mandate_id}/batches/{batch_id}/items", response_model=list[BatchItemOut])
-async def list_batch_items(
-    mandate_id: str,
-    batch_id: str,
-    user: dict = Depends(get_current_user),
-    session: AsyncSession = Depends(get_db_session),
-):
-    """Staged items with their source provenance. Another account's batch is indistinguishable from an unknown one."""
-    mandate = await _owned(session, user, mandate_id)
+async def revoke(mandate_id: str, user: dict = Depends(decider), session: AsyncSession = Depends(get_db_session)):
+    """Immediate and final, whatever the server flag says: planned messages are cancelled, approvals withdrawn."""
+    found = await _get(session, user, mandate_id)
     try:
-        identifier = uuid.UUID(batch_id)
-    except ValueError:
-        raise HTTPException(status_code=404, detail="Batch not found")
-    batch = await session.scalar(
-        select(ProspectingBatch).where(
-            ProspectingBatch.id == identifier,
-            ProspectingBatch.account_id == mandate.account_id,
-            ProspectingBatch.config["mandate_id"].astext == str(mandate.id),
-        )
-    )
-    if batch is None:
-        raise HTTPException(status_code=404, detail="Batch not found")
-    rows = (
-        await session.execute(
-            select(ProspectingBatchItem)
-            .where(ProspectingBatchItem.batch_id == batch.id, ProspectingBatchItem.account_id == mandate.account_id)
-            .order_by(ProspectingBatchItem.created_at)
-            .limit(200)
-        )
-    ).scalars().all()
-    return [
-        BatchItemOut(
-            id=str(row.id),
-            name=row.name,
-            category=row.category,
-            stage=row.stage,
-            exclusion_reason=row.exclusion_reason,
-            data=row.data or {},
-            created_at=row.created_at,
-        )
-        for row in rows
-    ]
+        return MandateOut(data=await mandate.revoke(session, found, _uid(user), now=_now()))
+    except mandate.MandateRefused as exc:
+        raise _refused(exc)
 
 
-@router.get("/{mandate_id}/live", response_model=LiveOut)
-async def mandate_live(
-    mandate_id: str,
-    since: Optional[str] = Query(None, description="ISO timestamp returned as `version` by the previous snapshot"),
-    user: dict = Depends(get_current_user),
-    session: AsyncSession = Depends(get_db_session),
+@router.post("/{mandate_id}/revalidate", response_model=MandateOut)
+async def revalidate(
+    mandate_id: str, user: dict = Depends(owner_only), session: AsyncSession = Depends(get_db_session)
 ):
-    """Incremental live snapshot for one mandate.
+    """After a substantial change: pin the mandate to what is true now (a person has looked), then activate again."""
+    found = await _get(session, user, mandate_id)
+    try:
+        return MandateOut(data=mandate.view(await mandate.revalidate(session, found, _uid(user), now=_now())))
+    except mandate.MandateRefused as exc:
+        raise _refused(exc)
 
-    `since` makes an unchanged poll nearly free: the server still checks ownership and the version, but does not
-    recompute counters or read events. The client keeps what it already has. No artificial delay, no global poll.
-    """
-    mandate = await _owned(session, user, mandate_id)
-    hot_leads = await _mandate_hot_leads(session, mandate.account_id, mandate.id)
-    scope = (
-        ProspectingBatch.account_id == mandate.account_id,
-        ProspectingBatch.config["mandate_id"].astext == str(mandate.id),
-    )
-    bounds = await session.execute(
-        select(func.max(ProspectingBatch.created_at), func.max(ProspectingBatch.updated_at)).where(*scope)
-    )
-    created_max, updated_max = bounds.one()
-    version = max(mandate.updated_at, created_max or mandate.updated_at, updated_max or mandate.updated_at)
-    if hot_leads:
-        draft_latest = await session.scalar(
-            select(func.max(DraftJob.updated_at)).where(
-                DraftJob.account_id == mandate.account_id, DraftJob.lead_id.in_(hot_leads)
-            )
-        )
-        send_latest = await session.scalar(
-            select(func.max(OutboundMessage.updated_at)).where(
-                OutboundMessage.account_id == mandate.account_id, OutboundMessage.lead_id.in_(hot_leads)
-            )
-        )
-        version = max(version, draft_latest or version, send_latest or version)
-    if since:
-        try:
-            previous = datetime.fromisoformat(since.replace("Z", "+00:00"))
-        except ValueError:
-            raise HTTPException(status_code=400, detail="since must be an ISO timestamp")
-        if previous.tzinfo is None:
-            previous = previous.replace(tzinfo=timezone.utc)
-        if previous >= version:
-            return LiveOut(version=version.isoformat(), changed=False, mandate_id=str(mandate.id))
 
-    batches = (
-        await session.execute(select(ProspectingBatch).where(*scope).order_by(desc(ProspectingBatch.created_at)).limit(100))
-    ).scalars().all()
-    events = (
-        await session.execute(
-            select(AuditLog)
-            .where(
-                AuditLog.account_id == mandate.account_id,
-                AuditLog.resource_type == "mandate",
-                AuditLog.resource_id == mandate.id,
-            )
-            .order_by(desc(AuditLog.created_at))
-            .limit(8)
-        )
-    ).scalars().all()
-    latest = batches[0] if batches else None
-    return LiveOut(
-        version=version.isoformat(),
-        changed=True,
-        mandate_id=str(mandate.id),
-        status=mandate.status,
-        paused=mandate.status == "paused",
-        stopped=mandate.status in ("revoked", "expired"),
-        latest_batch={
-            "id": str(latest.id),
-            "status": latest.status,
-            "created_at": latest.created_at.isoformat(),
-            "error_summary": latest.error_summary,
-        } if latest is not None else None,
-        counts=LiveCounts(**_aggregate_batches(batches)),
-        events=[
-            LiveEvent(
-                id=str(row.id),
-                action=row.action,
-                at=row.created_at,
-                detail=str((row.diff or {}).get("idempotency_key") or "")[:120] or None,
-            )
-            for row in events
-        ],
-        streams={
-            "drafts": await _draft_stream(session, mandate.account_id, hot_leads),
-            **await mandate_send.live_streams(session, mandate, datetime.now(timezone.utc)),
-        },
-    )
+@router.get("/{mandate_id}/report", response_model=MandateOut)
+async def report(
+    mandate_id: str, user: dict = Depends(get_current_user), session: AsyncSession = Depends(get_db_session)
+):
+    """The compact report: what it did, what is left of its limits, its journal."""
+    return MandateOut(data=await mandate.report(session, await _get(session, user, mandate_id), _now()))

@@ -132,7 +132,7 @@ def test_due_respects_the_mandate_cadence_and_first_run():
 
 
 def test_the_task_skips_network_when_external_sources_is_off(monkeypatch):
-    from tasks.mandate_tasks import run_due_mandate_discovery
+    from tasks.outreach_mandate_tasks import run_due_mandate_discovery
 
     monkeypatch.delenv("FEATURE_EXTERNAL_SOURCES", raising=False)
     result = run_due_mandate_discovery.run()
@@ -143,5 +143,5 @@ def test_batch_progress_endpoints_are_registered_under_the_api_prefix():
     from server import app
 
     paths = app.openapi()["paths"]
-    assert "/api/mandates/{mandate_id}/batches" in paths
-    assert "/api/mandates/{mandate_id}/batches/{batch_id}/items" in paths
+    assert "/api/outreach-mandates/{mandate_id}/batches" in paths
+    assert "/api/outreach-mandates/{mandate_id}/batches/{batch_id}/items" in paths

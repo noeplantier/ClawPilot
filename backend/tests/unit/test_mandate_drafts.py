@@ -4,9 +4,9 @@ import asyncio
 import uuid
 from types import SimpleNamespace
 
-from routes.mandates import _draft_stream
+from routes.outreach_mandates import _draft_stream
 from services import ai_svc, draft_runner
-from tasks import mandate_tasks
+from tasks import outreach_mandate_tasks as mandate_tasks
 
 
 def test_precision_model_is_a_real_config_not_a_claim(monkeypatch):

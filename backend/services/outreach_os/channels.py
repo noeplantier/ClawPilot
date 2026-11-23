@@ -16,6 +16,10 @@ from services.outreach_os.normalize import normalize_email
 
 _UNSUBSCRIBE_URL = re.compile(r"https?://\S+/api/unsubscribe/\S+")
 
+# Every adapter starts the error of a refused key or account (SMTP 535, HTTP 401/403) with these words, so the mandate's
+# fixed "authentication error" stop (`mandate_repo.auth_error_since`) sees it whichever provider carried the message.
+AUTH_FAILED = "authentication failed"
+
 
 @dataclass(frozen=True)
 class ChannelMessage:

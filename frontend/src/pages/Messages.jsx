@@ -33,8 +33,8 @@ export default function Messages() {
     <div className="p-6 md:p-10 space-y-6">
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
-          <div className="mono-accent">// transmission.log</div>
-          <h1 className="text-4xl font-black tracking-tighter">Messages</h1>
+          <div className="eyebrow">transmission.log</div>
+          <h1 className="mt-3 text-4xl font-bold tracking-tight leading-[1.15]">Messages</h1>
           <p className="text-soft mt-1">{list.length} transmissions recorded</p>
         </div>
         <div className="flex gap-2 flex-wrap">

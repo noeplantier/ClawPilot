@@ -24,7 +24,7 @@ KEY = "k-" + secrets.token_hex(10)  # runtime-built, not a credential
 
 @pytest.fixture(autouse=True)
 def clean_env(monkeypatch):
-    for name in ("AI_PROVIDER", "AI_API_KEY", "AI_MODEL", "AI_BASE_URL"):
+    for name in ("AI_PROVIDER", "AI_API_KEY", "AI_MODEL", "AI_BASE_URL", "AI_MODEL_LIGHT"):
         monkeypatch.delenv(name, raising=False)
 
     def refuse(*a, **k):
@@ -143,11 +143,18 @@ def test_the_request_goes_to_the_provider_with_the_key_and_only_the_fields_of_th
     assert call["headers"]["Authorization"] == f"Bearer {KEY}"
     assert call["allow_redirects"] is False and call["timeout"] == ai_svc.TIMEOUT
     payload = call["json"]
-    assert payload["model"] == "llama-3.3-70b-versatile" and payload["response_format"] == {"type": "json_object"}
+    assert payload["model"] == "openai/gpt-oss-120b" and payload["response_format"] == {"type": "json_object"}
+    assert payload["reasoning_effort"] == "low"  # a reasoning model keeps its thinking short, the answer fits
     sent = json.dumps(payload["messages"], ensure_ascii=False)
     assert "Chez Marcel" in sent and "Marcel SARL" in sent and "OutreachOS" in sent and "réserver un appel" in sent
     assert "never invent a fact" in payload["messages"][0]["content"]
-    assert out == {"subject": "Une idée pour Chez Marcel", "body": "Bonjour,\n\nVoici une idée.", "language": "fr"}
+    assert out == {
+        "subject": "Une idée pour Chez Marcel",
+        "body": "Bonjour,\n\nVoici une idée.",
+        "whatsapp": None,  # the model gave no WhatsApp text: none is made up
+        "language": "fr",
+        "usage": {"model": "openai/gpt-oss-120b", "tokens": None},  # recorded by the route, never sent to the browser
+    }
 
 
 def test_a_lead_s_e_mail_and_phone_cannot_reach_the_provider():
@@ -176,7 +183,15 @@ def test_whatsapp_has_no_subject(monkeypatch):
     ],
 )
 def test_the_answer_is_read_whatever_the_model_wraps_it_in(raw, subject, body):
-    assert ai_svc.parse_answer(raw) == {"subject": subject, "body": body}
+    assert ai_svc.parse_answer(raw) == {"subject": subject, "body": body, "whatsapp": None}
+
+
+def test_a_whatsapp_text_is_kept_only_when_the_model_really_wrote_one():
+    with_text = json.dumps({"subject": "S", "body": "Corps", "whatsapp": "  Bonjour, une question rapide.  "})
+    assert ai_svc.parse_answer(with_text)["whatsapp"] == "Bonjour, une question rapide."
+    for empty in ("", "   ", None, 42):
+        raw = json.dumps({"subject": "S", "body": "Corps", "whatsapp": empty})
+        assert ai_svc.parse_answer(raw)["whatsapp"] is None
 
 
 def test_a_provider_without_json_mode_is_asked_again_in_plain_mode_once(monkeypatch):
@@ -197,6 +212,7 @@ def test_a_provider_without_json_mode_is_asked_again_in_plain_mode_once(monkeypa
         (Reply(status=429, headers={"Retry-After": "7"}), "ai_rate_limited", "7 s"),
         (Reply(status=429), "ai_rate_limited", "in a moment"),
         (Reply(status=500), "ai_failed", "HTTP 500"),
+        (Reply(status=400), "ai_failed", "AI_MODEL"),
         (Reply(status=301), "ai_failed", "HTTP 301"),
         (Reply(body=ValueError("not json")), "ai_failed", "format"),
         (Reply(body={"choices": []}), "ai_failed", "format"),
@@ -205,7 +221,8 @@ def test_a_provider_without_json_mode_is_asked_again_in_plain_mode_once(monkeypa
 )
 def test_every_refusal_says_what_happened_and_never_repeats_the_key(monkeypatch, reply, code, words):
     configure(monkeypatch)
-    monkeypatch.setattr(requests, "post", answering(reply))
+    monkeypatch.setattr(ai_svc, "RETRY_PAUSE", 0)
+    monkeypatch.setattr(requests, "post", answering(reply, reply, reply))  # a 400 or a 5xx is asked again once
     with pytest.raises(ai_svc.AIUnavailable) as refused:
         write()
     assert refused.value.code == code and words in refused.value.message and KEY not in refused.value.message
@@ -258,10 +275,134 @@ def test_a_provider_limit_carries_its_retry_delay_to_the_ui(monkeypatch):
     assert error.status_code == 429 and datetime.fromisoformat(error.detail["retry_at"]) > datetime.now(timezone.utc)
 
 
-def test_a_provider_failure_is_never_retried_blindly(monkeypatch):
+def test_a_provider_failure_is_retried_at_most_once(monkeypatch):
     configure(monkeypatch)
-    post = answering(Reply(status=500), Reply(text_content=GOOD))
+    monkeypatch.setattr(ai_svc, "RETRY_PAUSE", 0)
+    post = answering(Reply(status=500), Reply(status=500), Reply(text_content=GOOD))
     monkeypatch.setattr(requests, "post", post)
     with pytest.raises(ai_svc.AIUnavailable) as refused:
         write()
-    assert refused.value.code == "ai_failed" and len(post.calls) == 1
+    assert refused.value.code == "ai_failed" and len(post.calls) == 2
+
+
+def test_a_provider_side_failure_is_retried_once_then_answers(monkeypatch):
+    configure(monkeypatch)
+    monkeypatch.setattr(ai_svc, "RETRY_PAUSE", 0)
+    post = answering(Reply(status=503), Reply(text_content=GOOD))
+    monkeypatch.setattr(requests, "post", post)
+    assert write()["body"].startswith("Bonjour") and len(post.calls) == 2
+
+
+def test_a_failure_is_retried_only_once_and_logged_without_the_key(monkeypatch, caplog):
+    configure(monkeypatch)
+    monkeypatch.setattr(ai_svc, "RETRY_PAUSE", 0)
+    post = answering(Reply(status=502), Reply(status=502), Reply(text_content=GOOD))
+    monkeypatch.setattr(requests, "post", post)
+    with caplog.at_level("WARNING"), pytest.raises(ai_svc.AIUnavailable) as refused:
+        write()
+    assert len(post.calls) == 2 and "even after one retry" in refused.value.message
+    assert "answered HTTP 502" in caplog.text and KEY not in caplog.text
+
+
+def test_a_refused_key_is_not_retried(monkeypatch):
+    configure(monkeypatch)
+    post = answering(Reply(status=401), Reply(text_content=GOOD))
+    monkeypatch.setattr(requests, "post", post)
+    with pytest.raises(ai_svc.AIUnavailable):
+        write()
+    assert len(post.calls) == 1
+
+
+# ------------------------------------------------------------------------------------------------ model tiers
+def ask(tier, **kwargs):
+    return asyncio.run(ai_svc.complete([{"role": "user", "content": "x"}], tier=tier, **kwargs))
+
+
+def test_the_light_tier_asks_groq_s_lighter_model_and_reports_what_really_answered(monkeypatch):
+    configure(monkeypatch)
+    post = answering(Reply(body={"choices": [{"message": {"content": GOOD}}], "usage": {"total_tokens": 321}}))
+    monkeypatch.setattr(requests, "post", post)
+    out = ask("light", max_tokens=350, temperature=0.4)
+    sent = post.calls[0]["json"]
+    assert sent["model"] == "openai/gpt-oss-20b" and sent["max_tokens"] == 350 and sent["temperature"] == 0.4
+    assert sent["reasoning_effort"] == "low"
+    assert out["usage"] == {"model": "openai/gpt-oss-20b", "tokens": 321} and out["body"].startswith("Bonjour")
+    assert ai_svc.status()["model_light"] == "openai/gpt-oss-20b"
+
+
+def test_the_main_tier_keeps_the_main_model_and_an_unreported_usage_stays_unknown(monkeypatch):
+    configure(monkeypatch)
+    post = answering(Reply(text_content=GOOD))
+    monkeypatch.setattr(requests, "post", post)
+    out = ask("main")
+    assert post.calls[0]["json"]["model"] == "openai/gpt-oss-120b"
+    assert out["usage"] == {"model": "openai/gpt-oss-120b", "tokens": None}  # never estimated
+
+
+@pytest.mark.parametrize("status", [400, 404])
+def test_an_unknown_light_model_falls_back_once_to_the_main_model(monkeypatch, status):
+    configure(monkeypatch)
+    replies = [Reply(status=status)] * (2 if status == 400 else 1) + [Reply(text_content=GOOD)]
+    post = answering(*replies)
+    monkeypatch.setattr(requests, "post", post)
+    out = ask("light")
+    assert [c["json"]["model"] for c in post.calls][-1] == "openai/gpt-oss-120b"
+    assert {c["json"]["model"] for c in post.calls[:-1]} == {"openai/gpt-oss-20b"}
+    assert out["usage"]["model"] == "openai/gpt-oss-120b"
+
+
+def test_a_main_model_failure_is_never_retried_on_the_light_model(monkeypatch):
+    configure(monkeypatch)
+    post = answering(Reply(status=404))
+    monkeypatch.setattr(requests, "post", post)
+    with pytest.raises(ai_svc.AIUnavailable):
+        ask("main")
+    assert [c["json"]["model"] for c in post.calls] == ["openai/gpt-oss-120b"]
+
+
+def test_a_rate_limit_on_the_light_model_is_not_hidden_by_spending_the_main_one(monkeypatch):
+    configure(monkeypatch)
+    post = answering(Reply(status=429))
+    monkeypatch.setattr(requests, "post", post)
+    with pytest.raises(ai_svc.AIUnavailable) as refused:
+        ask("light")
+    assert refused.value.code == "ai_rate_limited" and len(post.calls) == 1
+
+
+def test_a_provider_without_a_light_model_uses_its_main_one_unless_one_is_named(monkeypatch):
+    configure(monkeypatch, "mistral")
+    cfg = ai_svc.config()
+    assert cfg.model_for("light") == cfg.model == "mistral-small-latest"
+    configure(monkeypatch, "mistral", AI_MODEL_LIGHT="ministral-8b-latest")
+    assert ai_svc.config().model_for("light") == "ministral-8b-latest"
+    monkeypatch.delenv("AI_MODEL_LIGHT")
+    configure(monkeypatch, "groq", AI_MODEL="openai/gpt-oss-20b")  # the light model is already the main one
+    assert ai_svc.config().light_model == "" and ai_svc.config().model_for("light") == "openai/gpt-oss-20b"
+
+
+def test_an_unknown_tier_is_the_main_model(monkeypatch):
+    configure(monkeypatch)
+    post = answering(Reply(text_content=GOOD))
+    monkeypatch.setattr(requests, "post", post)
+    ask("premium")
+    assert post.calls[0]["json"]["model"] == "openai/gpt-oss-120b"
+
+
+def test_the_rapide_writing_model_is_the_only_light_one():
+    from services.outreach_os import credits
+
+    assert {m.id: m.tier for m in credits.MODELS if m.uses_ai} == {
+        "rapide": "light",
+        "equilibre": "main",
+        "precision": "main",
+    }
+
+
+def test_three_variants_are_one_spend_whose_tokens_are_known_only_if_each_call_reported_them():
+    combined = ai_route.combined_usage
+    same = {"model": "openai/gpt-oss-120b", "tokens": 100}
+    assert combined([same, same, {**same, "tokens": 50}]) == {"model": "openai/gpt-oss-120b", "tokens": 250}
+    assert combined([same, {**same, "tokens": None}, same]) == {"model": "openai/gpt-oss-120b", "tokens": None}
+    mixed = combined([same, {"model": "openai/gpt-oss-20b", "tokens": 10}, same])
+    assert mixed == {"model": "openai/gpt-oss-120b + openai/gpt-oss-20b", "tokens": 210}
+    assert combined([None, None, None]) is None and combined([same, None, same])["tokens"] is None

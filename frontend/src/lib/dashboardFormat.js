@@ -5,45 +5,37 @@ export const DASH = "—";
 export const pct = (rate) => (rate === null || rate === undefined ? DASH : `${Math.round(rate * 1000) / 10}%`);
 export const num = (n) => (n === null || n === undefined ? DASH : String(n));
 
+// Five numbers that help decide, nothing decorative. "Hot" is the server's decision (qualified AND an observed, sourced
+// intent), never a score; no money value is estimated. A null is "not known yet", shown as a dash.
 export function kpiCards(k, limits) {
-  const cards = [
-    { key: "prospects", label: "Total Prospects", value: num(k.prospects), hint: `${k.pending_review || 0} pending review · ${k.approved || 0} approved`, accent: "blue" },
+  return [
+    { key: "prospects", label: "Prospects", value: num(k.prospects), hint: `${k.pending_review || 0} à relire · ${k.approved || 0} approuvés`, accent: "blue" },
+    { key: "hot_leads", label: "Hot", value: num(k.hot_leads), hint: "intention commerciale observée et sourcée", accent: "amber" },
     {
-      key: "avg_score", label: "Average Score", value: k.avg_score === null ? DASH : `${k.avg_score}`,
-      hint: k.scored ? `over ${k.scored} scored prospect${k.scored === 1 ? "" : "s"}` : "nothing scored yet", accent: "violet",
+      key: "sent_today", label: "Envoyés aujourd'hui", value: num(k.sent_today),
+      hint: `${limits.remaining_today ?? DASH} restant(s) sur ${limits.max_per_day ?? DASH}`, accent: "cyan",
     },
-    {
-      key: "sent_today", label: "Sent Today", value: num(k.sent_today),
-      hint: `${limits.remaining_today ?? DASH} left of ${limits.max_per_day ?? DASH} allowed`, accent: "cyan",
-    },
-    { key: "replies", label: "Replies", value: num(k.replies), hint: k.reply_rate === null ? "no message sent yet" : `${pct(k.reply_rate)} of ${k.messages} sent`, accent: "blue" },
-    { key: "bounces", label: "Bounces", value: num(k.bounces), hint: k.bounce_rate === null ? "no message sent yet" : `${pct(k.bounce_rate)} of ${k.messages} sent`, accent: "violet" },
-    { key: "unsubscribed", label: "Unsubscribed", value: num(k.unsubscribed), hint: "addresses on do-not-contact list", accent: "cyan" },
+    { key: "replies", label: "Réponses", value: num(k.replies), hint: k.reply_rate === null ? "aucun message envoyé" : `${pct(k.reply_rate)} de ${k.messages} envoyé(s)`, accent: "violet" },
+    { key: "unsubscribed", label: "Désinscriptions", value: num(k.unsubscribed), hint: "sur la liste d'opposition", accent: "leaf" },
   ];
+}
 
-  // Extended KPIs matching the Plantiers Mandate
-  if (k.hot_leads !== undefined || k.qualified_leads !== undefined || k.emails_available !== undefined) {
-    cards.push(
-      { key: "qualified_leads", label: "Qualified Leads", value: num(k.qualified_leads ?? k.approved), hint: "verified & approved for outreach", accent: "leaf" },
-      { key: "hot_leads", label: "Hot Leads", value: num(k.hot_leads), hint: "high score with full contacts", accent: "amber" },
-      { key: "emails_available", label: "Emails Available", value: num(k.emails_available), hint: "verified business email contacts", accent: "blue" },
-      { key: "phones_available", label: "WhatsApp Ready", value: num(k.phones_available), hint: "verified telephone contacts", accent: "leaf" },
-      { key: "conversion_rate", label: "Conversion Rate", value: k.reply_rate === null ? DASH : pct(k.reply_rate), hint: "reply & response performance", accent: "violet" },
-      { key: "pipeline_value", label: "Est. Pipeline Value", value: k.pipeline_value ? `${k.pipeline_value.toLocaleString()} €` : DASH, hint: "projected value of qualified pipeline", accent: "leaf" }
-    );
-  }
-
-  return cards;
+// The e-mail channel a live send would take, as the server decided it (Resend, then Brevo, then SMTP); an older answer
+// without the field falls back to SMTP alone. Null: no channel, nothing can leave.
+export const CHANNEL_LABELS = { resend: "Resend", brevo: "Brevo", smtp: "SMTP" };
+export function channelOf(l) {
+  const id = l.email_channel !== undefined ? l.email_channel : l.smtp_configured ? "smtp" : null;
+  return id ? CHANNEL_LABELS[id] || id : null;
 }
 
 // Sending mode as an operator should read it. The order matters: the most restrictive state wins.
 export function modeOf(l) {
-  if (l.kill_switch) return { tone: "danger", label: "HALTED · KILL SWITCH" };
-  if (l.paused) return { tone: "warn", label: "PAUSED" };
-  if (l.dry_run) return { tone: "ink", label: "DRY-RUN" };
-  if (!l.smtp_configured) return { tone: "danger", label: "LIVE FLAG ON · SMTP INCOMPLETE" };
-  if (l.sandbox) return { tone: "warn", label: `LIVE · SANDBOX (${l.allowlist_size} ALLOWED)` };
-  return { tone: "danger", label: "LIVE · OPEN" };
+  if (l.kill_switch) return { tone: "danger", label: "ARRÊT D'URGENCE" };
+  if (l.paused) return { tone: "warn", label: "EN PAUSE" };
+  if (l.dry_run) return { tone: "ink", label: "SIMULATION" };
+  if (!channelOf(l)) return { tone: "danger", label: "RÉEL · AUCUN CANAL E-MAIL" };
+  if (l.sandbox) return { tone: "warn", label: `RÉEL · BAC À SABLE (${l.allowlist_size} AUTORISÉ${l.allowlist_size > 1 ? "S" : ""})` };
+  return { tone: "danger", label: "RÉEL · OUVERT" };
 }
 
 export function quotaShare(l) {

@@ -2,9 +2,9 @@
 // instant: the nav link warms its screen on hover or focus, and every screen is fetched once the browser is idle after the first paint.
 export const pages = {
   dashboard: () => import("@/pages/Dashboard"),
-  campaigns: () => import("@/pages/Campaigns"),
+  campaigns: () => import("@/pages/CampaignsHub"), // zone, individuelle et séquences : une page
   leads: () => import("@/pages/Leads"),
-  agents: () => import("@/pages/Agents"),
+  agents: () => import("@/pages/AutomationsHub"), // agents et mandat : une page
   messages: () => import("@/pages/Messages"),
   analytics: () => import("@/pages/Analytics"),
   settings: () => import("@/pages/Settings"),
@@ -13,14 +13,16 @@ export const pages = {
   sources: () => import("@/pages/Sources"),
   system: () => import("@/pages/SystemHealth"),
   prospectDetail: () => import("@/pages/ProspectDetail"),
-  review: () => import("@/pages/ReviewQueue"),
+  review: () => import("@/pages/QualifyHub"), // à vérifier et à enrichir : une page
   sending: () => import("@/pages/Sending"),
   prospectImport: () => import("@/pages/ProspectImport"),
-  toEnrich: () => import("@/pages/ToEnrich"),
+  toEnrich: () => import("@/pages/QualifyHub"),
   offer: () => import("@/pages/Offer"),
   batches: () => import("@/pages/Batches"),
   drafts: () => import("@/pages/Drafts"),
-  launch: () => import("@/pages/Launch"),
+  launch: () => import("@/pages/CampaignsHub"),
+  journey: () => import("@/pages/CampaignsHub"),
+  automationMax: () => import("@/pages/AutomationsHub"),
 };
 
 // The screen behind an in-app path (`/app/leads?view=kanban` -> leads); null for a path that has none.
@@ -29,6 +31,7 @@ const BY_PATH = {
   "/app/messages": "messages", "/app/analytics": "analytics", "/app/settings": "settings", "/app/prospects": "prospects",
   "/app/map": "map", "/app/sources": "sources", "/app/system": "system", "/app/prospects/review": "review",
   "/app/sending": "sending", "/app/prospects/import": "prospectImport", "/app/prospects/to-enrich": "toEnrich", "/app/settings/offer": "offer", "/app/batches": "batches", "/app/drafts": "drafts", "/app/launch": "launch",
+  "/app/journey": "journey", "/app/automation-max": "automationMax",
 };
 export const pageOf = (to) => BY_PATH[String(to || "").split("?")[0].replace(/\/$/, "")] || null;
 

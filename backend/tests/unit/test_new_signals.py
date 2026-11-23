@@ -55,7 +55,9 @@ def test_a_listed_social_profile_is_a_presence_not_an_absence():
 
 def test_the_new_signals_are_weighted_by_default_and_listed_everywhere():
     assert DEFAULT_WEIGHTS[sig.OUTDATED_TECHNOLOGY] == 10 and DEFAULT_WEIGHTS[sig.NO_SOCIAL_PRESENCE] == 5
-    assert set(DEFAULT_WEIGHTS) == set(sig.ALL_SIGNALS) == set(sig.SIGNAL_LABELS)
+    # every signal is weighted, except the commercial intent: it makes a qualified prospect hot, never moves the score
+    assert set(DEFAULT_WEIGHTS) | {sig.COMMERCIAL_INTENT} == set(sig.ALL_SIGNALS) == set(sig.SIGNAL_LABELS)
+    assert sig.COMMERCIAL_INTENT not in DEFAULT_WEIGHTS
 
 
 def test_an_older_configuration_without_the_new_keys_still_scores():

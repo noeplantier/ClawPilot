@@ -4,6 +4,7 @@
     FEATURE_EXTERNAL_SOURCES=true  allow fetching each prospect's own public homepage (robots.txt, see site_fetcher_svc)
     FEATURE_PROSPECT_IMPORT=true   allow importing a prospect list (CSV/JSON) with its origin and legal basis
     FEATURE_DEMO_DATA=true         offer the built-in demo directory as a source (off: only real sources are listed)
+    FEATURE_AUTOMATION_MAX=true    allow the bounded automatic mode "Automatisation max" (still needs an active mandate)
 
 `dry_run()` is the inverse of live sending: with no flag set, nothing leaves the system.
 `SEND_KILL_SWITCH=true` (see `kill_switch()`) halts every send regardless of the flags above.
@@ -20,7 +21,7 @@ import os
 from services.outreach_os import sandbox as sandbox_rules
 from services.outreach_os.normalize import normalize_phone
 
-KNOWN_FLAGS = ("live_sending", "external_sources", "prospect_import", "demo_data")
+KNOWN_FLAGS = ("live_sending", "external_sources", "prospect_import", "demo_data", "automation_max")
 
 
 def is_enabled(name: str) -> bool:

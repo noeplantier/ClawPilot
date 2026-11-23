@@ -39,8 +39,8 @@ export default function Analytics() {
   return (
     <div className="p-6 md:p-10 space-y-6">
       <div>
-        <div className="mono-accent">// deep.analytics</div>
-        <h1 className="text-4xl font-black tracking-tighter">Analytics</h1>
+        <div className="eyebrow">deep.analytics</div>
+        <h1 className="mt-3 text-4xl font-bold tracking-tight leading-[1.15]">Analytics</h1>
         <p className="text-soft mt-1">Cross-channel performance breakdown. Every figure comes from recorded events.</p>
       </div>
 

@@ -1,4 +1,6 @@
 // Pure helpers of the map search page: limits that mirror the API, counts, and the rows sent to the import.
+import { siteState } from "@/lib/launchFormat";
+
 export const MAX_LAT_SPAN = 0.2;
 export const MAX_LON_SPAN = 0.3;
 export const MAX_SITES_CHECKED = 25;
@@ -47,7 +49,9 @@ export const STATUS_LABEL = { pending: "to review", approved: "approved", reject
 export const readyOnly = (mine) => (mine || []).filter((p) => p.map_ready === true);
 
 // "Hot" means an observed, sourced commercial intent and nothing else; a qualified prospect without one is not hot.
-export const isHot = (p) => Boolean(p && (p.priority === "hot" || (p.heat && p.heat.tier === "hot")));
+// "Hot" is an observed, sourced commercial intent decided by the server (`priority`), never a score: a high heat or fit
+// score alone leaves a prospect "qualified" (docs/eligibility.md).
+export const isHot = (p) => Boolean(p && p.priority === "hot");
 
 // A place found by the search is drawn only when it published BOTH a phone and an e-mail: nothing else can be reached
 // by a person. A missing value is unknown, never a default; the places left out are counted, not hidden silently.
@@ -67,151 +71,123 @@ export function readySummary(mine) {
 
 // Room to keep free around the map for the floating panels, as Leaflet's [x, y] auto-pan paddings: a popup never opens under
 // the search card (left) or the results drawer (right; at the bottom on a phone).
-export function panelPadding({ narrow, searchOpen, panelOpen, hidden }) {
+export function panelPadding({ narrow, open, hidden }) {
   if (hidden) return { topLeft: [20, 70], bottomRight: [20, 50] };
-  if (narrow) return { topLeft: [20, searchOpen ? 360 : 70], bottomRight: [20, panelOpen ? 280 : 50] };
-  return { topLeft: [searchOpen ? 440 : 20, 70], bottomRight: [panelOpen ? 400 : 20, 50] };
+  if (narrow) return { topLeft: [20, open ? 360 : 70], bottomRight: [20, 50] };
+  return { topLeft: [open ? 440 : 20, 70], bottomRight: [20, 50] };
+}
+
+// The perimeter a finished search really looked at: what the campaign takes as its zone. Null until a search succeeded.
+export function zoneOf(job) {
+  if (!job || job.status !== "succeeded") return null;
+  const { south, west, north, east, category } = job;
+  if ([south, west, north, east].some((v) => typeof v !== "number") || !category) return null;
+  return { south, west, north, east, category };
+}
+
+const KM_PER_DEGREE = 111.32;
+
+// "45.700–45.800° N · 4.780–4.900° E · ≈ 11 × 8 km · restaurants": numbers read from the search, nothing estimated beyond the size.
+export function zoneSummary(zone) {
+  if (!zone) return "";
+  const height = (zone.north - zone.south) * KM_PER_DEGREE;
+  const width = (zone.east - zone.west) * KM_PER_DEGREE * Math.cos((((zone.north + zone.south) / 2) * Math.PI) / 180);
+  const f = (v) => v.toFixed(3);
+  return `Périmètre recherché : ${f(zone.south)}–${f(zone.north)}° N · ${f(zone.west)}–${f(zone.east)}° E · ≈ ${Math.round(width)} × ${Math.round(height)} km · ${zone.category}`;
+}
+
+// The link to the campaign of this zone: the box and the category travel in the address, nothing is stored by the map.
+export function journeyLink(zone, label) {
+  const q = new URLSearchParams({ south: zone.south, west: zone.west, north: zone.north, east: zone.east, category: zone.category });
+  if (label) q.set("label", label);
+  return `/app/journey?${q.toString()}`;
 }
 
 // -------------------------------------------------------------
-// Plantiers Smart Lead Qualification & Opportunity Classification
+// What the map says about one of the organisation's prospects: only what the API returned, never a guess.
 // -------------------------------------------------------------
+// The tier is the server's decision (`priority`, `map_ready`/`eligible`): the page never re-ranks a prospect from its
+// contacts or a score, and gives no "confidence" (the API provides none).
 export const QUALIFICATION_TIERS = {
   HOT: {
     key: "HOT",
-    label: "HOT LEAD",
+    label: "Hot — intention observée",
     color: "#F59E0B",
     glow: "0 0 16px rgba(245, 158, 11, 0.6)",
     bg: "rgba(245, 158, 11, 0.15)",
     border: "rgba(245, 158, 11, 0.4)",
-    badgeClass: "bg-amber-500/20 text-amber-300 border-amber-500/40",
-  },
-  HIGHLY_QUALIFIED: {
-    key: "HIGHLY_QUALIFIED",
-    label: "HIGHLY QUALIFIED",
-    color: "#22C55E",
-    glow: "0 0 16px rgba(34, 197, 94, 0.5)",
-    bg: "rgba(34, 197, 94, 0.15)",
-    border: "rgba(34, 197, 94, 0.4)",
-    badgeClass: "bg-leaf-500/20 text-leaf-400 border-leaf-500/40",
   },
   QUALIFIED: {
     key: "QUALIFIED",
-    label: "QUALIFIED",
+    label: "Qualifié prioritaire",
     color: "#7C3AED",
     glow: "0 0 14px rgba(124, 58, 237, 0.5)",
     bg: "rgba(124, 58, 237, 0.15)",
     border: "rgba(124, 58, 237, 0.4)",
-    badgeClass: "bg-brand-500/20 text-brand-300 border-brand-500/40",
   },
   NEEDS_REVIEW: {
     key: "NEEDS_REVIEW",
-    label: "NEEDS REVIEW",
+    label: "À compléter",
     color: "#94A3B8",
     glow: "none",
     bg: "rgba(148, 163, 184, 0.1)",
     border: "rgba(148, 163, 184, 0.3)",
-    badgeClass: "bg-white/10 text-white/70 border-white/20",
   },
 };
 
+const detected = (p, key) => Array.isArray(p.signals) && p.signals.includes(key);
+
+// The website as the server knows it, with the labels of the campaign screen (launchFormat.SITE_STATE_FR). An empty field is
+// UNKNOWN: "no website identified" is said only when the server detected `no_website` (the listing was read and carried none).
+export function mapSiteState(p) {
+  if (!p) return "unknown";
+  const known = p.has_website === true || Boolean(p.website && String(p.website).trim());
+  if (known) return detected(p, "website_unreachable") ? "site_unreachable" : "site_found";
+  if (detected(p, "no_website")) return "none_identified";
+  return "unknown";
+}
+
 export function classifyProspect(p) {
-  if (!p) return { tier: "NEEDS_REVIEW", ...QUALIFICATION_TIERS.NEEDS_REVIEW, confidence: 0, reasons: ["No data"] };
+  if (!p) {
+    return { tier: "NEEDS_REVIEW", ...QUALIFICATION_TIERS.NEEDS_REVIEW, site: siteState("unknown"), siteKey: "unknown", reasons: [] };
+  }
+  const tierKey = isHot(p) ? "HOT" : p.map_ready === true || p.eligible === true ? "QUALIFIED" : "NEEDS_REVIEW";
+  const tier = QUALIFICATION_TIERS[tierKey];
+  const label = tierKey !== "NEEDS_REVIEW" && p.priority_label ? p.priority_label : tier.label;
+  const siteKey = mapSiteState(p);
+  const site = siteState(siteKey);
 
-  const hasEmail = Boolean(p.email && String(p.email).includes("@"));
-  const hasPhone = Boolean(p.phone && String(p.phone).trim().length >= 4);
-  const hasWebsite = Boolean(p.website && String(p.website).trim().length > 3);
-  const score = typeof p.score === "number" ? p.score : (p.heat?.value ?? null);
-  const isHotLead = p.priority === "hot" || p.heat?.tier === "hot" || (score !== null && score >= 75);
-
+  // Facts carried by the response only: the server's priority, the review status, the site state and the signals it detected.
   const reasons = [];
+  if (tierKey === "HOT") reasons.push(p.intent_evidence ? `Pourquoi Hot : ${p.intent_evidence}` : "Intention commerciale observée et sourcée");
+  if (tierKey === "QUALIFIED") reasons.push("E-mail, téléphone, adresse et position qualifiés par le serveur");
+  if (p.review_status === "approved") reasons.push("Approuvé dans la revue");
+  reasons.push(site.label);
+  if (detected(p, "outdated_technology")) reasons.push("Marqueur technique ancien repéré sur la page d'accueil (heuristique)");
 
-  // Determine Opportunity
-  let opportunity = {
-    id: "opportunity_a",
-    name: "Opportunity A — No Website",
-    pitch: "Creation of a modern, high-converting business website & digital presence",
-  };
+  return { tier: tierKey, ...tier, label, site, siteKey, reasons };
+}
 
-  if (!hasWebsite) {
-    opportunity = {
-      id: "opportunity_a",
-      name: "Opportunity A — No Website",
-      pitch: "Creation of a modern, conversion-oriented business website & mobile showcase",
-    };
-    reasons.push("No official business website detected in listing");
-  } else if (p.signals && p.signals.includes("legacy_tech")) {
-    opportunity = {
-      id: "opportunity_b",
-      name: "Opportunity B — Outdated Website",
-      pitch: "Modern UX/UI redesign, mobile responsiveness & performance overhaul",
-    };
-    reasons.push("Outdated web technology and non-responsive layout identified");
-  } else {
-    opportunity = {
-      id: "opportunity_c",
-      name: "Opportunity C — SEO & Digital Visibility",
-      pitch: "Technical & Local SEO, GEO search ranking optimization and local search growth",
-    };
-    reasons.push("Website active with high local discovery and SEO expansion potential");
+// What a finished search found, split the way the panel explains it (counted, never estimated):
+// the places already held as prospects are not offered again, and a place is reachable only with a phone AND an e-mail.
+export function resultBreakdown(rawPlaces, known) {
+  const seen = new Set();
+  const out = { total: 0, alreadyKnown: 0, reachable: 0, noContact: 0 };
+  for (const p of rawPlaces || []) {
+    if (!p || seen.has(p.external_id)) continue;
+    seen.add(p.external_id);
+    out.total += 1;
+    if (known && known.has(p.external_id)) out.alreadyKnown += 1;
+    else if (reachablePlace(p)) out.reachable += 1;
+    else out.noContact += 1;
   }
+  return out;
+}
 
-  // Determine Tier
-  if (isHotLead && hasEmail && hasPhone) {
-    if (p.priority === "hot" || p.heat?.tier === "hot") reasons.unshift("Observed commercial intent recorded");
-    if (score !== null) reasons.unshift(`High fit score (${score}/100)`);
-    reasons.unshift("Dual verified contacts: business email and telephone");
-    return {
-      tier: "HOT",
-      ...QUALIFICATION_TIERS.HOT,
-      confidence: Math.min(99, (score || 80) + 10),
-      reasons,
-      opportunity,
-      hasEmail,
-      hasPhone,
-      hasWebsite,
-    };
-  }
-
-  if (hasEmail && hasPhone) {
-    reasons.unshift("Dual verified direct contacts (email + phone)");
-    if (p.review_status === "approved") reasons.unshift("Approved in CRM pipeline");
-    return {
-      tier: "HIGHLY_QUALIFIED",
-      ...QUALIFICATION_TIERS.HIGHLY_QUALIFIED,
-      confidence: score || 75,
-      reasons,
-      opportunity,
-      hasEmail,
-      hasPhone,
-      hasWebsite,
-    };
-  }
-
-  if (hasEmail || hasPhone) {
-    if (hasEmail) reasons.unshift("Verified email contact available");
-    if (hasPhone) reasons.unshift("Verified phone contact available");
-    return {
-      tier: "QUALIFIED",
-      ...QUALIFICATION_TIERS.QUALIFIED,
-      confidence: score || 55,
-      reasons,
-      opportunity,
-      hasEmail,
-      hasPhone,
-      hasWebsite,
-    };
-  }
-
-  reasons.unshift("Missing direct business email or telephone");
-  return {
-    tier: "NEEDS_REVIEW",
-    ...QUALIFICATION_TIERS.NEEDS_REVIEW,
-    confidence: 30,
-    reasons,
-    opportunity,
-    hasEmail: false,
-    hasPhone: false,
-    hasWebsite,
-  };
+export function breakdownText(b) {
+  if (!b || b.total === 0) return "";
+  const parts = [`${b.reachable} joignable${b.reachable === 1 ? "" : "s"} (téléphone et e-mail publiés)`];
+  if (b.noContact) parts.push(`${b.noContact} exclu${b.noContact === 1 ? "" : "s"} : téléphone ou e-mail non publié`);
+  if (b.alreadyKnown) parts.push(`${b.alreadyKnown} déjà dans vos prospects`);
+  return `${b.total} lieu${b.total === 1 ? "" : "x"} trouvé${b.total === 1 ? "" : "s"} · ${parts.join(" · ")}.`;
 }

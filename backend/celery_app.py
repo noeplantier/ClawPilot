@@ -35,9 +35,11 @@ celery_app = Celery(
         "tasks.inbox_tasks",
         "tasks.prospecting_tasks",
         "tasks.mandate_tasks",
+        "tasks.outreach_mandate_tasks",
         "tasks.qualification_tasks",
         "tasks.health_tasks",
         "tasks.campaign_tasks",
+        "tasks.autopilot_tasks",
     ],
 )
 
@@ -55,12 +57,14 @@ celery_app.conf.update(
         "tasks.webhook_tasks.*": {"queue": "webhooks"},
         "tasks.inbox_tasks.*": {"queue": "webhooks"},
         "tasks.prospecting_tasks.*": {"queue": "automation"},
-        # Mandate sends are sends, not discovery: they share the `sends` queue with other guardrailed dispatches.
-        "tasks.mandate_tasks.process_mandate_sends": {"queue": "sends"},
-        "tasks.mandate_tasks.*": {"queue": "automation"},
+        # Outreach-mandate sends are sends, not discovery: they share the `sends` queue with other guardrailed dispatches.
+        "tasks.outreach_mandate_tasks.process_mandate_sends": {"queue": "sends"},
+        "tasks.outreach_mandate_tasks.*": {"queue": "automation"},
         "tasks.qualification_tasks.*": {"queue": "automation"},
         "tasks.health_tasks.*": {"queue": "automation"},
         "tasks.campaign_tasks.*": {"queue": "sends"},
+        "tasks.mandate_tasks.*": {"queue": "automation"},
+        "tasks.autopilot_tasks.*": {"queue": "automation"},
     },
     beat_schedule={
         # Safety net for apply_async(eta=...) sends that got lost (e.g. a
@@ -74,7 +78,7 @@ celery_app.conf.update(
         # One bounded discovery sweep per hour; each active mandate still applies its own cadence,
         # zone limits and volumes. The task itself is a no-op while FEATURE_EXTERNAL_SOURCES is off.
         "run-due-mandate-discovery": {
-            "task": "tasks.mandate_tasks.run_due_mandate_discovery",
+            "task": "tasks.outreach_mandate_tasks.run_due_mandate_discovery",
             "schedule": crontab(minute=15),
             "options": {"queue": "automation"},
         },
@@ -94,15 +98,27 @@ celery_app.conf.update(
             "schedule": 60.0,
             "options": {"queue": "sends"},
         },
-        # Automatic mandate send queue: same guardrails, one bounded sweep per minute.
+        # Automatic outreach-mandate send queue: same guardrails, one bounded sweep per minute.
         "send-due-mandate-messages": {
-            "task": "tasks.mandate_tasks.process_mandate_sends",
+            "task": "tasks.outreach_mandate_tasks.process_mandate_sends",
             "schedule": 60.0,
             "options": {"queue": "sends"},
         },
         "mandate-daily-report": {
-            "task": "tasks.mandate_tasks.mandate_daily_report",
+            "task": "tasks.outreach_mandate_tasks.mandate_daily_report",
             "schedule": crontab(hour=6, minute=30),
+            "options": {"queue": "automation"},
+        },
+        # The bounded automatic mode: visits the active mandates (a no-op unless FEATURE_AUTOMATION_MAX is on).
+        "run-automation-mandates": {
+            "task": "tasks.mandate_tasks.run_mandates",
+            "schedule": 300.0,
+            "options": {"queue": "automation"},
+        },
+        # The autopilots owners turned on: search when due, add, approve, prepare drafts. Never sends (mandate does).
+        "run-autopilots": {
+            "task": "tasks.autopilot_tasks.run_autopilots",
+            "schedule": 900.0,
             "options": {"queue": "automation"},
         },
         "celery-beat-health-heartbeat": {

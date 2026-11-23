@@ -40,6 +40,8 @@ export const mapApi = {
   cities: (opts) => api.get("/map/cities", opts).then((r) => r.data),
   // One click on a pin: the place becomes a prospect (and, by the person's choice, joins the CRM).
   addPlace: (body) => api.post("/map/places/add", body).then((r) => r.data),
+  // One click on the selection: up to 200 places join the CRM through the same attested import (POST /map/places/add-many).
+  addMany: (body) => api.post("/map/places/add-many", body).then((r) => r.data),
 };
 
 export const focusApi = {
@@ -83,6 +85,37 @@ export const launchApi = {
 export const offerApi = {
   get: () => api.get("/settings/offer").then((r) => r.data),
   put: (body) => api.put("/settings/offer", body).then((r) => r.data),
+};
+
+// The three offers (refonte/maintenance, création, SEO/GEO), and who receives each (GET/PUT /settings/offers).
+export const offersApi = {
+  get: () => api.get("/settings/offers").then((r) => r.data),
+  put: (body) => api.put("/settings/offers", body).then((r) => r.data),
+};
+
+// Credits and outreach models (GET /usage/credits, PUT /usage/model): the AI work left today and in this session.
+export const usageApi = {
+  credits: () => api.get("/usage/credits").then((r) => r.data),
+  setModel: (model) => api.put("/usage/model", { model }).then((r) => r.data),
+};
+
+// Automatic selection: the qualified prospects that wait for review, chosen by the server; approved in one click.
+export const autoSelectionApi = {
+  selection: (limit = 200) => api.get("/prospects/auto/selection", { params: { limit } }).then((r) => r.data),
+  review: (leadIds, decision) => api.post("/prospects/auto/review", { lead_ids: leadIds, decision }).then((r) => r.data),
+};
+
+// Which provider sends the e-mail, and the dedicated B2B relays one can move to (names of variables only, never a secret).
+export const emailProvidersApi = {
+  get: () => api.get("/email-providers").then((r) => r.data),
+};
+
+// The autopilot an owner authorised: search when due, add, approve, prepare drafts. It never sends (the mandate does).
+export const autopilotApi = {
+  get: () => api.get("/autopilot").then((r) => r.data),
+  enable: (body) => api.put("/autopilot", body).then((r) => r.data),
+  disable: () => api.post("/autopilot/disable").then((r) => r.data),
+  run: () => api.post("/autopilot/run").then((r) => r.data),
 };
 
 export const prospectsApi = {
@@ -173,3 +206,32 @@ export function useAsync(fn, deps, { key = null, intervalMs = 0 } = {}) {
   }, [load, intervalMs]);
   return { ...state, reload };
 }
+
+export const journeysApi = {
+  // Réponses enveloppées { data } : déballées ici. Parcours « zone → brouillon → approbation » : lire est ouvert à tout membre ; créer, éditer, approuver, révoquer, mettre en pause : propriétaire ou admin.
+  readiness: () => api.get("/journeys/readiness").then((r) => r.data.data),
+  list: () => api.get("/journeys").then((r) => r.data.items),
+  create: (body) => api.post("/journeys", body).then((r) => r.data.data),
+  get: (id) => api.get(`/journeys/${id}`).then((r) => r.data.data),
+  putTemplate: (id, body) => api.put(`/journeys/${id}/template`, body).then((r) => r.data.data),
+  approve: (id, contentHash, expectedCount) => api.post(`/journeys/${id}/approve`, { content_hash: contentHash, expected_count: expectedCount }).then((r) => r.data.data),
+  revoke: (id, reason) => api.post(`/journeys/${id}/revoke`, { reason }).then((r) => r.data.data),
+  pause: (id) => api.post(`/journeys/${id}/pause`).then((r) => r.data.data),
+  resume: (id) => api.post(`/journeys/${id}/resume`).then((r) => r.data.data),
+  progress: (id) => api.get(`/journeys/${id}/progress`).then((r) => r.data.data),
+  recipients: (id) => api.get(`/journeys/${id}/recipients`).then((r) => r.data.data),
+  removeRecipient: (id, leadId, reason) => api.post(`/journeys/${id}/recipients/${leadId}/remove`, { reason: reason || null }).then((r) => r.data.data),
+  restoreRecipient: (id, leadId) => api.post(`/journeys/${id}/recipients/${leadId}/restore`).then((r) => r.data.data),
+};
+
+export const mandatesApi = {
+  // Mode « Automatisation max » : désactivé par défaut côté serveur ; un mandat est une autorisation unique et bornée.
+  overview: () => api.get("/mandates").then((r) => r.data.data),
+  create: (body) => api.post("/mandates", body).then((r) => r.data.data),
+  detail: (id) => api.get(`/mandates/${id}`).then((r) => r.data.data),
+  activate: (id, acknowledgements) => api.post(`/mandates/${id}/activate`, { acknowledgements }).then((r) => r.data.data),
+  suspend: (id) => api.post(`/mandates/${id}/suspend`).then((r) => r.data.data),
+  revoke: (id) => api.post(`/mandates/${id}/revoke`).then((r) => r.data.data),
+  revalidate: (id) => api.post(`/mandates/${id}/revalidate`).then((r) => r.data.data),
+  report: (id) => api.get(`/mandates/${id}/report`).then((r) => r.data.data),
+};

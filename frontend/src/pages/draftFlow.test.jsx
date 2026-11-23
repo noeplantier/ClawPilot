@@ -105,32 +105,55 @@ test("one prospect's draft shows its state, the website wording that is known, a
   expect(box.textContent).toContain("The AI composer is off");
 });
 
-test("the offer form stays disabled until the offer is complete and saves exactly what was typed", async () => {
-  answer({ "/settings/offer": { configured: false, offer: null } });
-  api.put.mockResolvedValue({ data: { configured: true, offer: {} } });
+const CASES = (offer = null) => ({
+  configured: Boolean(offer), language: "fr", default: offer ? "seo_geo" : null,
+  cases: [
+    { kind: "refonte_maintenance", label: "Refonte et maintenance de site web ou d'application mobile", when: "Prospects dont le site n'a pas répondu à la dernière vérification.", configured: false, offer: null },
+    { kind: "creation", label: "Création et conception de site web ou d'application mobile", when: "Prospects sans site identifié après recherche dans leur annuaire.", configured: false, offer: null },
+    { kind: "seo_geo", label: "SEO / GEO et présence en ligne, y compris la visibilité dans les IA", when: "Prospects dont le site existe.", configured: Boolean(offer), offer },
+  ],
+});
+const typeInto = async (id, value) => {
+  const el = byId(id);
+  const proto = el.tagName === "TEXTAREA" ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(proto, "value").set.call(el, value);
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+};
+
+test("each offer says who receives it, and only the complete ones are saved with their default", async () => {
+  answer({ "/settings/offers": CASES() });
+  api.put.mockResolvedValue({ data: CASES() });
   await show(<Offer />);
-  expect(byId("offer-save").disabled).toBe(true);
-  const type = async (id, value) => {
-    const el = byId(id);
-    const proto = el.tagName === "TEXTAREA" ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
-    await act(async () => {
-      Object.getOwnPropertyDescriptor(proto, "value").set.call(el, value);
-      el.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-  };
-  await type("offer-name", "Site vitrine");
-  await type("offer-pitch", "Un site clair avec réservation intégrée.");
-  await type("offer-cta", "Un appel de 15 minutes");
-  expect(byId("offer-save").disabled).toBe(false);
-  await act(async () => byId("offer-save").form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
-  expect(api.put).toHaveBeenCalledWith("/settings/offer", { name: "Site vitrine", pitch: "Un site clair avec réservation intégrée.", cta: "Un appel de 15 minutes", language: "fr" });
+  expect(byId("offers-when").textContent).toContain("site n'a pas répondu"); // the first case and who receives it
+  await act(async () => byId("offers-tab-creation").click());
+  expect(byId("offers-when").textContent).toContain("sans site identifié après recherche");
+  await typeInto("offers-name", "Création de site");
+  await typeInto("offers-pitch", "Un site clair qui présente votre activité et vos horaires.");
+  await typeInto("offers-cta", "Un appel de 15 minutes ?");
+  await act(async () => byId("offers-default").click());
+  await act(async () => byId("offers-save").form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+  expect(api.put).toHaveBeenCalledWith("/settings/offers", {
+    language: "fr", default: "creation",
+    offers: { creation: { name: "Création de site", pitch: "Un site clair qui présente votre activité et vos horaires.", cta: "Un appel de 15 minutes ?" } },
+  });
 });
 
-test("a member cannot edit the offer", async () => {
-  global.__user = member;
-  answer({ "/settings/offer": { configured: true, offer: { name: "Site vitrine", pitch: "Un site clair avec réservation intégrée.", cta: "Un appel", language: "fr" } } });
+test("an incomplete default offer is refused before anything is sent", async () => {
+  answer({ "/settings/offers": CASES() });
   await show(<Offer />);
-  expect(byId("offer-name").disabled).toBe(true);
-  expect(byId("offer-save").disabled).toBe(true);
-  expect(byId("offer-name").value).toBe("Site vitrine");
+  await act(async () => byId("offers-save").form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+  expect(byId("offers-error").textContent).toContain("L'offre par défaut doit être complète");
+  expect(api.put).not.toHaveBeenCalled();
+});
+
+test("a member reads the offers but cannot edit them", async () => {
+  global.__user = member;
+  answer({ "/settings/offers": CASES({ name: "SEO local", pitch: "Être trouvé sur les moteurs, les cartes et les assistants IA.", cta: "Un appel" }) });
+  await show(<Offer />);
+  await act(async () => byId("offers-tab-seo_geo").click());
+  expect(byId("offers-name").disabled).toBe(true);
+  expect(byId("offers-save").disabled).toBe(true);
+  expect(byId("offers-name").value).toBe("SEO local");
 });

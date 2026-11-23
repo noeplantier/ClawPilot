@@ -6,6 +6,7 @@ from db.models.agent import Agent
 from db.models.campaign import Campaign, CampaignDispatch, CampaignLead, CampaignStep, SendPolicy
 from db.models.consent import ConsentCurrent, ConsentRecord
 from db.models.job_run import JobRun
+from db.models.journey import AutomationMandate, CampaignApproval, CampaignTemplate, MandateEvent
 from db.models.lead import Contact, Lead, LeadScore, LeadSource
 from db.models.map_jobs import MapSearchJob, MapSearchResult, SourceCache
 from db.models.outbound import OutboundEvent, OutboundMessage
@@ -42,6 +43,10 @@ __all__ = [
     "Account",
     "User",
     "Agent",
+    "AutomationMandate",
+    "CampaignApproval",
+    "CampaignTemplate",
+    "MandateEvent",
     "Campaign",
     "CampaignDispatch",
     "CampaignLead",

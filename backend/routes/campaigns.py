@@ -335,6 +335,7 @@ async def _execute_step(session: AsyncSession, account_id: uuid.UUID, c, step, l
                 subject=subj,
                 body=body,
                 status=result["status"],
+                provider=result.get("provider") or "none",
                 provider_message_id=result.get("provider_id"),
                 error=result.get("error"),
             )

@@ -111,3 +111,21 @@ prospect de la découverte, le chemin conforme reste brouillon, approbation, env
 5. **Réception non vérifiée par OutreachOS** (le suivi IMAP ne lit que ce que la boîte reçoit : un message jamais rebondi n'est pas « remis ») : « sent » signifie « accepté par votre serveur SMTP », pas « arrivé en boîte ».
 6. Ni cet envoi réel ni la lecture IMAP n'ont été essayés avec vos identifiants (aucun accès réseau ni secret dans l'environnement de développement) :
    la première vérification réelle est le `test-send` de l'étape 4.
+
+## Passer à un relais d'envoi B2B (au lieu d'une messagerie mutualisée)
+
+Une messagerie mutualisée (Hostinger, Titan) interdit l'envoi de masse non sollicité : sous elle, une campagne n'est permise qu'aux contacts avec
+opt-in (`provider_policy.py`). Un **relais d'envoi dédié** est un service fait pour envoyer : l'application en reconnaît plusieurs
+(`provider_policy.B2B_RELAYS` : Brevo — recommandé, européen —, Mailjet, SendGrid, Mailgun UE, Google Workspace, Microsoft 365, Zoho) et les présente
+comme **à vérifier** (`unverified`) : c'est vous qui relisez leurs conditions (prospection B2B, base légale, désinscription, volume).
+
+Écran : **Outreach › Canaux › Fournisseur d'envoi** (`GET /api/email-providers`, lecture seule, noms de variables uniquement). Étapes :
+
+1. Créer le compte chez le relais, vérifier le domaine (SPF, DKIM) et l'adresse `OUTREACH_SENDER_EMAIL` (l'expéditeur affiché ; l'identifiant SMTP peut
+   être différent).
+2. Relire ses conditions d'utilisation.
+3. Sur Render › Environment, remplacer `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURITY` par les réglages affichés, et saisir `SMTP_USERNAME`, `SMTP_PASSWORD`
+   là-bas (jamais dans l'application ni dans un message). Redéployer.
+4. `IMAP_*` ne change pas : les réponses sont toujours lues dans votre boîte actuelle.
+
+Rien d'autre ne change : sandbox, limites (jour, heure, délai), kill switch, désinscription et toutes les portes de `dispatch_draft` restent appliqués.

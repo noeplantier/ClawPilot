@@ -48,3 +48,50 @@ def test_the_legal_basis_of_a_supplied_list_is_read_from_its_licence_note():
     assert pp.legal_basis_of(["Supplied list: x — legal basis: consent", None]) == "consent"
     assert pp.legal_basis_of(["ODbL", None]) is None
     assert pp.legal_basis_of([]) is None
+
+
+def test_a_dedicated_b2b_relay_is_recognised_and_never_presented_as_authorized_by_itself():
+    for host, rid in (
+        ("smtp-relay.brevo.com", "brevo"),
+        ("in-v3.mailjet.com", "mailjet"),
+        ("smtp.sendgrid.net", "sendgrid"),
+        ("smtp.eu.mailgun.org", "mailgun"),
+        ("smtp.mailgun.org", "mailgun"),
+        ("smtp.gmail.com", "google"),
+        ("smtp.office365.com", "microsoft"),
+        ("SMTP.ZOHO.EU", "zoho"),
+    ):
+        info = pp.identify(smtp_host=host, sendgrid_configured=False)
+        assert info.id == f"smtp_{rid}" and info.cold_outreach == pp.UNVERIFIED, host
+        assert "quota disponible ne vaut pas autorisation" in info.restriction  # the operator still checks the terms
+    assert pp.relay_of("mail.example.org") is None and pp.relay_of(None) is None
+    assert pp.identify(smtp_host="mail.example.org", sendgrid_configured=False).id == "smtp"
+
+
+def test_a_relay_lets_a_declared_b2b_basis_through_unlike_a_shared_mailbox():
+    relay = pp.identify(smtp_host="smtp-relay.brevo.com", sendgrid_configured=False)
+    hostinger = pp.identify(smtp_host="smtp.hostinger.com", sendgrid_configured=False)
+    assert pp.authorize(relay, consent_status="unknown", legal_basis="legitimate_interest_b2b").ok is True
+    assert pp.authorize(hostinger, consent_status="unknown", legal_basis="legitimate_interest_b2b").ok is False
+
+
+def test_presets_carry_only_public_settings_and_one_is_recommended():
+    assert sum(1 for p in pp.B2B_RELAYS if p.recommended) == 1
+    for p in pp.B2B_RELAYS:
+        assert p.port in (465, 587) and p.security in ("starttls", "ssl") and "." in p.host
+
+
+def test_brevo_carries_the_mail_before_smtp_and_is_unverified_never_an_authorization_by_quota():
+    info = pp.identify(smtp_host="smtp.hostinger.com", sendgrid_configured=False, brevo_configured=True)
+    assert (info.id, info.cold_outreach, info.host) == ("brevo_api", pp.UNVERIFIED, "api.brevo.com")
+    assert "quota" in info.restriction and "autorisation" in info.restriction
+    # without Brevo, the Hostinger mailbox keeps its opt-in rule
+    assert pp.identify(smtp_host="smtp.hostinger.com", sendgrid_configured=False).cold_outreach == pp.OPT_IN_REQUIRED
+
+
+def test_resend_carries_the_mail_first_and_is_unverified_never_an_authorization_by_quota():
+    info = pp.identify(
+        smtp_host="smtp.hostinger.com", sendgrid_configured=False, brevo_configured=True, resend_configured=True
+    )
+    assert (info.id, info.cold_outreach, info.host) == ("resend_api", pp.UNVERIFIED, "api.resend.com")
+    assert "quota" in info.restriction and "autorisation" in info.restriction

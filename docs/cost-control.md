@@ -16,6 +16,24 @@ aucun fournisseur d'e-mail, aucun appel à un LLM (les brouillons sont rendus pa
 Lecture : `GET /api/prospects/settings` → `usage`. Les rejeux idempotents (même clé d'idempotence, mêmes données) n'ajoutent ni
 source, ni signal, ni score, ni brouillon : relancer un run est quasi gratuit.
 
+## Crédits et modèles d'outreach (en place)
+
+Le travail d'IA est plafonné par des **crédits** (`services/outreach_os/credits.py`, pur ; `services/credit_gate.py` ; `GET /api/usage/credits`,
+`PUT /api/usage/model`). Deux fenêtres : la **session** de 5 h, qui commence à la première dépense, et le **jour** (heure de Paris).
+Une dépense qui dépasserait l'une des deux est refusée **avant** tout appel au fournisseur (`402 credits_exhausted`, avec la fenêtre et
+l'heure de réinitialisation) ; un appel qui échoue ne coûte rien (la dépense est écrite après la réponse, `usage_records.kind = 'credits'`).
+
+| Modèle | Crédits par message | IA |
+|---|---|---|
+| Plantiers Gabarit | 0 | non : le modèle approuvé de la campagne, rendu avec les faits détectés |
+| Plantiers Rapide | 1 | oui, 90 mots au plus |
+| Plantiers Équilibre (défaut) | 2 | oui, 140 mots au plus |
+| Plantiers Précision | 4 | oui, 180 mots au plus |
+
+Limites : `CREDITS_PER_DAY` (100) et `CREDITS_PER_SESSION` (30). Le modèle choisi s'applique au composeur IA et aux brouillons
+automatiques ; un lot de brouillons s'arrête dès que les crédits sont épuisés et reprend au tour suivant. Le compte de la fenêtre est fait
+sous un verrou de la ligne du compte ; des brouillons préparés en parallèle peuvent la dépasser d'au plus quelques crédits.
+
 ## Leviers de maîtrise prévus (non implémentés)
 
 - ~~Quota quotidien et délai minimal~~ : **en place** pour le dispatch (`/api/outbound/limits`, défauts 20/jour, 100/heure,

@@ -164,10 +164,18 @@ async def list_leads(
     search: Optional[str] = None,
     sort: str = Query("heat", pattern="^(heat|recent)$"),
     limit: int = Query(500, le=1000),
+    review_status: Optional[str] = Query(None, pattern="^(pending|approved|rejected)$"),
 ):
-    """Hottest first by default: real information and score (see services/outreach_os/heat.py)."""
+    """Hottest first by default: real information and score (see services/outreach_os/heat.py). The list is capped
+    (`limit`): GET /leads/count gives the real total for the same filters, so a cut list is never silent."""
     rows = await lead_repo.list_leads(
-        session, uuid.UUID(user["org_id"]), stage=stage, search=search, sort=sort, limit=limit
+        session,
+        uuid.UUID(user["org_id"]),
+        stage=stage,
+        search=search,
+        sort=sort,
+        limit=limit,
+        review_status=review_status,
     )
     if not rows:
         return []
@@ -384,6 +392,21 @@ async def upload_csv(
     # Merge CSV-parse errors
     result.errors = errors + result.errors
     return result
+
+
+@router.get("/count")
+async def count_leads(
+    user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+    stage: Optional[str] = None,
+    search: Optional[str] = None,
+    review_status: Optional[str] = Query(None, pattern="^(pending|approved|rejected)$"),
+):
+    """The real number of leads for the filters of the list (the list itself stops at its `limit`)."""
+    total = await lead_repo.count_listed(
+        session, uuid.UUID(user["org_id"]), stage=stage, search=search, review_status=review_status
+    )
+    return {"total": total}
 
 
 @router.get("/{lead_id}", response_model=Lead)

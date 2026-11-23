@@ -255,7 +255,8 @@ class UsageRecord(Base, UUIDPKMixin, CreatedAtMixin):
     __tablename__ = "usage_records"
     __table_args__ = (
         CheckConstraint(
-            "kind IN ('discovery_run','signals_analyzed','drafts_generated','messages_dispatched')", name="kind"
+            "kind IN ('discovery_run','signals_analyzed','drafts_generated','messages_dispatched','credits')",
+            name="kind",
         ),
         CheckConstraint("quantity >= 0", name="quantity"),
         Index("ix_usage_records_account_created", "account_id", text("created_at DESC")),

@@ -90,11 +90,12 @@ describe("Prospects list", () => {
     expect(byId("run-discovery")).toBeNull();
   });
 
-  it("offers the demo directory only when the server enables FEATURE_DEMO_DATA", async () => {
+  it("never offers the demo directory, even when the server enables FEATURE_DEMO_DATA", async () => {
     answer({ "/prospects": { items: [], total: 0 }, "/prospects/queues": QUEUES0, "/prospects/settings": { flags: { demo_data: true } } });
     await show(<Prospects />);
-    expect(byId("empty-run-discovery")).toBeTruthy();
-    expect(byId("run-discovery").textContent).toContain("DEMO");
+    expect(byId("empty-run-discovery")).toBeNull();
+    expect(byId("run-discovery")).toBeNull();
+    expect(text()).not.toMatch(/DEMO/);
   });
 
   it("lists real rows with score, review state and website", async () => {
@@ -141,11 +142,12 @@ describe("Prospects list", () => {
     expect(byId("error-retry")).toBeTruthy();
   });
 
-  it("disables discovery for a member (the API would refuse anyway)", async () => {
+  it("offers no demo discovery to a member either (the API would refuse it anyway)", async () => {
     global.__user = member;
     answer({ "/prospects": { items: [], total: 0 }, "/prospects/settings": { flags: { demo_data: true } } });
     await show(<Prospects />);
-    expect(byId("run-discovery").disabled).toBe(true);
+    expect(byId("run-discovery")).toBeNull();
+    expect(byId("open-map-search")).toBeTruthy(); // the way to real prospects stays
   });
 });
 
@@ -298,10 +300,11 @@ describe("Sending", () => {
   it("shows real status, the dry-run mode and an empty message history", async () => {
     load();
     await show(<Sending />);
-    expect(byId("fact-mode").textContent).toContain("Dry-run");
-    expect(byId("fact-kill").textContent).toBe("off");
+    expect(byId("fact-mode").textContent).toBe("Simulation : rien ne part");
+    expect(byId("fact-kill").textContent).toBe("Arrêt d'urgence : inactif");
     expect(byId("fact-today").textContent).toBe("0");
-    expect(byId("fact-can-send").textContent).toBe("yes");
+    expect(byId("fact-can-send").textContent).toBe("Envoi possible maintenant, en simulation : rien ne part réellement.");
+    expect(byId("sending-page").querySelectorAll(".surface .grid > div").length).toBe(0); // no grid of tiles any more
     expect(byId("messages-empty")).toBeTruthy();
     expect(byId("usage")).toBeNull(); // no usage recorded: nothing invented
   });
@@ -309,10 +312,10 @@ describe("Sending", () => {
   it("says why sending is blocked and warns when the sender identity is missing", async () => {
     load([], { flags: {}, sender_configured: false, usage: {}, active_score_version: null }, { ...STATUS, kill_switch: true, blocked_by: "kill_switch" });
     await show(<Sending />);
-    expect(byId("fact-kill").textContent).toContain("ON");
-    expect(byId("fact-can-send").textContent).toContain("kill switch");
-    expect(byId("fact-sender").textContent).toBe("not configured");
-    expect(text()).toContain("no sender identity");
+    expect(byId("fact-kill").textContent).toBe("Arrêt d'urgence : ACTIVÉ");
+    expect(byId("fact-can-send").textContent).toBe("Envoi bloqué : arrêt d'urgence activé sur le serveur (SEND_KILL_SWITCH).");
+    expect(byId("fact-sender").textContent).toBe("Identité d'expéditeur : non configurée");
+    expect(text()).toContain("pas d'identité d'expéditeur");
   });
 
   it("validates the limits form like the API and only enables saving for a valid change", async () => {
@@ -349,7 +352,7 @@ describe("Sending", () => {
     api.post.mockResolvedValue({ data: { status: "sent", to: "+33666167788", provider_message_id: "SM1", error: null } });
     await act(async () => byId("whatsapp-test-send").click());
     expect(api.post).toHaveBeenCalledWith("/outbound/test-whatsapp", { to: "+33666167788" });
-    expect(byId("whatsapp-test-result").textContent).toContain("Accepted by Twilio");
+    expect(byId("whatsapp-test-result").textContent).toContain("Accepté par Twilio");
     api.post.mockRejectedValue({ response: { status: 409, data: { detail: { code: "provider_not_configured", message: "x", retry_at: null } } } });
     await act(async () => byId("whatsapp-test-send").click());
     expect(byId("whatsapp-test-error").textContent).toContain("Settings > Integrations");
@@ -360,6 +363,21 @@ describe("Sending", () => {
     load();
     await show(<Sending />);
     expect(byId("whatsapp-test")).toBeNull();
+    expect(byId("page-details")).toBeNull(); // no tools to show: no empty "Tests et outils"
+  });
+
+  it("puts the tests in « Tests et outils », folded, under the page", async () => {
+    load();
+    await show(<Sending />);
+    const details = byId("page-details");
+    expect(details.open).toBe(false);
+    expect(details.textContent).toContain("Tests et outils");
+    ["smtp-test", "whatsapp-test", "inbox-sync"].forEach((id) => expect(details.contains(byId(id))).toBe(true));
+    expect(text()).not.toContain("over SMTP only"); // Resend, then Brevo, then SMTP
+    expect(text()).toContain("Resend, puis Brevo, puis SMTP");
+    expect(byId("smtp-test-send").textContent).toBe("ENVOYER L’E-MAIL DE TEST");
+    expect(byId("toggle-pause").textContent).toContain("METTRE L'ENVOI EN PAUSE");
+    expect(text()).not.toMatch(/&apos;|&amp;|&quot;/); // no HTML entity shown as is
   });
 
   it("lists dispatched messages, marks dry-run, and shows erased addresses as such", async () => {
@@ -370,7 +388,10 @@ describe("Sending", () => {
     await show(<Sending />);
     expect(container.querySelectorAll('[data-testid="message-row"]').length).toBe(2);
     expect(text()).toContain("a@b.example");
-    expect(text()).toContain("erased");
-    expect(text()).toContain("dry-run");
+    expect(text()).toContain("effacée");
+    expect(text()).toContain("simulation");
+    expect(text()).toContain("accepté"); // "sent" in words: accepted by the provider, never "delivered"
+    expect(text()).toContain("réponse");
+    expect(text()).not.toMatch(/livré/);
   });
 });

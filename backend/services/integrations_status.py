@@ -21,7 +21,18 @@ from urllib.parse import urlsplit
 
 STATUSES = ("ready", "unchecked", "partial", "missing", "blocked", "off")
 GROUPS = ("data", "sources", "sending", "inbound", "ai")
-TESTABLE = ("database", "osm", "registry", "smtp", "imap", "sendgrid", "twilio", "ai")  # run on the server
+TESTABLE = (
+    "database",
+    "osm",
+    "registry",
+    "resend",
+    "brevo",
+    "smtp",
+    "imap",
+    "sendgrid",
+    "twilio",
+    "ai",
+)  # run on the server
 BROWSER_TESTS = ("geocoder",)  # the browser itself calls this service, so the browser is what must be tested
 DOCS = "docs/integrations.md"
 
@@ -33,6 +44,7 @@ TRACKED_ENV = (
     "OVERPASS_ENDPOINTS",
     "FEATURE_EXTERNAL_SOURCES",
     "FEATURE_LIVE_SENDING",
+    "FEATURE_AUTOMATION_MAX",
     "SEND_KILL_SWITCH",
     "OUTREACH_SANDBOX",
     "OUTREACH_LIVE_ALLOWLIST",
@@ -44,6 +56,9 @@ TRACKED_ENV = (
     "OUTREACH_SENDER_ADDRESS",
     "OUTREACH_SENDER_EMAIL",
     "OUTREACH_SENDER_WHATSAPP",
+    "RESEND_API_KEY",
+    "RESEND_WEBHOOK_SECRET",
+    "BREVO_API_KEY",
     "SMTP_HOST",
     "SMTP_USERNAME",
     "SMTP_PASSWORD",
@@ -65,6 +80,7 @@ TRACKED_ENV = (
     "AI_API_KEY",
     "AI_MODEL",
     "AI_BASE_URL",
+    "AI_MODEL_LIGHT",
 )
 
 DATABASE_KINDS = {
@@ -97,6 +113,9 @@ class Facts:
     test_sink: bool = False  # automated tests only: sends are recorded in-process, never sent
     sender_configured: bool = False
     sender_email: Optional[str] = None
+    resend_configured: bool = False
+    resend_webhook_configured: bool = False
+    brevo_configured: bool = False
     smtp_configured: bool = False
     smtp_host: Optional[str] = None
     smtp_security: Optional[str] = None
@@ -331,6 +350,13 @@ def _sending_mode(f: Facts) -> dict[str, Any]:
         ("SEND_KILL_SWITCH", "ON" if f.kill_switch else "off"),
         ("OUTREACH_SANDBOX", f"on ({f.allowlist_size} e-mail, {f.phones_size} phone allowed)" if f.sandbox else "off"),
     ]
+    if not f.sandbox and f.live_sending and f.allowlist_size:
+        facts.append(
+            (
+                "OUTREACH_LIVE_ALLOWLIST",
+                f"{f.allowlist_size} entries, INACTIVE: the sandbox is off, nobody is restricted",
+            )
+        )
     env = (
         "FEATURE_LIVE_SENDING",
         "SEND_KILL_SWITCH",
@@ -365,16 +391,16 @@ def _sending_mode(f: Facts) -> dict[str, Any]:
         return _item(
             "sending_mode", "Sending mode", "sending", "off", "DRY-RUN · NOTHING LEAVES", summary, env=env, facts=facts
         )
-    if not f.smtp_configured:
+    if not (f.resend_configured or f.brevo_configured or f.smtp_configured):  # mail_provider.live_adapter's order
         return _item(
             "sending_mode",
             "Sending mode",
             "sending",
             "blocked",
-            "LIVE FLAG ON · SMTP INCOMPLETE",
-            summary + " Sends are refused.",
+            "LIVE FLAG ON · NO E-MAIL CHANNEL",
+            summary + " Sends are refused: set RESEND_API_KEY (or BREVO_API_KEY, or SMTP_HOST, SMTP_USERNAME and "
+            "SMTP_PASSWORD).",
             env=env,
-            needs=_missing(f, ("SMTP_HOST", "SMTP_USERNAME", "SMTP_PASSWORD")),
             facts=facts,
         )
     if f.sandbox:
@@ -388,9 +414,92 @@ def _sending_mode(f: Facts) -> dict[str, Any]:
             env=env,
             facts=facts,
         )
+    inert = " The allowlist is NOT applied while the sandbox is off." if f.allowlist_size else ""
     return _item(
-        "sending_mode", "Sending mode", "sending", "ready", "LIVE · REAL E-MAIL", summary, env=env, facts=facts
+        "sending_mode", "Sending mode", "sending", "ready", "LIVE · REAL E-MAIL", summary + inert, env=env, facts=facts
     )
+
+
+def _resend_bounces(f: Facts) -> str:
+    """Under Resend the bounce reports go back to Resend: only its signed webhook brings bounces and complaints here."""
+    if f.resend_webhook_configured:
+        return "signed webhook /api/webhooks/resend (not tested: Resend sends the events)"
+    return "not received: add the webhook in Resend and set RESEND_WEBHOOK_SECRET"
+
+
+def _resend(f: Facts) -> dict[str, Any]:
+    names = ("RESEND_API_KEY", "RESEND_WEBHOOK_SECRET")
+    summary = (
+        "Sends e-mail through Resend's HTTPS API (port 443), first when set (before Brevo and SMTP): the real channel "
+        "where outbound SMTP ports are closed (a free Render instance). The sender is OUTREACH_SENDER_EMAIL, on a "
+        "domain verified in Resend. Accepted by Resend does not mean delivered."
+    )
+    if f.resend_configured:
+        return _item(
+            "resend",
+            "Resend e-mail (API)",
+            "sending",
+            "unchecked",
+            "CONFIGURED · NOT TESTED",
+            summary,
+            env=names,
+            facts=[
+                ("sender.email", f.sender_email or "—"),
+                ("used", "first" if f.live_sending else "dry-run"),
+                ("bounces", _resend_bounces(f)),
+            ],
+            test="server",
+            hint="The test reads the account's domains; it never sends a message.",
+        )
+    return _item(
+        "resend",
+        "Resend e-mail (API)",
+        "sending",
+        "off",
+        "OPTIONAL · NOT SET",
+        summary,
+        env=names,
+        needs=["RESEND_API_KEY"],
+        test="server",
+    )
+
+
+def _brevo(f: Facts) -> dict[str, Any]:
+    names = ("BREVO_API_KEY",)
+    summary = (
+        "Sends e-mail through Brevo's HTTPS API (port 443), before SMTP when set: the real channel where outbound SMTP "
+        "ports are closed (a free Render instance). The sender is OUTREACH_SENDER_EMAIL, verified in Brevo."
+    )
+    if f.brevo_configured:
+        return _item(
+            "brevo",
+            "Brevo e-mail (API)",
+            "sending",
+            "unchecked",
+            "CONFIGURED · NOT TESTED",
+            summary,
+            env=names,
+            facts=[("sender.email", f.sender_email or "—"), ("used", _brevo_use(f))],
+            test="server",
+            hint="The test reads the account; it never sends a message.",
+        )
+    return _item(
+        "brevo",
+        "Brevo e-mail (API)",
+        "sending",
+        "off",
+        "OPTIONAL · NOT SET",
+        summary,
+        env=names,
+        needs=list(names),
+        test="server",
+    )
+
+
+def _brevo_use(f: Facts) -> str:
+    if not f.live_sending:
+        return "dry-run"
+    return "standby: Resend is used first" if f.resend_configured else "before SMTP"
 
 
 def _smtp(f: Facts) -> dict[str, Any]:
@@ -494,13 +603,14 @@ def _sendgrid(f: Facts) -> dict[str, Any]:
             test="server",
             hint="The test only reads the key's scopes.",
         )
-    if f.smtp_configured:  # SMTP already carries the e-mail: SendGrid is an alternative, not a gap
+    if f.smtp_configured or f.brevo_configured or f.resend_configured:  # another channel carries the e-mail
+        used = "RESEND" if f.resend_configured else "BREVO" if f.brevo_configured else "SMTP"
         return _item(
             "sendgrid",
             "SendGrid e-mail",
             "sending",
             "off",
-            "NOT NEEDED · SMTP IS USED",
+            f"NOT NEEDED · {used} IS USED",
             summary,
             env=names,
             test="server",
@@ -616,9 +726,15 @@ def _sendgrid_webhook(f: Facts) -> dict[str, Any]:
     return _item("sendgrid_webhook", "SendGrid webhook signature", "inbound", "ready", "VERIFIED", summary, env=names)
 
 
+def _light(ai: dict[str, Any]) -> str:
+    """The lighter model the short messages ("Rapide") ask for, or that they use the main one."""
+    light = ai.get("model_light")
+    return "same as main" if not light or light == ai.get("model") else str(light)
+
+
 def _ai(f: Facts) -> dict[str, Any]:
     ai = f.ai
-    names = ("AI_PROVIDER", "AI_API_KEY", "AI_MODEL", "AI_BASE_URL")
+    names = ("AI_PROVIDER", "AI_API_KEY", "AI_MODEL", "AI_BASE_URL", "AI_MODEL_LIGHT")
     summary = (
         "Writes messages with the provider you chose. Nothing is generated and no canned text is offered until it is "
         "configured."
@@ -635,6 +751,7 @@ def _ai(f: Facts) -> dict[str, Any]:
             facts=[
                 ("provider", str(ai.get("provider"))),
                 ("model", str(ai.get("model"))),
+                ("model.light", _light(ai)),
                 ("sent to", str(ai.get("host"))),
                 ("api.key", "configured"),
             ],
@@ -679,6 +796,8 @@ def build(f: Facts) -> dict[str, Any]:
         _registry(f),
         _sender(f),
         _sending_mode(f),
+        _resend(f),
+        _brevo(f),
         _smtp(f),
         _imap(f),
         _sendgrid(f),

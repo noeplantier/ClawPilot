@@ -25,8 +25,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from db.models import DraftJob, Lead
 from db.session import AsyncSessionLocal
 from repositories import audit_repo, draft_job_repo, draft_repo, prospect_repo, usage_repo
-from services import ai_svc, feature_flags
-from services.outreach_os import ai_draft
+from services import ai_svc, credit_gate, feature_flags
+from services.outreach_os import ai_draft, credits
 from services.outreach_os import drafts as drafts_svc
 from services.outreach_os import email_footer
 from services.outreach_os import heat as heat_rules
@@ -42,7 +42,8 @@ CONCURRENCY = 2  # drafts in flight at once
 _running: set[uuid.UUID] = set()
 _background: set[asyncio.Task[None]] = set()
 
-Generator = Callable[[list[dict[str, str]]], Awaitable[dict[str, Optional[str]]]]
+# (messages, max_tokens=, temperature=, tier=) -> the answer; ai_svc.complete in production, a fake in the tests.
+Generator = Callable[..., Awaitable[dict[str, Any]]]
 
 
 def utcnow() -> datetime:
@@ -116,8 +117,9 @@ async def record_jobs(
     `only` restricts it to those prospects (the recipients of one campaign)."""
     created = {"queued": 0, "offer_required": 0}
     async with session_factory() as session:
-        offer = ai_draft.valid_offer(await draft_job_repo.offer_of(session, account_id))
-        offer_key = ai_draft.offer_hash(offer)
+        found = ai_draft.valid_offers(await draft_job_repo.offer_of(session, account_id))
+        offer = {"language": found["language"]} if found else None
+        offer_key = ai_draft.offer_hash(found)  # any change to any of the offers prepares the drafts again
         for lead_id in await draft_job_repo.candidates(session, account_id, offer_key, CANDIDATES, now, only):
             lead = await session.get(Lead, lead_id)
             if lead is None:
@@ -166,10 +168,12 @@ async def run_job(
 
     try:
         async with session_factory() as session:
-            offer = ai_draft.valid_offer(await draft_job_repo.offer_of(session, account_id))
+            raw_offer = await draft_job_repo.offer_of(session, account_id)
+            found = ai_draft.valid_offers(raw_offer)
             lead = await prospect_repo.get(session, account_id, str(lead_id))
-            if offer is None:
+            if found is None:
                 return await end("offer_required", error_code="offer_required", error="Configure your offer first.")
+            offer = {"language": found["language"]}
             if lead is None:
                 return await end("failed", error_code="prospect_gone", error="The prospect is no longer available.")
             ctx, _, _, latest = await _context(session, lead, offer)
@@ -191,10 +195,25 @@ async def run_job(
                 reply_to=sender.reply_to,
                 whatsapp=sender.whatsapp,
             )
-            business, messages = lead.full_name, ai_draft.build_messages(ctx, offer)
+            # the offer of THIS prospect, from what is known of its web presence (never a guess)
+            chosen_offer = ai_draft.offer_for(raw_offer, ctx.state) or offer
+            business, messages = lead.full_name, ai_draft.build_messages(ctx, chosen_offer)
+            try:
+                chosen, cost = await credit_gate.reserve(session, account_id, 1, now())
+            except credit_gate.CreditsExhausted as exc:
+                return await end("unavailable", error_code="credits_exhausted", error=exc.refusal.message)
+            except credit_gate.ModelWithoutAI as exc:
+                return await end(
+                    "unavailable",
+                    error_code="model_without_ai",
+                    error=f"Le modèle « {exc} » écrit sans IA : aucun brouillon IA n'est préparé.",
+                )
+            messages = credits.with_instruction(messages, chosen)
 
-        try:
-            answer = await _pick_generator(generator, precision_generator, precise)(messages)
+        try:  # the chosen writing model's length, warmth and tier ("Rapide" asks the lighter model)
+            answer = await _pick_generator(generator, precision_generator, precise)(
+                messages, max_tokens=chosen.max_tokens, temperature=chosen.temperature, tier=chosen.tier
+            )
         except ai_svc.AIUnavailable as exc:
             limited = exc.code == "ai_rate_limited"
             return await end(
@@ -246,6 +265,7 @@ async def run_job(
                         "business": business[:80],
                     },
                 )
+            await credit_gate.spent(session, account_id, chosen, cost, "draft", usage=answer.get("usage"))
             await draft_job_repo.finish(session, job_id, status="ready", now=now(), draft_id=draft.id)
             await session.commit()
         return "ready"
@@ -275,8 +295,8 @@ async def prepare(
     if precise_ids and precise_run is None:
         model = ai_svc.precision_model()
         if model:
-            async def precise_run(msgs: list[dict[str, str]]) -> dict[str, Optional[str]]:  # type: ignore[no-redef]
-                return await ai_svc.complete(msgs, model=model)
+            async def precise_run(msgs: list[dict[str, str]], **kwargs: Any) -> dict[str, Any]:  # type: ignore[no-redef]
+                return await ai_svc.complete(msgs, model=model, **kwargs)
     out = {"queued": 0, "offer_required": 0, "ready": 0, "failed": 0, "unavailable": 0, "skipped": 0}
     try:
         out.update(await record_jobs(session_factory, account_id, now(), only))

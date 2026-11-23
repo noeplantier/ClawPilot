@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { ArrowRight, ChatCircleDots, Pause, Play, ShieldCheck } from "@phosphor-icons/react";
-import { DASH, ago, chartGeometry, kpiCards, modeOf, pct, quotaShare, seriesHasData, seriesSummary, shortDay } from "@/lib/dashboardFormat";
+import { DASH, ago, channelOf, chartGeometry, kpiCards, modeOf, pct, quotaShare, seriesHasData, seriesSummary, shortDay } from "@/lib/dashboardFormat";
 import { EmptyBlock } from "@/components/outreach/States";
 
 export function Widget({ title, kicker, testId, action, children }) {
@@ -8,7 +8,7 @@ export function Widget({ title, kicker, testId, action, children }) {
     <section className="surface p-5 space-y-3" data-testid={testId} aria-label={title}>
       <header className="flex items-start justify-between gap-3">
         <div>
-          {kicker && <div className="mono-accent">{kicker}</div>}
+          {kicker && <div className="eyebrow">{String(kicker).replace(/^\/\/\s*/, "")}</div>}
           <h2 className="font-display text-lg font-bold tracking-tight">{title}</h2>
         </div>
         {action}
@@ -43,8 +43,8 @@ export function KpiStrip({ kpis, limits }) {
 export function ActivityChart({ series }) {
   if (!seriesHasData(series)) {
     return (
-      <EmptyBlock title="No message sent in the selected period" testId="chart-empty">
-        <p>Dispatch an approved draft and it appears here, with the replies it receives.</p>
+      <EmptyBlock title="Aucun message envoyé sur la période" testId="chart-empty">
+        <p>Envoyez un brouillon approuvé : il apparaîtra ici, avec les réponses reçues.</p>
       </EmptyBlock>
     );
   }
@@ -59,18 +59,18 @@ export function ActivityChart({ series }) {
           </g>
         ))}
         {/* Sends area */}
-        <polygon points={g.area("sent")} fill="#818CF8" fillOpacity="0.15" />
+        <polygon points={g.area("sent")} fill="var(--chart-sent)" fillOpacity="0.15" />
         {/* Replies area */}
         <polygon points={g.area("replied")} fill="#7C3AED" fillOpacity="0.25" />
         {/* Acquisitions line (if present) */}
         {series.some((p) => p.acquired > 0) && (
           <polyline points={g.line("acquired")} fill="none" stroke="#4ADE80" strokeWidth="2" strokeDasharray="4 2" />
         )}
-        <polyline points={g.line("sent")} fill="none" stroke="#818CF8" strokeWidth="2" />
+        <polyline points={g.line("sent")} fill="none" stroke="var(--chart-sent)" strokeWidth="2" />
         <polyline points={g.line("replied")} fill="none" stroke="#7C3AED" strokeWidth="2.5" />
         {series.map((p, i) => (
           <g key={p.date || i}>
-            <circle cx={g.x(i)} cy={g.y(p.sent)} r="3" fill="#818CF8">
+            <circle cx={g.x(i)} cy={g.y(p.sent)} r="3" fill="var(--chart-sent)">
               <title>{`${shortDay(p.date)}: ${p.sent} sent, ${p.replied} replies${p.acquired ? `, ${p.acquired} acquired` : ""}`}</title>
             </circle>
             {i % Math.max(1, Math.floor(series.length / 7)) === 0 && (
@@ -83,7 +83,7 @@ export function ActivityChart({ series }) {
       </svg>
       <div className="flex flex-wrap items-center justify-between gap-3 text-xs mt-2 pt-2 border-t border-white/5">
         <div className="mono-accent flex gap-4">
-          <span className="text-[#818CF8] inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#818CF8]" /> Sent</span>
+          <span className="text-[color:var(--chart-sent)] inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[color:var(--chart-sent)]" /> Sent</span>
           <span className="text-brand-lilac inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-brand-500" /> Replies</span>
           {series.some((p) => p.acquired > 0) && (
             <span className="text-leaf-400 inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-leaf-400" /> New Leads</span>
@@ -95,75 +95,63 @@ export function ActivityChart({ series }) {
   );
 }
 
+// The pipeline as the database records it: each stage is a count of its own, read from the API (never added up).
 export function ConversionFunnel({ kpis }) {
   const total = kpis?.prospects || 0;
-  const scored = kpis?.scored || 0;
-  const qualified = kpis?.approved || kpis?.qualified_leads || 0;
-  const messages = kpis?.messages || 0;
-  const replies = kpis?.replies || 0;
-
   const stages = [
-    { label: "Discovered Prospects", count: total, pct: 100, color: "bg-blue-500" },
-    { label: "Scored with Evidence", count: scored, pct: total ? Math.round((scored / total) * 100) : 0, color: "bg-indigo-500" },
-    { label: "Qualified & Approved", count: qualified, pct: total ? Math.round((qualified / total) * 100) : 0, color: "bg-brand-500" },
-    { label: "Outreach Dispatched", count: messages, pct: total ? Math.round((messages / total) * 100) : 0, color: "bg-violet-400" },
-    { label: "Replies & Opportunities", count: replies, pct: total ? Math.round((replies / total) * 100) : 0, color: "bg-leaf-400" },
+    { label: "Prospects découverts", count: kpis?.prospects },
+    { label: "Scorés (preuves)", count: kpis?.scored },
+    { label: "Approuvés par vous", count: kpis?.approved },
+    { label: "Messages envoyés", count: kpis?.messages },
+    { label: "Réponses", count: kpis?.replies },
   ];
-
   return (
     <div className="space-y-3" data-testid="conversion-funnel">
       <div className="space-y-2">
-        {stages.map((st) => (
-          <div key={st.label} className="space-y-1">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-soft">{st.label}</span>
-              <span className="font-mono font-medium text-white">
-                {st.count} <span className="text-soft">({st.pct}%)</span>
-              </span>
+        {stages.map((st) => {
+          const pctOf = total && typeof st.count === "number" ? Math.round((st.count / total) * 100) : 0;
+          return (
+            <div key={st.label} className="space-y-1">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-soft">{st.label}</span>
+                <span className="font-mono font-medium">{typeof st.count === "number" ? st.count : DASH}{total ? <span className="text-soft"> ({pctOf} %)</span> : null}</span>
+              </div>
+              <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+                <div className="h-full rounded-full bg-brand-violet transition-[width] duration-500 motion-reduce:transition-none" style={{ width: `${Math.min(100, pctOf)}%` }} />
+              </div>
             </div>
-            <div className="h-2 rounded-full bg-white/5 overflow-hidden">
-              <div
-                className={`h-full rounded-full ${st.color} transition-all duration-500`}
-                style={{ width: `${Math.max(2, Math.min(100, st.pct))}%` }}
-              />
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
-      <p className="text-[11px] text-soft">
-        Real pipeline progression calculated from recorded database events.
+      <p className="text-[11px] text-soft" data-testid="funnel-score">
+        Score moyen : {kpis?.avg_score === null || kpis?.avg_score === undefined ? `${DASH} (rien de scoré)` : `${kpis.avg_score} sur ${kpis.scored} prospect(s) scoré(s)`}
       </p>
     </div>
   );
 }
 
+// Where the review stands: each prospect is in one status only; "Hot" is a subset, said apart (never stacked on top).
 export function QualificationBreakdown({ kpis }) {
-  const approved = kpis?.approved || kpis?.qualified_leads || 0;
+  const approved = kpis?.approved || 0;
   const pending = kpis?.pending_review || 0;
-  const hot = kpis?.hot_leads || 0;
-  const total = kpis?.prospects || 1;
-
+  const rejected = Math.max(0, (kpis?.prospects || 0) - approved - pending);
+  const total = approved + pending + rejected || 1;
+  const parts = [
+    { key: "approved", label: "Approuvés", count: approved, cls: "bg-leaf-500" },
+    { key: "pending", label: "À relire", count: pending, cls: "bg-white/30" },
+    { key: "rejected", label: "Rejetés", count: rejected, cls: "bg-white/10" },
+  ];
   return (
     <div className="space-y-3" data-testid="qualification-breakdown">
-      <div className="grid grid-cols-3 gap-2 text-center">
-        <div className="p-2.5 rounded-xl bg-leaf-500/10 border border-leaf-500/20">
-          <div className="font-mono text-xl font-bold text-leaf-400">{approved}</div>
-          <div className="mono-accent !text-[10px] text-leaf-300 mt-1">Qualified</div>
-        </div>
-        <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20">
-          <div className="font-mono text-xl font-bold text-amber-400">{hot}</div>
-          <div className="mono-accent !text-[10px] text-amber-300 mt-1">Hot Leads</div>
-        </div>
-        <div className="p-2.5 rounded-xl bg-white/5 border border-white/10">
-          <div className="font-mono text-xl font-bold text-white/80">{pending}</div>
-          <div className="mono-accent !text-[10px] text-white/60 mt-1">Pending</div>
-        </div>
+      <div className="flex h-2 overflow-hidden rounded-full bg-white/5">
+        {parts.map((p) => <div key={p.key} style={{ width: `${(p.count / total) * 100}%` }} className={p.cls} title={`${p.label} : ${p.count}`} />)}
       </div>
-      <div className="flex gap-1 h-2 rounded-full bg-white/5 overflow-hidden">
-        <div style={{ width: `${(approved / total) * 100}%` }} className="bg-leaf-500" title="Qualified" />
-        <div style={{ width: `${(hot / total) * 100}%` }} className="bg-amber-400" title="Hot Leads" />
-        <div style={{ width: `${(pending / total) * 100}%` }} className="bg-white/20" title="Pending Review" />
-      </div>
+      <ul className="grid grid-cols-3 gap-2 text-center text-xs">
+        {parts.map((p) => (
+          <li key={p.key}><span className="block font-mono text-lg font-bold">{p.count}</span><span className="text-soft">{p.label}</span></li>
+        ))}
+      </ul>
+      <p className="text-[11px] text-soft" data-testid="qualification-hot">Dont {kpis?.hot_leads ?? DASH} hot : intention commerciale observée et sourcée (jamais un score).</p>
     </div>
   );
 }
@@ -249,7 +237,7 @@ export function LimitsCompliance({ limits, canEdit, busy, onTogglePause }) {
         <dt className="text-soft">kill switch</dt><dd data-testid="limits-kill">{limits.kill_switch ? "ON" : "off"}</dd>
         <dt className="text-soft">organisation</dt><dd data-testid="limits-paused">{limits.paused ? "paused" : "active"}</dd>
         <dt className="text-soft">sandbox allowlist</dt><dd>{limits.sandbox ? `${limits.allowlist_size} address(es)` : "sandbox off"}</dd>
-        <dt className="text-soft">SMTP</dt><dd>{limits.smtp_configured ? "configured" : "not configured"}</dd>
+        <dt className="text-soft">e-mail channel</dt><dd data-testid="limits-channel">{channelOf(limits) || "not configured"}</dd>
       </dl>
       <div className="flex gap-2 flex-wrap">
         {canEdit && (
@@ -312,12 +300,12 @@ export function GeoDistribution({ geo }) {
   return (
     <div className="space-y-3" data-testid="geo">
       <div>
-        <div className="mono-accent">// countries</div>
+        <div className="eyebrow">countries</div>
         <ul className="space-y-2 mt-1" data-testid="geo-countries">{geo.countries.map((c) => <Bar key={c.name} label={c.name} n={c.prospects} max={max} />)}</ul>
         {geo.unknown_country > 0 && <p className="text-xs text-soft mt-1" data-testid="geo-unknown">{geo.unknown_country} without a country</p>}
       </div>
       <div>
-        <div className="mono-accent">// cities</div>
+        <div className="eyebrow">cities</div>
         <ul className="space-y-2 mt-1" data-testid="geo-cities">{geo.cities.map((c) => <Bar key={c.name} label={c.name} n={c.prospects} max={max} />)}</ul>
         {geo.unknown_city > 0 && <p className="text-xs text-soft mt-1">{geo.unknown_city} without a city</p>}
       </div>

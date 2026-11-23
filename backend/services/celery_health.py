@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 
 import redis
 
 from celery_app import REDIS_BROKER_URL, celery_app
-from tasks.health_tasks import BEAT_HEARTBEAT_KEY
+from services import runtime_config
+from tasks.health_tasks import BEAT_HEARTBEAT_KEY, WORKER_CONFIG_KEY
 
 
 def snapshot(now: datetime | None = None) -> dict:
@@ -27,9 +29,11 @@ def snapshot(now: datetime | None = None) -> dict:
         client.ping()
         queue_depth = int(client.llen("automation"))
         raw_beat = client.get(BEAT_HEARTBEAT_KEY)
+        raw_config = client.get(WORKER_CONFIG_KEY)
     except Exception:  # noqa: BLE001 - return unknown/unavailable without connection details.
         queue_depth = None
         raw_beat = None
+        raw_config = None
         broker_ok = False
     else:
         broker_ok = True
@@ -44,6 +48,14 @@ def snapshot(now: datetime | None = None) -> dict:
                 last_beat = last_beat.replace(tzinfo=timezone.utc)
         except (UnicodeDecodeError, ValueError):
             last_beat = None
+    worker_config = None
+    if raw_config:
+        try:
+            parsed = json.loads(raw_config.decode("utf-8"))
+            worker_config = parsed if isinstance(parsed, dict) else None
+        except (UnicodeDecodeError, ValueError):
+            worker_config = None
+    config_drift = runtime_config.drift(runtime_config.fingerprint(), worker_config) if worker_config else None
     beat_age = max(0, int((checked_at - last_beat).total_seconds())) if last_beat else None
     automation_active = any("automation" in queues for queues in workers.values())
     beat_active = bool(beat_age is not None and beat_age <= 180)
@@ -63,4 +75,6 @@ def snapshot(now: datetime | None = None) -> dict:
             "checked_at": checked_at,
         },
         "automation_queue": {"pending": queue_depth, "checked_at": checked_at},
+        # None = the worker has not reported its configuration (yet); [] = same as the API; else the keys that differ.
+        "send_config": {"drift": config_drift, "worker": worker_config},
     }

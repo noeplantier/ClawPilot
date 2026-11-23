@@ -7,7 +7,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { canDecide, prospectsApi, sourcesApi, useAsync } from "@/lib/outreach";
 import { describeApiError } from "@/lib/outreachFormat";
 import {
-  PAGE_SIZE, VERTICAL_LABELS, detectedSignals, hasContact, resultSummary, unknownCount, validateDiscover,
+  PAGE_SIZE, VERTICAL_LABELS, defaultProvider, detectedSignals, hasContact, isGem, km, opportunityOf, radiiFor, resultSummary,
+  unknownCount, validateDiscover, zoneLine,
 } from "@/lib/sourcesForm";
 import { EmptyBlock, ErrorBlock, LoadingBlock } from "@/components/outreach/States";
 
@@ -70,6 +71,9 @@ function TownSearch({ onPick }) {
 }
 
 function Results({ run, offset, onPage, selected, toggle, onSelectPage, flags, canAdd }) {
+  const [gemsOnly, setGemsOnly] = useState(false);
+  const rows = gemsOnly ? run.places.filter(isGem) : run.places;
+  const gems = run.places.filter(isGem).length;
   const [attest, setAttest] = useState(false);
   const [sites, setSites] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -91,6 +95,12 @@ function Results({ run, offset, onPage, selected, toggle, onSelectPage, flags, c
   return (
     <section className="space-y-3" data-testid="source-results">
       <p className="text-sm" data-testid="source-summary">{resultSummary(run)} <span className="text-soft">Source: {run.license_note}</span></p>
+      {run.total > 0 && (
+        <label className="flex items-center gap-2 text-sm" data-testid="source-gems">
+          <input type="checkbox" checked={gemsOnly} onChange={(e) => setGemsOnly(e.target.checked)} data-testid="source-gems-only" />
+          <span>Pépites seulement : {gems} sur {run.places.length} dans cette page, chacune justifiée par un manque que la source montre elle-même.</span>
+        </label>
+      )}
       {run.total === 0 ? (
         <EmptyBlock title="No place found" testId="source-empty"><p>Try a larger radius, another vertical or another source.</p></EmptyBlock>
       ) : (
@@ -98,15 +108,21 @@ function Results({ run, offset, onPage, selected, toggle, onSelectPage, flags, c
           <div className="surface overflow-x-auto">
             <table className="w-full text-sm" data-testid="source-table">
               <thead className="bg-white/[0.04] border-b border-border">
-                <tr className="text-left mono-accent"><th className="p-3 w-10"><input type="checkbox" aria-label="Select this page" onChange={(e) => onSelectPage(e.target.checked)} /></th><th className="p-3">name</th><th className="p-3">where</th><th className="p-3">contact (as published)</th><th className="p-3">signals</th></tr>
+                <tr className="text-left mono-accent"><th className="p-3 w-10"><input type="checkbox" aria-label="Select this page" onChange={(e) => onSelectPage(e.target.checked)} /></th><th className="p-3">name</th><th className="p-3">where</th><th className="p-3">contact (as published)</th><th className="p-3">opportunité</th><th className="p-3">signals</th></tr>
               </thead>
               <tbody>
-                {run.places.map((p) => (
+                {rows.map((p) => (
                   <tr key={p.external_id} className="border-b border-border align-top" data-testid={`place-${p.external_id}`}>
                     <td className="p-3"><input type="checkbox" checked={selected.has(p.external_id)} onChange={() => toggle(p.external_id)} aria-label={`Select ${p.name}`} /></td>
                     <td className="p-3"><span className="font-medium">{p.name}</span><a className="block text-xs underline text-soft" href={p.source_url.startsWith("http") ? p.source_url : undefined} rel="noopener noreferrer" target="_blank">{p.source_name}</a></td>
                     <td className="p-3 text-xs">{[p.city, p.postcode].filter(Boolean).join(" ") || <i>not published</i>}</td>
                     <td className="p-3 text-xs">{hasContact(p) ? [p.email, p.phone, p.website].filter(Boolean).join(" · ") : <i>no contact published</i>}</td>
+                    <td className="p-3 text-xs" data-testid={`gem-${p.external_id}`}>
+                      {opportunityOf(p).map((o) => (
+                        <span key={o.key} className="block"><strong>{o.label}</strong> <span className="text-soft">— {o.evidence} (source : {o.source})</span></span>
+                      ))}
+                      {!isGem(p) && <span className="text-soft">—</span>}
+                    </td>
                     <td className="p-3 text-xs">
                       {detectedSignals(p).map((s) => <span key={s.key} title={s.evidence} className="chip-red mr-1">{s.key.replace(/_/g, " ")}</span>)}
                       <span className="text-soft">{unknownCount(p)} unknown</span>
@@ -147,7 +163,7 @@ export default function Sources() {
     const [providers, settings] = await Promise.all([sourcesApi.list(), prospectsApi.settings().catch(() => null)]);
     return { providers, flags: settings ? settings.flags : {} };
   }, []);
-  const [name, setName] = useState("world_fixture");
+  const [name, setName] = useState(null); // null until the sources are known: then the first real one available
   const [values, setValues] = useState(EMPTY);
   const [errors, setErrors] = useState({});
   const [busy, setBusy] = useState(false);
@@ -158,8 +174,10 @@ export default function Sources() {
 
   if (page.loading && !page.data) return <div className="p-6 md:p-10"><LoadingBlock label="Loading sources…" /></div>;
   if (page.error) return <div className="p-6 md:p-10"><ErrorBlock message={page.error} onRetry={page.reload} /></div>;
-  const { providers, flags } = page.data;
-  const provider = providers.find((p) => p.name === name) || providers[0];
+  // Real sources only: the built-in demo directory (fictional businesses) is never offered here, even when the server allows it.
+  const { flags } = page.data;
+  const providers = page.data.providers.filter((p) => p.kind !== "local");
+  const provider = providers.find((p) => p.name === name) || defaultProvider(providers);
   const edit = canDecide(user);
   const set = (k) => (e) => setValues((v) => ({ ...v, [k]: e.target.value }));
   const pick = (n) => { setName(n); setErrors({}); setRun(null); setError(null); setSelected(new Set()); setValues((v) => ({ ...v, vertical: providers.find((p) => p.name === n).verticals.includes(v.vertical) ? v.vertical : providers.find((p) => p.name === n).verticals[0] })); };
@@ -187,8 +205,8 @@ export default function Sources() {
   return (
     <div className="p-6 md:p-10 space-y-6 max-w-6xl" data-testid="sources-page">
       <div>
-        <div className="mono-accent">// discovery.sources</div>
-        <h1 className="text-4xl font-black tracking-tighter flex items-center gap-3"><Database size={32} /> Sources</h1>
+        <div className="eyebrow">discovery.sources</div>
+        <h1 className="mt-3 text-4xl font-bold tracking-tight leading-[1.15] flex items-center gap-3"><Database size={32} /> Sources</h1>
         <p className="text-soft mt-1 max-w-3xl">One place to discover businesses from open and official data. Each result keeps its source and licence; signals say why, and “unknown” is never a verdict. Nothing is sent from here.</p>
       </div>
       <div className="grid md:grid-cols-3 gap-3">{providers.map((p) => <ProviderCard key={p.name} provider={p} active={p.name === provider.name} onPick={pick} />)}</div>
@@ -207,16 +225,31 @@ export default function Sources() {
         {provider.kind === "network" && (
           <div className="space-y-3">
             <TownSearch onPick={(t) => setValues((v) => ({ ...v, lat: String(t.lat), lon: String(t.lon), city: t.city, country: "FR" }))} />
-            <div className="grid md:grid-cols-3 gap-3">
-              <Field label="latitude" error={errors.lat}><input className="neo-input w-full" value={values.lat} onChange={set("lat")} data-testid="source-lat" /></Field>
-              <Field label="longitude" error={errors.lon}><input className="neo-input w-full" value={values.lon} onChange={set("lon")} data-testid="source-lon" /></Field>
-              <Field label={`radius (m, max ${provider.max_radius_m})`} error={errors.radius_m}><input className="neo-input w-full" type="number" value={values.radius_m} onChange={set("radius_m")} data-testid="source-radius" /></Field>
+            <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Rayon autour de la ville">
+              <span className="text-sm text-soft">Rayon</span>
+              {radiiFor(provider).map((r) => (
+                <button key={r} type="button" onClick={() => setValues((v) => ({ ...v, radius_m: r }))} aria-pressed={Number(values.radius_m) === r} data-testid={`source-radius-${r}`}
+                  className={`px-3 py-1 rounded-full text-xs border ${Number(values.radius_m) === r ? "bg-brand-violet text-white border-brand-violet" : "bg-card border-border hover:bg-white/[0.04]"}`}>
+                  {km(r)}
+                </button>
+              ))}
             </div>
+            <p className="text-sm" data-testid="source-zone">{zoneLine(values) ? <>Zone : <strong>{zoneLine(values)}</strong></> : <span className="text-soft">Choisissez une ville : la zone se règle seule.</span>}</p>
+            {errors.lat && <p className="text-xs text-red-300">{errors.lat}</p>}
+            <details className="text-sm">
+              <summary className="cursor-pointer text-soft">Saisie manuelle (latitude, longitude, rayon en mètres)</summary>
+              <div className="mt-2 grid md:grid-cols-3 gap-3">
+                <Field label="latitude" error={errors.lat}><input className="neo-input w-full" value={values.lat} onChange={set("lat")} data-testid="source-lat" /></Field>
+                <Field label="longitude" error={errors.lon}><input className="neo-input w-full" value={values.lon} onChange={set("lon")} data-testid="source-lon" /></Field>
+                <Field label={`radius (m, max ${provider.max_radius_m})`} error={errors.radius_m}><input className="neo-input w-full" type="number" value={values.radius_m} onChange={set("radius_m")} data-testid="source-radius" /></Field>
+              </div>
+            </details>
           </div>
         )}
         {!edit && <p className="text-xs text-amber-300">Only owners and admins can run a discovery.</p>}
         {error && <div role="alert" className="text-sm text-red-300" data-testid="source-error">{error}</div>}
         <button className="btn-ink" type="submit" disabled={busy || !edit} data-testid="source-discover"><MagnifyingGlass size={14} /> {busy ? "DISCOVERING…" : "DISCOVER"}</button>
+        {busy && <p className="text-xs text-soft" role="status" aria-live="polite" data-testid="source-progress">Recherche dans {provider.label}… Seuls les établissements publiés par cette source sont trouvés : la liste n&apos;est jamais exhaustive.</p>}
       </form>
 
       {run && <Results run={run} offset={offset} onPage={goto} selected={selected} toggle={toggle} onSelectPage={selectPage} flags={flags} canAdd={provider.kind === "local" || Boolean(flags.prospect_import)} />}

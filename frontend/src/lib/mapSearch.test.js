@@ -1,4 +1,4 @@
-import { areaTooLarge, importRows, summarize, summaryText, markerColor, panelPadding, reachablePlace, isHot, readyOnly, readySummary } from "@/lib/mapSearch";
+import { areaTooLarge, importRows, summarize, summaryText, markerColor, panelPadding, reachablePlace, isHot, readyOnly, readySummary, zoneOf, zoneSummary, journeyLink, classifyProspect, mapSiteState, resultBreakdown, breakdownText } from "@/lib/mapSearch";
 
 const A = { external_id: "node/1", name: "A", lat: 45.7, lon: 4.8, email: "a@a.fr", phone: "+33 1", website: "https://a.fr", source_url: "u" };
 const B = { external_id: "node/2", name: "B", lat: 45.7, lon: 4.8, email: null, phone: "+33 2", website: null, source_url: "u" };
@@ -46,21 +46,130 @@ test("only the prospects the server qualified are drawn, and the summary counts 
 });
 
 describe("panelPadding", () => {
-  it("keeps a popup clear of the search card on the left and the results drawer on the right", () => {
-    expect(panelPadding({ narrow: false, searchOpen: true, panelOpen: true, hidden: false })).toEqual({ topLeft: [440, 70], bottomRight: [400, 50] });
+  it("keeps a popup clear of the one Prospection panel on the left, and leaves the right of the map free", () => {
+    expect(panelPadding({ narrow: false, open: true, hidden: false })).toEqual({ topLeft: [440, 70], bottomRight: [20, 50] });
   });
-  it("frees the room of a panel that is minimised or closed, and of every panel when they are hidden", () => {
-    expect(panelPadding({ narrow: false, searchOpen: false, panelOpen: false, hidden: false })).toEqual({ topLeft: [20, 70], bottomRight: [20, 50] });
-    expect(panelPadding({ narrow: false, searchOpen: true, panelOpen: true, hidden: true })).toEqual({ topLeft: [20, 70], bottomRight: [20, 50] });
+  it("frees the room of the panel when it is minimised, and of every panel when they are hidden", () => {
+    expect(panelPadding({ narrow: false, open: false, hidden: false })).toEqual({ topLeft: [20, 70], bottomRight: [20, 50] });
+    expect(panelPadding({ narrow: false, open: true, hidden: true })).toEqual({ topLeft: [20, 70], bottomRight: [20, 50] });
   });
-  it("on a phone the panels are above and below the map, not beside it", () => {
-    expect(panelPadding({ narrow: true, searchOpen: true, panelOpen: true, hidden: false })).toEqual({ topLeft: [20, 360], bottomRight: [20, 280] });
+  it("on a phone the panel is above the map, not beside it", () => {
+    expect(panelPadding({ narrow: true, open: true, hidden: false })).toEqual({ topLeft: [20, 360], bottomRight: [20, 50] });
   });
 });
 
-test("a place found by the search is drawn only when it published both a phone and an e-mail", () => {
-  expect(reachablePlace({ phone: "+33 4 78 12 34 56", email: "contact@chez-marcel.example" })).toBe(true);
-  expect(reachablePlace({ phone: "+33 4 78 12 34 56", email: null })).toBe(false); // unknown is not a value
-  expect(reachablePlace({ phone: "", email: "a@b.example" })).toBe(false);
-  expect(reachablePlace(null)).toBe(false);
+const BOX = { status: "succeeded", south: 45.7, west: 4.78, north: 45.8, east: 4.9, category: "restaurant" };
+
+describe("the zone a search really looked at", () => {
+  it("is the box and the category of a succeeded search, and nothing before that", () => {
+    expect(zoneOf(BOX)).toEqual({ south: 45.7, west: 4.78, north: 45.8, east: 4.9, category: "restaurant" });
+    expect(zoneOf(null)).toBeNull();
+    expect(zoneOf({ ...BOX, status: "running" })).toBeNull();
+    expect(zoneOf({ ...BOX, status: "failed" })).toBeNull();
+    expect(zoneOf({ ...BOX, south: undefined })).toBeNull();
+    expect(zoneOf({ ...BOX, category: "" })).toBeNull();
+  });
+  it("is described with its real coordinates and size, never an estimate of how many places it holds", () => {
+    const text = zoneSummary(zoneOf(BOX));
+    expect(text).toContain("45.700–45.800° N");
+    expect(text).toContain("4.780–4.900° E");
+    expect(text).toContain("≈ 9 × 11 km");
+    expect(text).toContain("restaurant");
+    expect(text).not.toMatch(/\d+ (établissements|places|prospects)/);
+    expect(zoneSummary(null)).toBe("");
+  });
+  it("travels to the campaign in the address, the label only when there is one", () => {
+    const link = journeyLink(zoneOf(BOX));
+    expect(link.startsWith("/app/journey?")).toBe(true);
+    const q = new URLSearchParams(link.split("?")[1]);
+    expect([q.get("south"), q.get("west"), q.get("north"), q.get("east"), q.get("category")]).toEqual(["45.7", "4.78", "45.8", "4.9", "restaurant"]);
+    expect(q.has("label")).toBe(false);
+    expect(new URLSearchParams(journeyLink(zoneOf(BOX), "Lyon 6").split("?")[1]).get("label")).toBe("Lyon 6");
+  });
+});
+
+describe("hot is the server's observed intent, never a score", () => {
+  const base = { email: "a@b.example", phone: "+33 4 78 12 34 56", website: "https://x.example", review_status: "pending" };
+  it("a high score or a hot heat band alone leaves a prospect qualified", () => {
+    const scored = { ...base, priority: "qualified", score: 96, heat: { tier: "hot", value: 96 } };
+    expect(isHot(scored)).toBe(false);
+    expect(classifyProspect(scored).tier).not.toBe("HOT");
+    expect(readySummary([{ ...scored, map_ready: true, has_website: true }])).toContain("none hot");
+  });
+  it("the server's priority makes it hot, whatever the score", () => {
+    const intent = { ...base, priority: "hot", score: 10 };
+    expect(isHot(intent)).toBe(true);
+    expect(classifyProspect(intent).tier).toBe("HOT");
+    expect(isHot(null)).toBe(false);
+  });
+});
+
+describe("the map says only what the API returned", () => {
+  const ready = { email: "a@b.example", phone: "+33 4 78 12 34 56", review_status: "pending", map_ready: true, priority: "qualified", signals: [] };
+
+  it("an empty website field is unknown, never « no website »", () => {
+    for (const website of [undefined, null, ""]) {
+      const p = { ...ready, website, has_website: false };
+      expect(mapSiteState(p)).toBe("unknown");
+      const cls = classifyProspect(p);
+      expect(cls.siteKey).toBe("unknown");
+      expect(cls.site.label).toBe("Site inconnu (non vérifié)");
+      expect(JSON.stringify(cls)).not.toMatch(/no website|aucun site|opportunit/i);
+    }
+  });
+
+  it("« no website identified » only when the server detected the no_website signal", () => {
+    const p = { ...ready, website: null, has_website: false, signals: ["no_website"] };
+    expect(mapSiteState(p)).toBe("none_identified");
+    expect(classifyProspect(p).site.label).toBe("Aucun site identifié après recherche");
+  });
+
+  it("a website the server returned is present, unreachable only on the detected signal", () => {
+    const p = { ...ready, website: "https://x.example", has_website: true };
+    expect(mapSiteState(p)).toBe("site_found");
+    expect(mapSiteState({ ...p, signals: ["website_unreachable"] })).toBe("site_unreachable");
+  });
+
+  it("gives no confidence and no opportunity: the API provides neither", () => {
+    const cls = classifyProspect({ ...ready, score: 96, heat: { tier: "hot", value: 96 } });
+    expect(cls).not.toHaveProperty("confidence");
+    expect(cls).not.toHaveProperty("opportunity");
+    expect(classifyProspect(null)).not.toHaveProperty("confidence");
+  });
+
+  it("an old site is said only on the server's detected signal, and never as a non-responsive layout", () => {
+    const site = { ...ready, website: "https://x.example", has_website: true };
+    expect(classifyProspect({ ...site, signals: ["legacy_tech"] }).reasons.join(" ")).not.toMatch(/ancien|outdated|responsive/i);
+    const reasons = classifyProspect({ ...site, signals: ["outdated_technology"] }).reasons.join(" ");
+    expect(reasons).toContain("Marqueur technique ancien");
+    expect(reasons).not.toMatch(/responsive/i);
+  });
+
+  it("the tier is the server's decision, in French, never re-ranked from the contacts", () => {
+    expect(classifyProspect(ready)).toMatchObject({ tier: "QUALIFIED", label: "Qualifié prioritaire" });
+    expect(classifyProspect({ ...ready, priority: "hot" }).label).toBe("Hot — intention observée");
+    expect(classifyProspect({ ...ready, priority_label: "Qualifié prioritaire (serveur)" }).label).toBe("Qualifié prioritaire (serveur)");
+    expect(classifyProspect({ email: "a@b.example", phone: "+33 4 78 12 34 56" })).toMatchObject({ tier: "NEEDS_REVIEW", label: "À compléter" });
+  });
+});
+
+describe("what a search found, explained", () => {
+  const P = (id, over = {}) => ({ external_id: id, name: id, phone: "+33 4", email: `${id}@x.example`, ...over });
+  it("counts reachable, excluded and already known places, each place once", () => {
+    const b = resultBreakdown([P("a"), P("a"), P("b", { email: null }), P("c", { phone: "" }), P("d")], new Set(["d"]));
+    expect(b).toEqual({ total: 4, alreadyKnown: 1, reachable: 1, noContact: 2 });
+    expect(breakdownText(b)).toBe("4 lieux trouvés · 1 joignable (téléphone et e-mail publiés) · 2 exclus : téléphone ou e-mail non publié · 1 déjà dans vos prospects.");
+  });
+  it("says nothing when nothing was found, and leaves a zero line out", () => {
+    expect(breakdownText(resultBreakdown([], new Set()))).toBe("");
+    expect(breakdownText(resultBreakdown([P("a")], new Set()))).toBe("1 lieu trouvé · 1 joignable (téléphone et e-mail publiés).");
+  });
+});
+
+test("a hot prospect says why, with the server's quoted evidence; a qualified one never borrows it", () => {
+  const evidence = "hiring: the homepage https://fournil.fr says \"…Nous recrutons un boulanger…\"";
+  const hot = classifyProspect({ email: "a@b.fr", phone: "+33 1", priority: "hot", intent_evidence: evidence });
+  expect(hot.reasons[0]).toBe(`Pourquoi Hot : ${evidence}`);
+  const qualified = classifyProspect({ email: "a@b.fr", phone: "+33 1", map_ready: true, priority: "qualified", intent_evidence: evidence });
+  expect(qualified.reasons.join(" ")).not.toContain("Pourquoi Hot");
 });

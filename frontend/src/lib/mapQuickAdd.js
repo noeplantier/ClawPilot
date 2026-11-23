@@ -32,3 +32,52 @@ export function describeAdded(out, { siteAsked = false } = {}) {
   }
   return lines;
 }
+
+// ---- One click on the whole selection (POST /map/places/add-many) ----
+export const MAX_PER_REQUEST = 200; // the server's limit per call: a larger selection goes in several calls
+
+const placeRow = (place) => {
+  const row = {};
+  for (const key of FIELDS) {
+    const value = place[key];
+    if (value !== null && value !== undefined && value !== "") row[key] = value;
+  }
+  return row;
+};
+
+// The bodies to send, in slices the server accepts. Only what the map published; the attestation is the person's own.
+export function addManyBodies(places, { approve = true, checkWebsite = false } = {}) {
+  const rows = (places || []).map(placeRow);
+  const out = [];
+  for (let i = 0; i < rows.length; i += MAX_PER_REQUEST) {
+    out.push({ places: rows.slice(i, i + MAX_PER_REQUEST), attestation: true, approve, check_website: Boolean(checkWebsite) });
+  }
+  return out;
+}
+
+const ADD_KEYS = ["requested", "created", "already_known", "in_crm", "waiting_review", "kept_rejected", "suppressed", "unreadable", "sites_checked"];
+
+// The answers of several slices, added up (only the server's numbers).
+export function sumAdded(answers) {
+  const total = Object.fromEntries(ADD_KEYS.map((k) => [k, 0]));
+  total.lead_ids = [];
+  for (const a of answers || []) {
+    for (const k of ADD_KEYS) total[k] += Number(a[k]) || 0;
+    total.lead_ids.push(...(a.lead_ids || []));
+  }
+  return total;
+}
+
+// What really happened, in French, from the server's counts. Nothing was sent; a zero line is left out.
+export function describeAddedMany(t) {
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+  const lines = [];
+  if (t.in_crm) lines.push(`${plural(t.in_crm, "établissement est", "établissements sont")} dans votre CRM.`);
+  if (t.waiting_review) lines.push(`${plural(t.waiting_review, "attend", "attendent")} votre relecture (« À traiter »).`);
+  if (t.created || t.already_known) lines.push(`${t.created} nouveau(x), ${t.already_known} déjà connu(s) : rien n'est dupliqué.`);
+  if (t.kept_rejected) lines.push(`${plural(t.kept_rejected, "était rejeté", "étaient rejetés")} par une personne : laissé(s) tel(s) quel(s).`);
+  if (t.suppressed) lines.push(`${plural(t.suppressed, "figure", "figurent")} sur votre liste d'opposition : non ajouté(s).`);
+  if (t.unreadable) lines.push(`${plural(t.unreadable, "ligne illisible", "lignes illisibles")} : non ajoutée(s).`);
+  lines.push("Rien n'a été envoyé.");
+  return lines;
+}

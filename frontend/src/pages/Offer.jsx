@@ -1,15 +1,14 @@
-import OfferCard from "@/components/outreach/OfferCard";
+import { Link } from "react-router-dom";
+import PageShell from "@/components/PageShell";
+import OffersEditor from "@/components/outreach/OffersEditor";
 
-// What you sell: the one offer the automatic drafts talk about.
+// The three offers. Also step 1 of the batch dispatch (Outreach › Boîte de réception): this page stays for old links.
 export default function Offer() {
   return (
-    <div className="p-6 md:p-10 max-w-4xl space-y-6" data-testid="offer-page">
-      <div>
-        <div className="mono-accent">// control.offer</div>
-        <h1 className="text-4xl font-black tracking-tighter">Offer</h1>
-        <p className="text-soft mt-1">Describe what you sell once. Every qualified prospect then gets a short draft about it, to review before anything is sent.</p>
-      </div>
-      <OfferCard />
-    </div>
+    <PageShell testId="offer-page" kicker="Outreach" title="Offres"
+      lead="Ce que vous vendez, en trois cas. Chaque brouillon parle de l'offre qui correspond à ce que l'on sait du site du prospect ; rien n'est envoyé sans votre validation."
+      action={<Link to="/app/messages" className="btn-ghost">ENVOI PAR LOTS</Link>}>
+      <OffersEditor />
+    </PageShell>
   );
 }

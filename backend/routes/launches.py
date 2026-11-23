@@ -37,7 +37,7 @@ from models import (
     LaunchTrackingRowOut,
 )
 from repositories import campaign_repo, draft_job_repo, launch_repo
-from services import campaign_launch
+from services import campaign_launch, runtime_config
 from services.outreach_os import campaign_plan
 
 router = APIRouter(prefix="/launches", tags=["launches"])
@@ -78,6 +78,8 @@ async def _scheduler_health() -> dict[str, Any]:
         "beat_ok": bool(snap["beat"]["ok"]),
         "broker_ok": bool(snap["broker_ok"]),
         "beat_age_seconds": snap["beat"]["age_seconds"],
+        "config_drift": snap["send_config"]["drift"],
+        "config_drift_text": runtime_config.drift_text(snap["send_config"]["drift"] or []),
     }
 
 

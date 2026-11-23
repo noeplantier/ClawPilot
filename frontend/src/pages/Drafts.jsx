@@ -37,8 +37,8 @@ export default function Drafts() {
   return (
     <div className="p-6 md:p-10 space-y-6" data-testid="drafts-page">
       <div>
-        <div className="mono-accent">// outreach.drafts</div>
-        <h1 className="text-4xl font-black tracking-tighter">AI drafts</h1>
+        <div className="eyebrow">outreach.drafts</div>
+        <h1 className="mt-3 text-4xl font-bold tracking-tight leading-[1.15]">AI drafts</h1>
         <p className="text-soft mt-1 max-w-2xl">One short proposal per qualified prospect, about your offer. Read it, change it, approve it: nothing is sent without you.</p>
       </div>
       <div className="surface p-4"><DraftJobsStrip /></div>

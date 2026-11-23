@@ -55,6 +55,7 @@ def test_a_new_organisation_gets_explicit_empty_values_not_invented_zeros():
     lim = d["limits"]
     assert lim["dry_run"] is True and lim["kill_switch"] is False and lim["paused"] is False
     assert lim["remaining_today"] == lim["max_per_day"] and lim["sandbox"] is True
+    assert lim["email_channel"] is None  # the test server has no e-mail provider: none is claimed
 
 
 def test_discovery_fills_prospects_scores_and_live_signals():
@@ -142,3 +143,12 @@ def test_campaign_health_rates_are_null_until_something_is_sent():
     requests.post(f"{API}/campaigns", headers=h, json={"name": "Health", "steps": [step]})
     row = _overview(h)["campaigns"][0]
     assert row["name"] == "Health" and row["sent"] == 0 and row["open_rate"] is None and row["reply_rate"] is None
+
+
+def test_no_invented_pipeline_value_and_hot_is_an_observed_intent_never_a_score():
+    h = _org()
+    assert requests.post(f"{API}/prospects/discovery/run", headers=h, json={}).status_code == 200
+    k = _overview(h)["kpis"]
+    assert "pipeline_value" not in k  # an estimated money value is not a measurement
+    assert k["scored"] > 0  # scored prospects exist, yet none has an observed commercial intent
+    assert k["hot_leads"] == 0

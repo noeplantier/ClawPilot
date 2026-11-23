@@ -131,7 +131,9 @@ def test_twilio_api_key_instead_of_account_sid_is_explained():
     "patch,status,label",
     [
         ({"kill_switch": True, "live_sending": True}, "blocked", "KILL SWITCH"),
-        ({"live_sending": True, "smtp_configured": False}, "blocked", "SMTP INCOMPLETE"),
+        ({"live_sending": True, "smtp_configured": False}, "blocked", "NO E-MAIL CHANNEL"),
+        ({"live_sending": True, "resend_configured": True, "sandbox": True}, "partial", "SANDBOX"),
+        ({"live_sending": True, "brevo_configured": True, "sandbox": False}, "ready", "REAL E-MAIL"),
         ({"live_sending": True, "smtp_configured": True, "sandbox": True}, "partial", "SANDBOX"),
         ({"live_sending": True, "smtp_configured": True, "sandbox": False}, "ready", "REAL E-MAIL"),
     ],
@@ -153,6 +155,11 @@ def test_ai_is_configured_only_when_a_provider_can_really_be_called_and_says_whe
     item = by_id(Facts(**{**NOTHING.__dict__, "ai": live}))["ai"]
     assert item["status"] == "unchecked" and item["test"] == "server" and item["needs"] == []
     assert ("sent to", "api.groq.com") in [tuple(f) for f in item["facts"]]
+    assert ("model.light", "same as main") in [tuple(f) for f in item["facts"]]  # no light model reported
+    light = {**live, "model_light": "openai/gpt-oss-20b"}
+    item = by_id(Facts(**{**NOTHING.__dict__, "ai": light}))["ai"]
+    assert ("model.light", "openai/gpt-oss-20b") in [tuple(f) for f in item["facts"]]
+    assert "AI_MODEL_LIGHT" in item["env"] and "AI_MODEL_LIGHT" in TRACKED_ENV
     assert "e-mail and phone never are" in item["hint"]  # what leaves the server is said
     no_key = {"key_configured": False, "provider": "groq", "active": False, "reason": "AI_API_KEY is not set"}
     item = by_id(Facts(**{**NOTHING.__dict__, "ai": no_key}))["ai"]
@@ -212,3 +219,59 @@ def test_no_value_can_leak_only_names_and_derived_facts():
     )
     assert secret not in repr(build(facts))
     assert "SMTP_PASSWORD" in repr(build(facts))  # the name is fine, it is what the user must set
+
+
+def test_brevo_is_optional_until_its_key_is_set_then_unchecked_until_its_read_only_test_and_sendgrid_is_not_needed():
+    bare = by_id(NOTHING)["brevo"]
+    assert bare["status"] == "off" and bare["needs"] == ["BREVO_API_KEY"] and bare["test"] == "server"
+    facts = Facts(**{**NOTHING.__dict__, "brevo_configured": True, "env_set": frozenset({"BREVO_API_KEY"})})
+    items = by_id(facts)
+    assert items["brevo"]["status"] == "unchecked" and "never sends" in items["brevo"]["hint"]
+    assert items["sendgrid"]["label"] == "NOT NEEDED · BREVO IS USED"
+    assert "brevo" in TESTABLE
+
+
+def test_resend_is_optional_until_its_key_is_set_then_unchecked_and_used_before_brevo():
+    bare = by_id(NOTHING)["resend"]
+    assert bare["status"] == "off" and bare["needs"] == ["RESEND_API_KEY"] and bare["test"] == "server"
+    assert "RESEND_API_KEY" in TRACKED_ENV and "resend" in TESTABLE
+    facts = Facts(
+        **{
+            **NOTHING.__dict__,
+            "resend_configured": True,
+            "brevo_configured": True,
+            "live_sending": True,
+            "env_set": frozenset({"RESEND_API_KEY", "BREVO_API_KEY"}),
+        }
+    )
+    items = by_id(facts)
+    assert items["resend"]["status"] == "unchecked" and items["resend"]["needs"] == []
+    assert "never sends" in items["resend"]["hint"] and "does not mean delivered" in items["resend"]["summary"]
+    assert dict(items["resend"]["facts"])["used"] == "first"
+    assert dict(items["brevo"]["facts"])["used"] == "standby: Resend is used first"
+    assert items["sendgrid"]["label"] == "NOT NEEDED · RESEND IS USED"
+
+
+def test_today_s_ai_usage_is_summed_per_model_and_never_estimated():
+    from datetime import datetime, timezone
+
+    from services.credit_gate import ai_usage
+
+    since = datetime(2026, 11, 19, 23, tzinfo=timezone.utc)
+    metas = [
+        {"action": "draft", "model": "rapide", "ai_model": "openai/gpt-oss-20b", "ai_tokens": 300},
+        {"action": "draft", "model": "rapide", "ai_model": "openai/gpt-oss-20b", "ai_tokens": 120},
+        {"action": "draft", "model": "equilibre", "ai_model": "openai/gpt-oss-120b"},  # no tokens reported
+        {"action": "draft", "model": "equilibre", "ai_model": "openai/gpt-oss-120b", "ai_tokens": True},  # not a count
+        {"action": "composer", "model": "equilibre"},  # no AI model recorded: apart, never attributed
+    ]
+    out = ai_usage(metas, since)
+    assert out == {
+        "since": since,
+        "models": [
+            {"ai_model": "openai/gpt-oss-120b", "spends": 2, "tokens": None, "without_tokens": 2},
+            {"ai_model": "openai/gpt-oss-20b", "spends": 2, "tokens": 420, "without_tokens": 0},
+        ],
+        "unattributed": 1,
+    }
+    assert ai_usage([], since) == {"since": since, "models": [], "unattributed": 0}

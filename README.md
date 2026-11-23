@@ -126,9 +126,13 @@ set (Settings > Integrations): nothing is ever recorded as sent, generated or fo
 | `PUBLIC_BASE_URL` | Public API URL (https in production), used in unsubscribe links |
 | `FEATURE_PROSPECT_IMPORT` | `true` lets owners/admins import a prospect list (CSV/JSON); off by default |
 | `FEATURE_LIVE_SENDING`, `FEATURE_EXTERNAL_SOURCES` | Dangerous capabilities, off unless `true`. Live sending = real e-mail over SMTP (below). External sources = the **Sources** page (`docs/sources.md`), the **Map search** page (live OpenStreetMap places, see `docs/map-search.md`) and the opt-in "check websites" of a list import: each company's own public homepage is fetched (`robots.txt` respected, identified User-Agent, platforms and non-public addresses refused, 25 sites max per import). Enabling it is your attestation that this is permitted for the sites concerned |
+| `RESEND_API_KEY` | Resend's API (HTTPS, port 443), used first when set (before Brevo and SMTP): the real e-mail channel where outbound SMTP ports are closed (free Render instances). Sender = `OUTREACH_SENDER_EMAIL`, on a domain verified in Resend; the free plan caps the daily volume |
+| `RESEND_WEBHOOK_SECRET` | Signing secret of the Resend webhook (Resend › Webhooks, `whsec_…`) posted to `/api/webhooks/resend` with the events `email.bounced` and `email.complained`: permanent bounces and complaints reach the app (Resend keeps the bounce reports, IMAP never sees them). Production refuses unsigned events |
+| `BREVO_API_KEY` | Brevo's transactional API (HTTPS, port 443), used before SMTP when set: the real e-mail channel where outbound SMTP ports are closed (free Render instances). Sender = `OUTREACH_SENDER_EMAIL`, verified in Brevo |
 | `SMTP_HOST`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_SECURITY`, `SMTP_PORT` | The real e-mail channel. The first three are required; `SMTP_SECURITY` is `starttls` (587, default) or `ssl` (465); TLS is verified and mandatory |
 | `IMAP_HOST`, `IMAP_USERNAME`, `IMAP_PASSWORD`, `IMAP_PORT`, `IMAP_FOLDER` | Reads replies, hard bounces and STOP from the sending mailbox (TLS only, port 993, folder `INBOX` by default). The first three are required; without them nothing is read. Run by beat every 5 minutes where a worker exists, or by `POST /api/outbound/sync-inbox` |
 | `OUTREACH_SANDBOX`, `OUTREACH_LIVE_ALLOWLIST`, `OUTREACH_LIVE_PHONES` | While the sandbox is on, only the allowlisted addresses/`@domains` receive e-mail and only the listed numbers (E.164, comma separated, no spaces) receive WhatsApp. The sandbox is on unless set to `false`; an empty list allows nobody. `POST /api/outbound/test-whatsapp` only reaches `OUTREACH_LIVE_PHONES` |
+| `FEATURE_AUTOMATION_MAX` | `true` makes the bounded automatic mode available (`docs/automation-max.md`); **off by default**. It sends nothing by itself: each use needs an explicit mandate (zone, template, caps, expiry) activated by an owner, and it can be revoked at any time |
 | `FEATURE_DEMO_DATA` | `true` offers the built-in demo directory (fictional businesses) as a source; off by default so only real data is shown |
 | `OUTREACH_TEST_SINK` | Automated tests only: records sends in-process (ids start with `sink:`) instead of calling a provider. Ignored when `APP_ENV=production` |
 | `OUTREACH_SOURCE_TTL_DAYS`, `OUTREACH_FIT_TTL_DAYS`, `OUTREACH_INTENT_TTL_DAYS`, `OUTREACH_MIN_FIT_SCORE` | Eligibility of the commercial map (`docs/eligibility.md`): a source and a fit score older than 30 days, or a fit score below 60, send a prospect back to *To enrich*; an observed intent older than 30 days stops counting as Hot. Defaults 30 / 30 / 30 / 60 |
@@ -136,7 +140,10 @@ set (Settings > Integrations): nothing is ever recorded as sent, generated or fo
 | `AI_PROVIDER` | AI composer: `groq`, `gemini`, `mistral` or `custom`. No default: you choose who receives the recipient's name and company. Unset, the composer refuses with the reason (no canned text) |
 | `AI_API_KEY` | The provider's key (a free one exists at Groq and Mistral). Never shown, never logged |
 | `AI_MODEL` | Optional: replaces the provider's default model |
+| `AI_MODEL_LIGHT` | Optional: a lighter model of the same provider, used for short messages (the « Rapide » writing model); Groq defaults to `openai/gpt-oss-20b`, other providers use `AI_MODEL` unless it is set. If it is unknown or retired, the message is asked once from `AI_MODEL` |
 | `AI_BASE_URL` | Only with `AI_PROVIDER=custom`: the API root (`https://…/v1`), with `AI_MODEL` |
+| `CREDITS_PER_DAY` | AI credits per day (Europe/Paris), default `100`: a spend over it is refused before any provider call (`docs/cost-control.md`) |
+| `CREDITS_PER_SESSION` | AI credits per 5-hour session, default `30` |
 | `REACT_APP_BACKEND_URL` (frontend) | API base URL |
 
 ## OutreachOS: local prospect journey (dry-run, no network)

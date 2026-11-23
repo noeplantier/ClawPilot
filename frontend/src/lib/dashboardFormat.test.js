@@ -1,4 +1,4 @@
-import { chartGeometry, DASH, ago, kpiCards, modeOf, pct, quotaShare, seriesHasData, seriesSummary, shortDay } from "@/lib/dashboardFormat";
+import { chartGeometry, channelOf, DASH, ago, kpiCards, modeOf, pct, quotaShare, seriesHasData, seriesSummary, shortDay } from "@/lib/dashboardFormat";
 
 const K = { prospects: 3, pending_review: 2, approved: 1, scored: 3, avg_score: 41.5, sent_today: 2, messages: 4, replies: 1, reply_rate: 0.25, bounces: 0, bounce_rate: 0, unsubscribed: 1 };
 const L = { dry_run: true, kill_switch: false, paused: false, smtp_configured: false, sandbox: true, allowlist_size: 0, max_per_day: 20, sent_today: 2, remaining_today: 18 };
@@ -7,27 +7,40 @@ test("null means unknown and is never shown as zero", () => {
   expect(pct(null)).toBe(DASH);
   expect(pct(0)).toBe("0%");
   expect(pct(0.256)).toBe("25.6%");
-  const empty = kpiCards({ ...K, prospects: 0, pending_review: 0, approved: 0, scored: 0, avg_score: null, messages: 0, reply_rate: null, bounce_rate: null }, L);
+  const empty = kpiCards({ ...K, prospects: 0, pending_review: 0, approved: 0, scored: 0, avg_score: null, messages: 0, reply_rate: null, bounce_rate: null, hot_leads: undefined }, L);
   const byKey = Object.fromEntries(empty.map((c) => [c.key, c]));
-  expect(byKey.avg_score.value).toBe(DASH);
-  expect(byKey.avg_score.hint).toBe("nothing scored yet");
-  expect(byKey.replies.hint).toBe("no message sent yet");
+  expect(byKey.hot_leads.value).toBe(DASH); // not known: a dash, never 0
+  expect(byKey.replies.hint).toBe("aucun message envoyé");
 });
 
-test("cards carry the real counts and the remaining quota", () => {
-  const byKey = Object.fromEntries(kpiCards(K, L).map((c) => [c.key, c]));
-  expect(byKey.sent_today.hint).toBe("18 left of 20 allowed");
-  expect(byKey.replies.hint).toBe("25% of 4 sent");
-  expect(byKey.prospects.hint).toBe("2 pending review · 1 approved");
+test("five cards that help decide, the real counts and the remaining quota", () => {
+  const cards = kpiCards({ ...K, hot_leads: 2 }, L);
+  expect(cards.map((c) => c.key)).toEqual(["prospects", "hot_leads", "sent_today", "replies", "unsubscribed"]);
+  const byKey = Object.fromEntries(cards.map((c) => [c.key, c]));
+  expect(byKey.sent_today.hint).toBe("18 restant(s) sur 20");
+  expect(byKey.replies.hint).toBe("25% de 4 envoyé(s)");
+  expect(byKey.prospects.hint).toBe("2 à relire · 1 approuvés");
+  expect(byKey.hot_leads.hint).toMatch(/intention commerciale observée/); // never "high score"
+  expect(JSON.stringify(cards)).not.toMatch(/€|pipeline|verified/i); // no estimated money value, no unverified claim
 });
 
 test("the most restrictive sending state wins", () => {
-  expect(modeOf({ ...L, kill_switch: true, paused: true }).label).toMatch(/KILL SWITCH/);
-  expect(modeOf({ ...L, paused: true }).label).toBe("PAUSED");
-  expect(modeOf(L).label).toBe("DRY-RUN");
-  expect(modeOf({ ...L, dry_run: false }).label).toMatch(/SMTP INCOMPLETE/);
-  expect(modeOf({ ...L, dry_run: false, smtp_configured: true, allowlist_size: 2 }).label).toBe("LIVE · SANDBOX (2 ALLOWED)");
+  expect(modeOf({ ...L, kill_switch: true, paused: true }).label).toBe("ARRÊT D'URGENCE");
+  expect(modeOf({ ...L, paused: true }).label).toBe("EN PAUSE");
+  expect(modeOf(L).label).toBe("SIMULATION");
+  expect(modeOf({ ...L, dry_run: false }).label).toBe("RÉEL · AUCUN CANAL E-MAIL");
+  expect(modeOf({ ...L, dry_run: false, email_channel: null, smtp_configured: true }).label).toBe("RÉEL · AUCUN CANAL E-MAIL");
+  expect(modeOf({ ...L, dry_run: false, email_channel: "resend", allowlist_size: 1 }).label).toBe("RÉEL · BAC À SABLE (1 AUTORISÉ)");
+  expect(modeOf({ ...L, dry_run: false, smtp_configured: true, allowlist_size: 2 }).label).toBe("RÉEL · BAC À SABLE (2 AUTORISÉS)");
   expect(modeOf({ ...L, dry_run: false, smtp_configured: true, sandbox: false }).tone).toBe("danger");
+});
+
+test("the e-mail channel is the server's, never guessed", () => {
+  expect(channelOf({ email_channel: "resend", smtp_configured: false })).toBe("Resend");
+  expect(channelOf({ email_channel: "brevo" })).toBe("Brevo");
+  expect(channelOf({ email_channel: null, smtp_configured: true })).toBe(null); // the server said none
+  expect(channelOf({ smtp_configured: true })).toBe("SMTP"); // an older answer without the field
+  expect(channelOf({ smtp_configured: false })).toBe(null);
 });
 
 test("quota share is bounded and a zero cap counts as full", () => {

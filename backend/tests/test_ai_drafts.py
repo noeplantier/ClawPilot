@@ -13,8 +13,8 @@ import requests
 from prospect_fixtures import insert_rows, row
 from sqlalchemy import func, select
 
-from db.models import Account, DraftJob, MessageDraft, OutboundMessage, ProspectSignal, ProspectSource
-from repositories import draft_job_repo, draft_repo, prospect_repo
+from db.models import Account, DraftJob, MessageDraft, OutboundMessage, ProspectSignal, ProspectSource, UsageRecord
+from repositories import draft_job_repo, draft_repo, prospect_repo, usage_repo
 from services import ai_svc, draft_runner
 from tasks import _bridge
 from tasks._bridge import run_async
@@ -56,9 +56,11 @@ def _offer(account, offer=OFFER):
     run_async(go)
 
 
-def provider(calls, answer=GOOD, error=None):
-    async def generate(messages):
+def provider(calls, answer=GOOD, error=None, styles=None):
+    async def generate(messages, **style):
         calls.append(messages)
+        if styles is not None:
+            styles.append(style)
         if error is not None:
             raise error
         return answer
@@ -146,6 +148,44 @@ def test_site_present_absent_and_unknown_each_get_their_own_honest_request_and_a
             draft.template_version == "ai-fr-v1" and "/api/unsubscribe/" in draft.body
         )  # the mandatory footer is there
         assert draft.body.startswith("Bonjour")
+
+
+def _credit_records(account):
+    async def go(session):
+        rows = await session.execute(
+            select(UsageRecord).where(UsageRecord.account_id == account, UsageRecord.kind == "credits")
+        )
+        return [(r.quantity, dict(r.meta)) for r in rows.scalars()]
+
+    return run_async(go)
+
+
+def test_the_chosen_writing_model_sets_length_warmth_and_tier_and_the_real_usage_is_recorded():
+    account = _account()
+    _offer(account)
+    insert_rows(account, [row("Rapide 1")])
+
+    async def choose(session):
+        await usage_repo.set_outreach_model(session, account, "rapide")
+
+    run_async(choose)
+    calls, styles = [], []
+    answer = {**GOOD, "usage": {"model": "openai/gpt-oss-20b", "tokens": 412}}
+    assert prepare(account, provider(calls, answer=answer, styles=styles))["ready"] == 1
+    assert styles == [{"max_tokens": 350, "temperature": 0.4, "tier": "light"}]
+    assert _credit_records(account) == [
+        (1, {"action": "draft", "model": "rapide", "ai_model": "openai/gpt-oss-20b", "ai_tokens": 412})
+    ]
+
+
+def test_without_a_reported_usage_nothing_is_estimated():
+    account = _account()
+    _offer(account)
+    insert_rows(account, [row("Equilibre 1")])
+    styles = []
+    assert prepare(account, provider([], styles=styles))["ready"] == 1
+    assert styles == [{"max_tokens": 600, "temperature": 0.6, "tier": "main"}]  # the default model: Équilibre
+    assert _credit_records(account) == [(2, {"action": "draft", "model": "equilibre"})]
 
 
 def test_a_second_sweep_or_a_refresh_prepares_nothing_twice():
@@ -261,7 +301,7 @@ def test_a_slow_provider_never_delays_the_map_or_the_batch():
     async def scenario():
         gate = asyncio.Event()
 
-        async def slow(messages):
+        async def slow(messages, **style):
             await gate.wait()
             return GOOD
 

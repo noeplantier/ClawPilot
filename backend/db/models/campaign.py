@@ -16,7 +16,7 @@ from sqlalchemy import (
     Text,
     text,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, CITEXT, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, CITEXT, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db.base import Base, SoftDeleteMixin, TimestampMixin, UUIDPKMixin
@@ -50,6 +50,12 @@ class Campaign(Base, UUIDPKMixin, TimestampMixin, SoftDeleteMixin):
     # "sequence" = steps (templates) run by the campaign engine; "individual" = one approved, personalised draft per
     # recipient, planned in campaign_dispatches and sent one by one (no steps, never run by the sequence engine).
     kind: Mapped[str] = mapped_column(String, nullable=False, server_default="sequence")
+    # The perimeter of a "zone -> draft -> approval" campaign: {kind: "bbox", south, west, north, east, category,
+    # label}.
+    # NULL for every other campaign. Only prospects positioned inside it are candidates.
+    zone: Mapped[dict | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )  # None is SQL NULL, never JSON null
     channels: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=False, server_default=text("'{email}'"))
     agent_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("agents.id", ondelete="SET NULL"), nullable=True
@@ -100,6 +106,12 @@ class CampaignLead(Base):
         UUID(as_uuid=True), ForeignKey("leads.id", ondelete="CASCADE"), primary_key=True
     )
     assigned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"), nullable=False)
+    # Removed by the person: the row stays (a top-up never picks the establishment again), it is never sent.
+    removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    removed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    removed_reason: Mapped[str | None] = mapped_column(String, nullable=True)
 
     campaign: Mapped["Campaign"] = relationship(back_populates="leads")
 

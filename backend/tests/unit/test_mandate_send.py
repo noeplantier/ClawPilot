@@ -275,6 +275,6 @@ def test_beat_registers_the_send_task_on_the_sends_queue():
     from celery_app import celery_app
 
     beat = celery_app.conf.beat_schedule
-    assert beat["send-due-mandate-messages"]["task"] == "tasks.mandate_tasks.process_mandate_sends"
+    assert beat["send-due-mandate-messages"]["task"] == "tasks.outreach_mandate_tasks.process_mandate_sends"
     assert beat["send-due-mandate-messages"]["options"]["queue"] == "sends"
     assert "mandate-daily-report" in beat

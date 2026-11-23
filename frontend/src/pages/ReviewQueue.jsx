@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { ArrowRight, Check, SkipForward, X } from "@phosphor-icons/react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -18,8 +18,9 @@ import { EmptyBlock, ErrorBlock, LoadingBlock } from "@/components/outreach/Stat
 // One pending prospect at a time, hottest first (real information + score), with the evidence needed to decide.
 // The queue refreshes in the background; the card you are reading stays put, new arrivals join the lanes.
 // Approve/reject records a human decision (audited); skip just moves on without deciding.
-export default function ReviewQueue() {
+export default function ReviewQueue({ embedded = false }) {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [skipped, setSkipped] = useState([]);
   const [lane, setLane] = useState("all"); // all | top | hot | warm | cold
   const [showEmpty, setShowEmpty] = useState(() => readPref("review.showEmpty", false)); // prospects with no e-mail, phone or website
@@ -48,7 +49,12 @@ export default function ReviewQueue() {
     setError(null);
     try {
       await prospectsApi.review(current.id, decision, note);
-      toast.success(decision === "approve" ? `${current.name} approved` : `${current.name} rejected`);
+      if (decision === "approve") {
+        const id = current.id;
+        toast.success(`${current.name} approuvé : il est dans votre CRM.`, { action: { label: "Voir dans le CRM", onClick: () => navigate(`/app/leads?lead=${id}`) } });
+      } else {
+        toast.success(`${current.name} rejeté.`);
+      }
       setNote("");
       queue.reload();
       counts.reload();
@@ -60,14 +66,14 @@ export default function ReviewQueue() {
   };
 
   return (
-    <div className="p-6 md:p-10 space-y-6 max-w-5xl" data-testid="review-queue">
-      <div>
-        <div className="mono-accent">// human.review</div>
-        <h1 className="text-4xl font-black tracking-tighter">Review queue</h1>
+    <div className={embedded ? "space-y-6" : "p-6 md:p-10 space-y-6 max-w-5xl"} data-testid="review-queue">
+      {!embedded && <div>
+        <div className="eyebrow">human.review</div>
+        <h1 className="mt-3 text-4xl font-bold tracking-tight leading-[1.15]">Review queue</h1>
         <p className="text-soft mt-1">
           Decide on each prospect from its evidence. An approval makes it eligible for a draft; it does not send anything.
         </p>
-      </div>
+      </div>}
 
       {queue.loading && !queue.data && <LoadingBlock label="Loading the queue…" />}
       {queue.error && <ErrorBlock message={queue.error} onRetry={queue.reload} />}

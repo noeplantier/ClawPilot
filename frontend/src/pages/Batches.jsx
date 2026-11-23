@@ -30,10 +30,10 @@ export default function Batches() {
   const searches = useAsync(() => mapApi.recent(20).catch(() => []), [], { key: "batches:searches", intervalMs: LIVE_MS });
   const imports = useAsync(() => importsApi.list().catch(() => []), [], { key: "batches:imports", intervalMs: LIVE_MS });
   const queue = useAsync(() => prospectsApi.toEnrich({ limit: 1 }).catch(() => null), [], { key: "batches:queue", intervalMs: LIVE_MS });
-  const mandates = useAsync(() => api.get("/mandates").then((r) => r.data).catch(() => []), [], { key: "mandates:list", intervalMs: LIVE_MS });
+  const mandates = useAsync(() => api.get("/outreach-mandates").then((r) => r.data).catch(() => []), [], { key: "mandates:list", intervalMs: LIVE_MS });
   const mandate = (mandates.data || []).find((m) => m.status === "active") || (mandates.data || [])[0] || null;
   const live = useMandateLive(
-    (since, signal) => api.get(`/mandates/${mandate.id}/live`, { params: since ? { since } : {}, signal }).then((r) => r.data),
+    (since, signal) => api.get(`/outreach-mandates/${mandate.id}/live`, { params: since ? { since } : {}, signal }).then((r) => r.data),
     mandate?.id,
     { enabled: !!mandate }
   );
@@ -44,8 +44,8 @@ export default function Batches() {
   return (
     <div className="p-6 md:p-10 space-y-8" data-testid="batches-page">
       <div>
-        <div className="mono-accent">// outreach.batches</div>
-        <h1 className="text-4xl font-black tracking-tighter">Batches</h1>
+        <div className="eyebrow">outreach.batches</div>
+        <h1 className="mt-3 text-4xl font-bold tracking-tight leading-[1.15]">Batches</h1>
         <p className="text-soft mt-1 max-w-2xl">Launch a search or an import, follow what is being prepared, and find what ran before.</p>
       </div>
 

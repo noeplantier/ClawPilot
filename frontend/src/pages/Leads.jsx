@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 import {
-  Plus, MagnifyingGlass, Envelope, Phone, Trash, Table, Kanban, Sparkle, X, UploadSimple, PaperPlaneTilt,
+  Plus, MagnifyingGlass, Envelope, Phone, Trash, Table, Sparkle, X, UploadSimple, PaperPlaneTilt, MapTrifold,
 } from "@phosphor-icons/react";
 import AIComposerModal from "@/components/AIComposerModal";
 import BulkLeadsModal from "@/components/BulkLeadsModal";
@@ -15,12 +15,18 @@ import HeatBadge from "@/components/outreach/HeatBadge";
 import EmptyToggle from "@/components/outreach/EmptyToggle";
 import { LANES, LANE_LABEL, inLane, laneCounts, splitEmpty } from "@/lib/heat";
 import { LIVE_MS, useLive } from "@/lib/live";
+import { useAsync } from "@/lib/outreach";
 import { readPref, writePref } from "@/lib/uiPrefs";
-import DiscoveryMap from "@/components/DiscoveryMap";
 
 // Where a prospect from discovery (map, sources, import) stands in the human review; a CRM lead has none.
 const REVIEW_LABEL = { pending: "to review", approved: "approved", rejected: "rejected" };
 const REVIEW_CHIP = { pending: "chip-warn", approved: "chip-success", rejected: "chip-danger" };
+// The views of the CRM, drawn like the review tabs of Prospects. No separate pipeline: each lead's stage is a column of the CRM,
+// and an old « ?view=kanban » link opens the CRM itself.
+const VIEWS = [
+  { key: "table", label: "CRM", Icon: Table },
+  { key: "map", label: "Map", Icon: MapTrifold },
+];
 const STAGES = ["new", "contacted", "engaged", "qualified", "won", "lost"];
 const STAGE_COLORS = {
   new: "#9B74FA", contacted: "#94A3B8", engaged: "#C4B5FD",
@@ -29,7 +35,7 @@ const STAGE_COLORS = {
 
 export default function Leads() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const view = searchParams.get("view") === "kanban" ? "kanban" : searchParams.get("view") === "map" ? "map" : "table";
+  const view = searchParams.get("view") === "map" ? "map" : "table";
   const [search, setSearch] = useState("");
   const [lane, setLane] = useState("all"); // heat filter: all | top | hot | warm | cold
   const [showEmpty, setShowEmpty] = useState(() => readPref("leads.showEmpty", false)); // leads with no e-mail, phone or website
@@ -45,8 +51,16 @@ export default function Leads() {
   const [scoringJob, setScoringJob] = useState(null);
   const [scoringError, setScoringError] = useState(null);
 
-  // Real leads, hottest first (real information + score), refreshed in the background.
-  const live = useLive(() => api.get("/leads", { params: { search, sort: "heat" } }).then((r) => r.data), [search], { key: `leads:${search || ""}` });
+  // Only the approved ones (?review=approved, the link shown after an approval), or every lead.
+  const review = searchParams.get("review") === "approved" ? "approved" : "";
+  // Real leads, hottest first (real information + score), refreshed in the background. The list is capped by the server:
+  // its real total is asked for separately, so a cut list says so instead of hiding the rest.
+  const live = useLive(() => api.get("/leads", { params: { search, sort: "heat", ...(review ? { review_status: review } : {}) } }).then((r) => r.data), [search, review], { key: `leads:${search || ""}:${review}` });
+  const total = useAsync(() => api.get("/leads/count", { params: { search, ...(review ? { review_status: review } : {}) } }).then((r) => r.data.total), [search, review], { key: `leads:count:${search || ""}:${review}`, intervalMs: LIVE_MS });
+  const cut = typeof total.data === "number" && live.data ? Math.max(0, total.data - live.data.length) : 0;
+  // A lead named in the address (?lead=<id>, the link « Voir dans le CRM ») opens at once, wherever it ranks in the list.
+  const leadParam = searchParams.get("lead");
+  useEffect(() => { if (leadParam) setDetailLeadId(leadParam); }, [leadParam]);
   const liveReload = live.reload;
   const everyLead = useMemo(() => live.data || [], [live.data]);
   const { shown: reachable, empty } = useMemo(() => splitEmpty(everyLead, showEmpty), [everyLead, showEmpty]);
@@ -63,8 +77,25 @@ export default function Leads() {
     [everyLead]
   );
   const toggleEmpty = () => setShowEmpty((v) => { writePref("leads.showEmpty", !v); return !v; });
+  const navigate = useNavigate();
   const setCrmView = (next) => {
-    setSearchParams(next === "table" ? {} : { view: next }, { replace: true });
+    if (next === "map") { navigate("/app/map"); return; } // one map only: Prospection › Carte
+    const params = next === "table" ? {} : { view: next };
+    if (review) params.review = review;
+    setSearchParams(params, { replace: true });
+  };
+  const setReview = (next) => {
+    const params = view === "table" ? {} : { view };
+    if (next) params.review = next;
+    setSearchParams(params, { replace: true });
+  };
+  const closeDetail = () => {
+    setDetailLeadId(null);
+    if (leadParam) {
+      const params = new URLSearchParams(searchParams);
+      params.delete("lead");
+      setSearchParams(params, { replace: true });
+    }
   };
 
   const allVisible = leads.map((l) => l.id);
@@ -139,18 +170,20 @@ export default function Leads() {
   };
 
   const writeFor = (l) => {
-    setAiDefaults({ recipient_name: l.full_name, company: l.company || "", language: l.language || "en" });
+    // The lead travels with its id and e-mail: the composer can then send to this one recipient, through the server's gates.
+    setAiDefaults({ recipient_name: l.full_name, company: l.company || "", language: l.language || "fr", lead: { id: l.id, email: l.email || "" } });
     setAiOpen(true);
   };
 
+  if (view === "map") return <Navigate to="/app/map" replace />;
   return (
     <div className="p-6 md:p-10 space-y-6">
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
-          <div className="mono-accent">// crm.pipeline</div>
-          <h1 className="text-4xl font-black tracking-tighter">Leads</h1>
+          <div className="eyebrow">crm</div>
+          <h1 className="mt-3 text-4xl font-bold tracking-tight leading-[1.15]">Leads</h1>
           <p className="text-soft mt-1">
-            {leads.length}{lane !== "all" ? ` ${LANE_LABEL[lane].toLowerCase()}` : ""} contact{leads.length === 1 ? "" : "s"} across the pipeline, hottest first.
+            {leads.length}{lane !== "all" ? ` ${LANE_LABEL[lane].toLowerCase()}` : ""} contact{leads.length === 1 ? "" : "s"} in the CRM, hottest first.
           </p>
           <p className="text-xs mt-1 inline-flex items-center gap-2 text-brand-lilac" role="status" aria-live="polite" data-testid="leads-live">
             <span className="pos-live-dot" aria-hidden="true" />
@@ -158,24 +191,53 @@ export default function Leads() {
             {live.updatedAt ? `Live · updated ${live.updatedAt.toLocaleTimeString()} · every ${LIVE_MS / 1000} s` : "Loading…"}
           </p>
         </div>
-        <div className="flex flex-wrap gap-2 items-center">
-          <div className="flex items-center gap-2 px-3 py-1.5 border border-border rounded-md bg-card">
-            <MagnifyingGlass size={14} className="text-faint" />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, email, company" className="bg-transparent outline-none text-sm w-40 sm:w-56 font-mono" data-testid="leads-search" />
-          </div>
-          <button onClick={() => setCrmView(view === "map" ? "table" : "map")} className="btn-ghost" data-testid="toggle-map">
-            {view === "map" ? <Table size={14} /> : <MagnifyingGlass size={14} />} {view === "map" ? "CRM TABLE" : "MAP SEARCH"}
-          </button>
-          {view !== "map" && <button onClick={() => setCrmView(view === "table" ? "kanban" : "table")} className="btn-ghost" data-testid="toggle-view">
-            {view === "table" ? <Kanban size={14} /> : <Table size={14} />} {view === "table" ? "KANBAN" : "TABLE"}
-          </button>}
-          {view !== "map" && <button onClick={() => setShowBatch(true)} className="btn-ink" data-testid="open-batch-send"><PaperPlaneTilt size={14} weight="fill" /> BATCH SEND</button>}
-          {view !== "map" && <button onClick={enrich} className="btn-purple" data-testid="enrich-leads-button"><Sparkle size={14} weight="fill" /> ENRICH</button>}
-          <button onClick={() => setShowBulk(true)} className="btn-ghost" data-testid="open-bulk-import"><UploadSimple size={14} /> BULK IMPORT</button>
+        <div className="flex gap-2 items-center flex-wrap">
+          <button onClick={() => setShowBulk(true)} className="btn-ghost" data-testid="open-bulk-import"><UploadSimple size={14} /> IMPORT A LIST</button>
+          {view !== "map" && <button onClick={enrich} className="btn-ghost" data-testid="enrich-leads-button"><Sparkle size={14} /> ENRICH</button>}
+          {view !== "map" && <button onClick={() => setShowBatch(true)} className="btn-ghost" data-testid="open-batch-send"><PaperPlaneTilt size={14} /> BATCH SEND</button>}
+          <Link to="/app/map" className="btn-ghost" data-testid="open-map-search"><MapTrifold size={14} /> FIND ON THE MAP</Link>
           <button onClick={() => setShowCreate(true)} className="btn-primary" data-testid="add-lead-button"><Plus size={14} weight="bold" /> ADD LEAD</button>
         </div>
       </div>
 
+      {/* The same tab bar as Prospects: one row of views, the search on the right. */}
+      <div className="flex flex-wrap items-center gap-2 justify-between">
+        <div className="flex gap-1 flex-wrap" role="tablist" aria-label="Views" data-testid="leads-views">
+          {VIEWS.map((v) => (
+            <button
+              key={v.key}
+              role="tab"
+              aria-selected={view === v.key}
+              onClick={() => setCrmView(v.key)}
+              className={`px-3 py-1.5 rounded-md text-sm border font-display inline-flex items-center gap-1.5 ${
+                view === v.key ? "bg-brand-violet text-white border-white/20" : "bg-card text-soft border-border hover:border-white/20"
+              }`}
+              data-testid={`view-${v.key}`}
+            >
+              <v.Icon size={14} aria-hidden="true" /> {v.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-1" role="group" aria-label="Revue" data-testid="leads-review-filter">
+          {[["", "Tous"], ["approved", "Approuvés"]].map(([key, label]) => (
+            <button key={key || "all"} type="button" onClick={() => setReview(key)} aria-pressed={review === key} data-testid={`review-filter-${key || "all"}`}
+              className={`px-3 py-1.5 rounded-md text-sm border font-display ${review === key ? "bg-brand-violet text-white border-white/20" : "bg-card text-soft border-border hover:border-white/20"}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-2 px-3 py-1.5 border border-border rounded-md bg-card">
+          <MagnifyingGlass size={14} className="text-faint" />
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, email, company" className="bg-transparent outline-none text-sm w-40 sm:w-56 font-mono" data-testid="leads-search" />
+        </div>
+      </div>
+
+      {cut > 0 && (
+        <p role="status" className="rounded-xl border border-amber-400/30 bg-amber-500/10 p-3 text-sm" data-testid="leads-cut">
+          {live.data.length} leads affichés sur {total.data} (les plus chauds d&apos;abord) : {cut} ne sont pas dans cette liste. Cherchez un nom
+          {review ? "" : " ou filtrez « Approuvés »"} pour les retrouver.
+        </p>
+      )}
       <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filter by heat" data-testid="leads-lanes">
         {LANES.map((k) => [k, `${LANE_LABEL[k]} ${k === "all" ? counts.total : counts[k]}`]).map(([key, label]) => (
           <button key={key} onClick={() => setLane(key)} aria-pressed={lane === key} data-testid={`lane-${key}`}
@@ -221,7 +283,6 @@ export default function Leads() {
         </div>
       )}
 
-      {view === "map" ? <DiscoveryMap /> : view === "table" ? (
         <div className="surface overflow-hidden overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-white/[0.04] border-b border-border">
@@ -341,47 +402,12 @@ export default function Leads() {
             </tbody>
           </table>
         </div>
-      ) : (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-          {STAGES.map((s) => {
-            const items = leads.filter((l) => l.stage === s);
-            return (
-              <div key={s} className="kanban-column p-3 min-h-[400px]" data-testid={`kanban-${s}`}>
-                <div className="flex items-center justify-between mb-3 pb-2 border-b border-border">
-                  <span className="mono-accent" style={{ color: STAGE_COLORS[s] }}>{s}</span>
-                  <span className="font-mono text-xs text-soft">{items.length}</span>
-                </div>
-                <div className="space-y-2">
-                  {items.map((l) => (
-                    <motion.div
-                      key={l.id}
-                      initial={{ opacity: 0, y: 4 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      onClick={() => setDetailLeadId(l.id)}
-                      className="surface p-3 text-xs cursor-pointer hover:border-brand-violet/40 transition"
-                      data-testid={`kanban-card-${l.id}`}
-                    >
-                      <div className="font-semibold text-sm text-foreground">{l.full_name}</div>
-                      <div className="text-soft mt-0.5">{l.company}</div>
-                      <div className="mt-2"><HeatBadge heat={l.heat} compact /></div>
-                      <div className="mono-accent text-faint mt-2 flex items-center justify-between">
-                        <span>{l.country}</span>
-                        <span>{l.heat && !l.heat.scored ? "not scored" : `score · ${l.score}`}</span>
-                      </div>
-                    </motion.div>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
 
       {showCreate && <CreateLead onClose={() => setShowCreate(false)} onSaved={() => { setShowCreate(false); load(); }} />}
       <BulkLeadsModal open={showBulk} onClose={() => setShowBulk(false)} onDone={load} />
       <BatchComposerModal open={showBatch} onClose={() => setShowBatch(false)} />
       <AIComposerModal open={aiOpen} onClose={() => setAiOpen(false)} defaults={aiDefaults} />
-      <LeadDetailDrawer open={!!detailLeadId} leadId={detailLeadId} onClose={() => setDetailLeadId(null)} onUpdate={load} />
+      <LeadDetailDrawer open={!!detailLeadId} leadId={detailLeadId} onClose={closeDetail} onUpdate={load} />
       <LeadsBulkBar
         selectedIds={Array.from(selected)}
         onCleared={() => setSelected(new Set())}

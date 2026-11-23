@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 
 from celery_app import celery_app
-from services import imap_svc, inbox_sync
+from services import imap_svc, inbox_health, inbox_sync
 from tasks._bridge import run_async
 
 logger = logging.getLogger("outreachos.inbox")
@@ -24,4 +24,16 @@ async def _poll_impl(session) -> dict:
 
 @celery_app.task(name="tasks.inbox_tasks.poll_inbox")
 def poll_inbox() -> dict:
-    return run_async(_poll_impl)
+    result = run_async(_poll_impl)
+    if (
+        result.get("status") == "ok"
+    ):  # the proof that replies and oppositions are being read (the automatic mode needs it)
+        try:
+            c = inbox_health.client()
+            try:
+                inbox_health.record_ok(c)
+            finally:
+                c.close()
+        except Exception as exc:  # noqa: BLE001 (health bookkeeping must never fail the poll)
+            logger.warning("inbox health not recorded (%s)", type(exc).__name__)
+    return result

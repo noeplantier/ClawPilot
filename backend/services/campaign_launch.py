@@ -38,10 +38,20 @@ from repositories import (
     send_policy_repo,
     suppression_repo,
 )
-from services import draft_runner, feature_flags, send_gate, sendgrid_svc, smtp_svc
+from services import (
+    brevo_svc,
+    draft_runner,
+    feature_flags,
+    journey_gate,
+    resend_svc,
+    send_gate,
+    sendgrid_svc,
+    smtp_svc,
+)
 from services.outreach_os import ai_draft, campaign_plan, channels, dispatch, drafts, eligibility
 from services.outreach_os import heat as heat_rules
 from services.outreach_os import provider_policy
+from services.outreach_os import sandbox as sandbox_rules
 from services.outreach_os.normalize import normalize_domain, normalize_email, normalize_phone
 from services.outreach_os.types import SignalState
 from services.timezones import resolve_timezone
@@ -57,6 +67,7 @@ STUCK_AFTER = timedelta(
     minutes=10
 )  # a message "sending" for this long was interrupted: its outcome is established, not guessed
 DUE_PER_RUN = 20
+REMOVED = "removed_by_reviewer"  # a recipient the person removed from the campaign (campaign_leads.removed_at)
 REPLANNABLE = (
     "cancelled",
     "skipped",
@@ -73,7 +84,10 @@ def provider_info() -> provider_policy.ProviderInfo:
     """The provider that would carry a real message, from the configuration (a host name only: never a secret)."""
     config = smtp_svc.SmtpConfig.from_env()
     return provider_policy.identify(
-        smtp_host=config.host if config else None, sendgrid_configured=sendgrid_svc.is_configured()
+        smtp_host=config.host if config else None,
+        sendgrid_configured=sendgrid_svc.is_configured(),
+        brevo_configured=brevo_svc.is_configured(),
+        resend_configured=resend_svc.is_configured(),
     )
 
 
@@ -229,6 +243,7 @@ async def select_recipients(
     now: datetime,
     campaign_id: Optional[uuid.UUID] = None,
     keep: Sequence[uuid.UUID] = (),
+    zone: Optional[dict[str, Any]] = None,
 ) -> Selection:
     """Up to `size` DISTINCT establishments, best first (observed intent, then heat), each with a valid e-mail and the
     right to receive a campaign through the active provider. `keep` are the recipients a campaign already holds (a
@@ -243,7 +258,7 @@ async def select_recipients(
         existing = await session.get(Lead, lead_id)
         if existing is not None:
             _remember(existing, seen_emails, seen_keys)
-    rows = await launch_repo.pool(session, account_id, now, SELECTION_SCAN)
+    rows = await launch_repo.pool(session, account_id, now, SELECTION_SCAN, zone)
     result.scanned = len(rows)
     facts = await _facts(session, account_id, campaign_id, [row[0] for row in rows])
     wanted = size - len(kept)
@@ -264,10 +279,18 @@ async def select_recipients(
 
 
 async def create_launch(
-    session: AsyncSession, account_id: uuid.UUID, user_id: Optional[uuid.UUID], *, name: str, size: int, now: datetime
+    session: AsyncSession,
+    account_id: uuid.UUID,
+    user_id: Optional[uuid.UUID],
+    *,
+    name: str,
+    size: int,
+    now: datetime,
+    zone: Optional[dict[str, Any]] = None,
 ) -> tuple[Campaign, Selection]:
-    """A campaign of individual messages with its recipients. Status stays `draft`: nothing is planned or sent."""
-    selection = await select_recipients(session, account_id, size=size, now=now)
+    """A campaign of individual messages with its recipients. Status stays `draft`: nothing is planned or sent.
+    With a `zone`, only prospects positioned inside that perimeter are candidates."""
+    selection = await select_recipients(session, account_id, size=size, now=now, zone=zone)
     campaign = await campaign_repo.create_campaign(
         session,
         account_id,
@@ -276,6 +299,7 @@ async def create_launch(
             "goal": "Campagne individuelle : un brouillon personnalisé par destinataire",
             "status": "draft",
             "kind": "individual",
+            "zone": zone,
             "channels": ["email"],
             "lead_ids": [str(lead.id) for lead in selection.picked],
         },
@@ -303,7 +327,9 @@ async def top_up(
 ) -> Selection:
     """Complete the selection up to `size` recipients with new distinct establishments (those already held are kept)."""
     held = await launch_repo.selection_of(session, account_id, campaign.id)
-    selection = await select_recipients(session, account_id, size=size, now=now, campaign_id=campaign.id, keep=held)
+    selection = await select_recipients(
+        session, account_id, size=size, now=now, campaign_id=campaign.id, keep=held, zone=campaign.zone
+    )
     if selection.picked:
         await campaign_repo.assign_leads(
             session, account_id, str(campaign.id), [str(lead.id) for lead in selection.picked]
@@ -375,6 +401,7 @@ async def evaluate(session: AsyncSession, account_id: uuid.UUID, campaign: Campa
     drafts_of = await launch_repo.latest_drafts(session, account_id, ids)
     jobs_of = await launch_repo.latest_jobs(session, account_id, ids)
     plans = await launch_repo.dispatches_of(session, account_id, campaign.id)
+    removed = await launch_repo.removed_of(session, account_id, campaign.id)
     seen_emails: set[str] = set()
     seen_keys: set[str] = set()
     out: list[LeadState] = []
@@ -395,7 +422,11 @@ async def evaluate(session: AsyncSession, account_id: uuid.UUID, campaign: Campa
             out.append(LeadState(lead_id, lead, stage, None, draft, job, [], auth, sourced, site_state, source, plan))
             _remember(lead, seen_emails, seen_keys)
             continue
-        code = exclusion_for(lead, (qualified, suppressed, opted_out, demo), facts, provider, seen_emails, seen_keys)
+        code = (
+            REMOVED  # the person took it out of this campaign: never rendered, counted or approved
+            if lead_id in removed
+            else exclusion_for(lead, (qualified, suppressed, opted_out, demo), facts, provider, seen_emails, seen_keys)
+        )
         problems: list[campaign_plan.Problem] = []
         if code is not None:
             stage = "excluded"
@@ -569,14 +600,9 @@ async def preview(
                 "label": "Envoi réel désactivé (dry-run) : les messages seront simulés, rien ne partira",
             }
         )
-    if g["live"] and g["sandbox"]:
-        warnings.append(
-            {
-                "code": "sandbox",
-                "label": f"Bac à sable actif : seuls les {g['allowlist_size']} destinataire(s) de "
-                "OUTREACH_LIVE_ALLOWLIST recevront un message",
-            }
-        )
+    scope_code, scope_label = sandbox_rules.scope(live=g["live"], sandbox_on=g["sandbox"], entries=g["allowlist_size"])
+    if g["live"]:  # who would really receive: said whether the sandbox restricts them or not
+        warnings.append({"code": scope_code, "label": scope_label})
     if g["provider"].cold_outreach != provider_policy.OPT_IN_REQUIRED:
         warnings.append({"code": "provider_terms", "label": g["provider"].restriction})
     summary = campaign_plan.schedule_summary(slots, policy.timezone)
@@ -765,6 +791,15 @@ async def _send_one(
     draft = await draft_repo.get(session, account_id, str(row.draft_id)) if row.draft_id else None
     if draft is None or draft.status != "approved":
         return Outcome("skipped", "draft_not_approved")
+    if row.lead_id in await launch_repo.removed_of(session, account_id, row.campaign_id):  # removed meanwhile
+        return Outcome("skipped", REMOVED)
+    if campaign.zone is not None:  # a campaign with a zone sends only what its approval still covers, right now
+        refusal = await journey_gate.check(session, campaign, now, draft.template_version, row.id, lead)
+        if refusal is not None:
+            code, retry_at = refusal
+            if campaign_plan.refusal_kind(code) == "wait":
+                return Outcome("waiting", code if retry_at is None else f"{code}@{_utc(retry_at).isoformat()}")
+            return Outcome("skipped", code)
 
     ids = [lead.id]
     email = normalize_email(lead.email) or ""

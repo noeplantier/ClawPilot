@@ -7,9 +7,12 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from db.session import get_db_session
 from deps import get_current_user
 from models import AIGenerateIn, AIGenerateOut
+from services import credit_gate
 from services.ai_svc import AIUnavailable, generate_message
 from services.rate_limit import AttemptLimiter
 
@@ -52,15 +55,44 @@ def _spend(user: dict, calls: int = 1) -> None:
         _limiter.record(key)
 
 
+async def _credits(session: AsyncSession, user: dict, units: int):
+    """The account's model and the cost, or 402 credits_exhausted / 409 model_without_ai. Nothing is recorded yet."""
+    try:
+        return await credit_gate.reserve(session, uuid.UUID(user["org_id"]), units)
+    except credit_gate.CreditsExhausted as exc:
+        r = exc.refusal
+        raise HTTPException(
+            status_code=402,
+            detail={
+                "code": r.code,
+                "message": r.message,
+                "window": r.window,
+                "retry_at": r.resets_at.isoformat() if r.resets_at else None,
+            },
+        )
+    except credit_gate.ModelWithoutAI as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "model_without_ai",
+                "message": f"Le modèle « {exc} » écrit sans IA : choisissez un modèle IA dans Crédits et modèles.",
+                "retry_at": None,
+            },
+        )
+
+
 class VariantsOut(BaseModel):
     variants: List[AIGenerateOut]
 
 
 @router.post("/generate", response_model=AIGenerateOut)
-async def generate(payload: AIGenerateIn, user: dict = Depends(get_current_user)):
+async def generate(
+    payload: AIGenerateIn, user: dict = Depends(get_current_user), session: AsyncSession = Depends(get_db_session)
+):
+    chosen, cost = await _credits(session, user, 1)
     _spend(user)
     try:
-        return await generate_message(
+        out = await generate_message(
             recipient_name=payload.recipient_name,
             product=payload.product,
             language=payload.language,
@@ -68,15 +100,22 @@ async def generate(payload: AIGenerateIn, user: dict = Depends(get_current_user)
             channel=payload.channel,
             goal=payload.goal,
             company=payload.company,
+            style=chosen,
         )
     except AIUnavailable as exc:
-        raise _unavailable(exc)
+        raise _unavailable(exc)  # a failed call costs nothing
+    usage = out.pop("usage", None)  # the HTTP contract is unchanged: the usage is recorded, not returned
+    await credit_gate.spent(session, uuid.UUID(user["org_id"]), chosen, cost, "composer", usage=usage)
+    return out
 
 
 @router.post("/generate/variants", response_model=VariantsOut)
-async def generate_variants(payload: AIGenerateIn, user: dict = Depends(get_current_user)):
+async def generate_variants(
+    payload: AIGenerateIn, user: dict = Depends(get_current_user), session: AsyncSession = Depends(get_db_session)
+):
     """Generate 3 tone variants in parallel: professional, friendly, urgent."""
     tones = ["professional", "friendly", "urgent"]
+    chosen, cost = await _credits(session, user, len(tones))
     _spend(user, len(tones))
     tasks = [
         generate_message(
@@ -87,6 +126,7 @@ async def generate_variants(payload: AIGenerateIn, user: dict = Depends(get_curr
             channel=payload.channel,
             goal=payload.goal,
             company=payload.company,
+            style=chosen,
         )
         for t in tones
     ]
@@ -94,4 +134,17 @@ async def generate_variants(payload: AIGenerateIn, user: dict = Depends(get_curr
         results = await asyncio.gather(*tasks)
     except AIUnavailable as exc:
         raise _unavailable(exc)
+    usage = combined_usage([r.pop("usage", None) for r in results])
+    await credit_gate.spent(session, uuid.UUID(user["org_id"]), chosen, cost, "composer_variants", usage=usage)
     return VariantsOut(variants=results)
+
+
+def combined_usage(usages: List[Optional[dict]]) -> Optional[dict]:
+    """One spend for several calls: every model that answered, and the tokens only when each call reported them (a
+    partial sum would understate the usage: it stays unknown instead)."""
+    models = sorted({u["model"] for u in usages if u and isinstance(u.get("model"), str) and u["model"]})
+    if not models:
+        return None
+    tokens = [u.get("tokens") if u else None for u in usages]
+    known = all(isinstance(t, int) and not isinstance(t, bool) and t >= 0 for t in tokens)
+    return {"model": " + ".join(models), "tokens": sum(tokens) if known else None}

@@ -10,8 +10,8 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 
 from db.models.prospecting import Mandate
-from routes import mandates as route
-from routes.mandates import MandateIn, _aggregate_batches
+from routes import outreach_mandates as route
+from routes.outreach_mandates import MandateIn, _aggregate_batches
 
 
 def body(**over):
@@ -105,7 +105,7 @@ def test_the_mandates_endpoint_is_registered_under_the_api_prefix():
     from server import app
 
     paths = app.openapi()["paths"]
-    assert "/api/mandates" in paths and "post" in paths["/api/mandates"] and "get" in paths["/api/mandates"]
+    assert "/api/outreach-mandates" in paths and "post" in paths["/api/outreach-mandates"] and "get" in paths["/api/outreach-mandates"]
     for action in ("activate", "pause", "resume", "revoke"):
-        assert f"/api/mandates/{{mandate_id}}/{action}" in paths
-    assert "get" in paths["/api/mandates/{mandate_id}/live"]
+        assert f"/api/outreach-mandates/{{mandate_id}}/{action}" in paths
+    assert "get" in paths["/api/outreach-mandates/{mandate_id}/live"]

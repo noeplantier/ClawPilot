@@ -11,6 +11,7 @@ from sqlalchemy import cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import Campaign, Lead, OutboundEvent, OutboundMessage, ProspectSignal, SuppressionEntry
+from repositories import eligibility_sql
 from repositories.prospect_repo import ACTIVE, IN_DISCOVERY, _latest_scores_subquery, detected_by_lead
 
 
@@ -38,24 +39,34 @@ async def prospect_kpis(session: AsyncSession, account_id: uuid.UUID) -> dict:
             .where(Lead.account_id == account_id, ACTIVE, IN_DISCOVERY)
         )
     ).one()
+    # "Hot" is the server decision, as on the map: qualified AND an observed, sourced commercial intent. Never a score.
+    src = eligibility_sql.latest_source(account_id)
     hot_count = (
         await session.execute(
-            select(func.count(latest.c.score))
+            select(func.count(Lead.id))
             .select_from(Lead)
-            .join(latest, latest.c.lead_id == Lead.id)
-            .where(Lead.account_id == account_id, ACTIVE, IN_DISCOVERY, latest.c.score >= 70)
+            .join(src, src.c.lead_id == Lead.id)
+            .where(
+                Lead.account_id == account_id,
+                ACTIVE,
+                IN_DISCOVERY,
+                eligibility_sql.qualified(src),
+                eligibility_sql.intent(),
+            )
         )
     ).scalar_one()
     emails_count = (
         await session.execute(
-            select(func.count(Lead.id))
-            .where(Lead.account_id == account_id, ACTIVE, IN_DISCOVERY, Lead.email.is_not(None), Lead.email != "")
+            select(func.count(Lead.id)).where(
+                Lead.account_id == account_id, ACTIVE, IN_DISCOVERY, Lead.email.is_not(None), Lead.email != ""
+            )
         )
     ).scalar_one()
     phones_count = (
         await session.execute(
-            select(func.count(Lead.id))
-            .where(Lead.account_id == account_id, ACTIVE, IN_DISCOVERY, Lead.phone.is_not(None), Lead.phone != "")
+            select(func.count(Lead.id)).where(
+                Lead.account_id == account_id, ACTIVE, IN_DISCOVERY, Lead.phone.is_not(None), Lead.phone != ""
+            )
         )
     ).scalar_one()
     approved_count = by_review.get("approved", 0)
@@ -64,11 +75,10 @@ async def prospect_kpis(session: AsyncSession, account_id: uuid.UUID) -> dict:
         "by_review": {k: by_review.get(k, 0) for k in ("pending", "approved", "rejected")},
         "scored": int(scored),
         "avg_score": round(float(avg), 1) if avg is not None else None,  # None = nothing scored yet, not 0
-        "hot_leads": int(hot_count),
-        "qualified_leads": int(approved_count),
-        "emails_available": int(emails_count),
-        "phones_available": int(phones_count),
-        "pipeline_value": int(approved_count * 2500),  # Baseline 2500€ estimated service value per qualified client
+        "hot_leads": int(hot_count),  # qualified with an observed, sourced intent (eligibility_sql), never a score
+        "qualified_leads": int(approved_count),  # approved by a person
+        "emails_available": int(emails_count),  # an e-mail is known (published or imported), not verified
+        "phones_available": int(phones_count),  # a phone is known, not verified
     }
 
 
@@ -154,12 +164,14 @@ async def daily_series(session: AsyncSession, account_id: uuid.UUID, days: int, 
     out = []
     for i in range(days):
         day = (start + timedelta(days=i)).date()
-        out.append({
-            "date": day.isoformat(),
-            "sent": int(sent.get(day, 0)),
-            "replied": int(replies.get(day, 0)),
-            "acquired": int(acquisitions.get(day, 0)),
-        })
+        out.append(
+            {
+                "date": day.isoformat(),
+                "sent": int(sent.get(day, 0)),
+                "replied": int(replies.get(day, 0)),
+                "acquired": int(acquisitions.get(day, 0)),
+            }
+        )
     return out
 
 

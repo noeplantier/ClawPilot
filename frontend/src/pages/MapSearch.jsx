@@ -5,21 +5,22 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { ArrowsOut, ArrowsIn, CaretDoubleRight, CaretDoubleLeft, CaretDown, CaretUp, Eye, EyeSlash, MagnifyingGlass, Moon, Sun, X } from "@phosphor-icons/react";
+import { ArrowRight, ArrowsOut, ArrowsIn, CaretDown, CaretUp, Eye, EyeSlash, MagnifyingGlass, Moon, Sun, X } from "@phosphor-icons/react";
 import { useAuth } from "@/contexts/AuthContext";
-import { campaignsApi, canDecide, importsApi, mapApi, prospectsApi, useAsync } from "@/lib/outreach";
+import { campaignsApi, canDecide, mapApi, prospectsApi, useAsync } from "@/lib/outreach";
 import * as swr from "@/lib/swr";
 import { describeApiError } from "@/lib/outreachFormat";
 import { isTypingTarget, readPref, writePref } from "@/lib/uiPrefs";
 import {
-  CATEGORY_LABELS, IMPORT_ORIGIN, MAX_SITES_CHECKED, STATUS_COLOR, STATUS_LABEL, areaTooLarge, classifyProspect, importRows, markerColor,
-  panelPadding, reachablePlace, readyOnly, readySummary, summaryText,
+  CATEGORY_LABELS, MAX_SITES_CHECKED, STATUS_LABEL, areaTooLarge, classifyProspect, markerColor,
+  breakdownText, journeyLink, panelPadding, reachablePlace, readyOnly, readySummary, resultBreakdown, summaryText, zoneOf, zoneSummary,
 } from "@/lib/mapSearch";
 import { fetchOverpass } from "@/lib/overpassBrowser";
+import { ATTEST_PREF, ATTEST_TEXT, addManyBodies, describeAddedMany, sumAdded } from "@/lib/mapQuickAdd";
 import { nextDelay, startBurst, withSecondary } from "@/lib/pollPlan";
 import { canRetryInBrowser, jobLine, runSearch } from "@/lib/mapJobs";
 import {
-  EMPTY_FILTER, applyFilter, campaignPick, clusterPoints, clusterSize, facets, filterSummary, hasFilter, newIds, signalLabel,
+  EMPTY_FILTER, applyFilter, campaignPick, clusterPoints, clusterSize, emptyListText, facets, filterSummary, hasFilter, newIds, signalLabel,
 } from "@/lib/mapCluster";
 import { EmptyBlock, ErrorBlock, LoadingBlock } from "@/components/outreach/States";
 import PlacePopup from "@/components/outreach/PlacePopup";
@@ -40,26 +41,28 @@ const clusterIcon = (n) => {
   return L.divIcon({ className: "map-pin", html: `<span class="map-cluster" style="width:${size}px;height:${size}px">${n}</span>`, iconSize: [size, size], iconAnchor: [size / 2, size / 2] });
 };
 
+const esc = (v) => String(v || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
 const minePin = (p, fresh) => {
   const cls = classifyProspect(p);
   return L.divIcon({
     className: "map-pin",
-    html: `<span style="--c:${cls.color};--glow:${cls.glow}" class="map-pin-square${fresh ? " is-new" : ""}${cls.tier === "HOT" ? " is-hot" : ""}" title="${cls.label}: ${p.name}"></span>`,
+    html: `<span style="--c:${cls.color};--glow:${cls.glow}" class="map-pin-square${fresh ? " is-new" : ""}${cls.tier === "HOT" ? " is-hot" : ""}" title="${esc(cls.label)} : ${esc(p.name)}"></span>`,
     iconSize: [22, 22], iconAnchor: [11, 11], popupAnchor: [0, -10],
   });
 };
 
 function minePopup(p) {
-  const esc = (v) => String(v || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const cls = classifyProspect(p);
   const site = p.website && /^https?:\/\//i.test(p.website)
     ? `<div><a href="${esc(p.website)}" target="_blank" rel="noopener noreferrer" class="text-brand-lilac hover:underline">${esc(p.website.replace(/^https?:\/\//i, ""))}</a></div>`
     : "";
-  const heat = p.heat ? `<b>${p.heat.tier} ${p.heat.value}</b> · ` : "";
+  const heat = p.heat ? `<b>chaleur ${p.heat.value}</b> · ` : ""; // a score, never « hot » (hot = an observed intent)
   return `<strong>${esc(p.name)}</strong><div>${p.city ? esc(p.city) : "<i>city not set</i>"}</div>` +
-    `<div class="flex items-center gap-1.5 my-1"><span style="background:${cls.bg};color:${cls.color};border:1px solid ${cls.border}" class="text-[10px] px-1.5 py-0.5 rounded-full font-mono font-bold">${cls.label}</span> · ${heat}${STATUS_LABEL[p.review_status]}</div>` +
+    `<div class="flex items-center gap-1.5 my-1"><span style="background:${cls.bg};color:${cls.color};border:1px solid ${cls.border}" class="text-[10px] px-1.5 py-0.5 rounded-full font-mono font-bold">${esc(cls.label)}</span> · ${heat}${STATUS_LABEL[p.review_status]}</div>` +
     `<div><a href="tel:${esc(p.phone || "")}">${esc(p.phone || "")}</a></div><div><a href="mailto:${esc(p.email || "")}">${esc(p.email || "")}</a></div>${site}` +
-    `<div class="text-[11px] text-brand-lilac font-medium mt-1">${esc(cls.opportunity.name)}</div>` +
+    (cls.tier === "HOT" && p.intent_evidence ? `<div class="text-[11px] mt-1" data-testid="popup-why-hot"><b>Pourquoi Hot :</b> ${esc(p.intent_evidence)}</div>` : "") +
+    `<div class="text-[11px] text-brand-lilac font-medium mt-1">${esc(cls.site.label)}</div>` +
     `<div class="pt-1"><a href="/app/prospects/${esc(p.id)}">Open the prospect</a>${p.review_status === "approved" ? ` · <a href="/app/leads">in your CRM</a>` : ""} · <a href="/app/launch">Launch</a></div>`;
 }
 
@@ -75,57 +78,62 @@ const bounds = (map) => {
   return { south: b.getSouth(), west: b.getWest(), north: b.getNorth(), east: b.getEast() };
 };
 
-function ImportPanel({ selected, onDone, open, onToggle, onClose }) {
-  const [attest, setAttest] = useState(false);
+// The selection of the map, added to the CRM in ONE click: the same attested import as a single pin, for every selected place.
+// The attestation is asked once and remembered on this browser (every request still carries it and is audited server-side).
+function ImportPanel({ selected, onDone, open, onToggle, onClose, onRefresh }) {
+  const [attest, setAttest] = useState(() => readPref(ATTEST_PREF, false));
   const [checkSites, setCheckSites] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState("");
   const [error, setError] = useState(null);
-  const send = async () => {
-    setBusy(true);
+  const remember = (value) => { setAttest(value); writePref(ATTEST_PREF, value); };
+  const send = async (approve) => {
+    setBusy(approve ? "crm" : "review");
     setError(null);
     try {
-      const out = await importsApi.submit({
-        format: "json", content: JSON.stringify(importRows(selected)), filename: "map-selection.json",
-        origin: IMPORT_ORIGIN, legal_basis: "legitimate_interest_b2b", country: "FR", language: "fr", vertical: "local business",
-        preview: false, attestation: attest, check_websites: checkSites,
-      });
-      toast.success(`Imported: ${out.created} new, ${out.updated} updated${checkSites ? ` · ${out.sites_checked} website(s) checked` : ""}. All wait for your review.`);
+      const answers = [];
+      for (const body of addManyBodies(selected, { approve, checkWebsite: checkSites })) answers.push(await mapApi.addMany(body));
+      toast.success(describeAddedMany(sumAdded(answers)).join(" "));
+      if (onRefresh) onRefresh();
       onDone();
     } catch (e) {
       setError(describeApiError(e));
     } finally {
-      setBusy(false);
+      setBusy("");
     }
   };
+  const n = selected.length;
   return (
     <div className="rounded-xl border border-brand-violet/30 bg-white/[0.04] p-3 space-y-3" data-testid="map-import">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="font-display text-base font-bold">Import {selected.length} selected place{selected.length === 1 ? "" : "s"}</h2>
+        <h2 className="font-display text-base font-bold">{n} établissement{n === 1 ? "" : "s"} sélectionné{n === 1 ? "" : "s"}</h2>
         <div className="flex gap-1">
-          <button className="btn-ghost !px-2 !py-1" onClick={onToggle} aria-expanded={open} aria-label={open ? "Minimise the import form" : "Expand the import form"} data-testid="import-minimise">
+          <button className="btn-ghost !px-2 !py-1" onClick={onToggle} aria-expanded={open} aria-label={open ? "Réduire" : "Déplier"} data-testid="import-minimise">
             {open ? <CaretDown size={14} /> : <CaretUp size={14} />}
           </button>
-          <button className="btn-ghost !px-2 !py-1" onClick={onClose} aria-label="Close the import form and clear the selection" data-testid="import-close"><X size={14} /></button>
+          <button className="btn-ghost !px-2 !py-1" onClick={onClose} aria-label="Fermer et vider la sélection" data-testid="import-close"><X size={14} /></button>
         </div>
       </div>
-      {open && (
-        <>
-      <p className="text-xs text-soft">
-        They become prospects waiting for your review, with their OpenStreetMap page as provenance. Nothing is sent.
-      </p>
-      <label className="flex items-start gap-2 text-sm">
-        <input type="checkbox" checked={checkSites} onChange={(e) => setCheckSites(e.target.checked)} className="mt-1" data-testid="map-check-sites" />
-        <span>Look for a public contact e-mail on each business&apos;s own website (robots.txt respected, {MAX_SITES_CHECKED} sites max per import). Needs FEATURE_EXTERNAL_SOURCES.</span>
-      </label>
-      <label className="flex items-start gap-2 text-sm">
-        <input type="checkbox" checked={attest} onChange={(e) => setAttest(e.target.checked)} className="mt-1" data-testid="map-attest" />
-        <span>I confirm that I may use these professional contact details for B2B prospecting (legitimate interest), and that I will honour opt-outs.</span>
-      </label>
-      {error && <div role="alert" className="text-sm text-red-300" data-testid="map-import-error">{error}</div>}
-      <button className="btn-ink" disabled={busy || !attest || selected.length === 0} onClick={send} data-testid="map-import-run">
-        {busy ? "IMPORTING…" : `IMPORT ${selected.length}`}
+      {!attest && (
+        <label className="flex items-start gap-2 text-sm">
+          <input type="checkbox" checked={attest} onChange={(e) => remember(e.target.checked)} className="mt-1" data-testid="map-attest" />
+          <span>{ATTEST_TEXT} <span className="text-soft">(demandé une seule fois sur ce navigateur)</span></span>
+        </label>
+      )}
+      <button className="btn-primary w-full justify-center" disabled={Boolean(busy) || !attest || n === 0} onClick={() => send(true)} data-testid="map-import-run">
+        {busy === "crm" ? "AJOUT EN COURS…" : `AJOUTER ${n} AU CRM`}
       </button>
-        </>
+      {error && <div role="alert" className="text-sm text-red-300" data-testid="map-import-error">{error}</div>}
+      {open && (
+        <div className="space-y-2 text-xs text-soft">
+          <p>Origine : la page OpenStreetMap de chaque lieu. Rien n&apos;est envoyé ; un prospect rejeté par une personne reste rejeté.</p>
+          <label className="flex items-start gap-2">
+            <input type="checkbox" checked={checkSites} onChange={(e) => setCheckSites(e.target.checked)} className="mt-0.5" data-testid="map-check-sites" />
+            <span>Chercher un e-mail public sur le site de chaque établissement (robots.txt respecté, {MAX_SITES_CHECKED} sites au plus). Nécessite FEATURE_EXTERNAL_SOURCES.</span>
+          </label>
+          <button className="btn-ghost" disabled={Boolean(busy) || !attest || n === 0} onClick={() => send(false)} data-testid="map-import-review">
+            {busy === "review" ? "AJOUT EN COURS…" : "AJOUTER EN RELECTURE SEULEMENT"}
+          </button>
+        </div>
       )}
     </div>
   );
@@ -144,7 +152,6 @@ function MapView({ canImport }) {
   const [retrying, setRetrying] = useState(false);
   const [selected, setSelected] = useState(new Set());
   const [tooLarge, setTooLarge] = useState(false);
-  const [panelOpen, setPanelOpen] = useState(() => readPref("map.results", window.innerWidth >= 768));
   const [searchOpen, setSearchOpen] = useState(() => readPref("map.search", true)); // the "Map search" card, or a small pill
   const [overlaysHidden, setOverlaysHidden] = useState(false); // every panel hidden: just the map
   const [importOpen, setImportOpen] = useState(true); // the import form of the selection, expanded or minimised
@@ -208,7 +215,6 @@ function MapView({ canImport }) {
     return () => document.removeEventListener("fullscreenchange", onChange);
   }, []);
 
-  useEffect(() => writePref("map.results", panelOpen), [panelOpen]);
   useEffect(() => writePref("map.search", searchOpen), [searchOpen]);
   useEffect(() => writePref("map.allfound", showAllFound), [showAllFound]);
 
@@ -296,7 +302,7 @@ function MapView({ canImport }) {
       const marker = L.marker([c.lat, c.lon], { icon: clusterIcon(c.count), title: `${c.count} qualified prospects` });
       marker.on("click", () => {
         setGroup(c.members);
-        setPanelOpen(true);
+        setSearchOpen(true);
         const lats = c.members.map((m) => m.lat);
         const lons = c.members.map((m) => m.lon);
         if (Math.min(...lats) !== Math.max(...lats) || Math.min(...lons) !== Math.max(...lons)) {
@@ -314,7 +320,7 @@ function MapView({ canImport }) {
       const c = await campaignsApi.create({ name: `Map selection ${new Date().toISOString().slice(0, 10)}`, goal: "Prospects chosen on the map" });
       await campaignsApi.assign(c.id, ids);
       toast.success(`Campaign created with ${ids.length} approved prospect${ids.length === 1 ? "" : "s"}${excluded ? ` (${excluded} not approved, left out)` : ""}. Nothing is sent: open it to add steps.`);
-      navigate("/app/campaigns");
+      navigate(`/app/campaigns?campaign=${c.id}`); // the new draft opens at once
     } catch (e) {
       toast.error(`${describeApiError(e)} The campaign was created empty: nothing was assigned.`);
     } finally {
@@ -342,7 +348,7 @@ function MapView({ canImport }) {
     lookup(wanted).then((towns) => { const town = towns.find((t) => t.lat !== null && t.lat !== undefined); if (town) goTo(town); }).catch(() => {});
   }, [wanted, updatedAt, positions, goTo]);
   // A popup must never open under a panel: keep the map's auto-pan away from the search card and the results drawer.
-  const pad = useMemo(() => panelPadding({ narrow: window.innerWidth < 768, searchOpen, panelOpen, hidden: overlaysHidden }), [searchOpen, panelOpen, overlaysHidden]);
+  const pad = useMemo(() => panelPadding({ narrow: window.innerWidth < 768, open: searchOpen, hidden: overlaysHidden }), [searchOpen, overlaysHidden]);
   // A place already in the prospects is shown by its prospect pin, not offered again.
   const places = useMemo(() => {
     const unique = new Map();
@@ -352,6 +358,7 @@ function MapView({ canImport }) {
     return [...unique.values()];
   }, [result, known]);
   const found = useMemo(() => (showAllFound ? places : places.filter(reachablePlace)), [places, showAllFound]);
+  const breakdown = useMemo(() => resultBreakdown(result?.places || [], known), [result, known]);
   const toggle = useCallback((id) => setSelected((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; }), []);
 
   useEffect(() => {
@@ -385,7 +392,7 @@ function MapView({ canImport }) {
   const show = useCallback((out) => {
     setResult(out);
     setSelected(new Set());
-    setPanelOpen(true);
+    setSearchOpen(true);
   }, []);
 
   const search = useCallback(async () => {
@@ -467,193 +474,207 @@ function MapView({ canImport }) {
         </button>
       </div>
 
-      {/* search card, or its small pill */}
+      {/* ONE panel "Prospection": zone and criteria, the search and its progress, the results, the way to the campaign.
+          Minimised, it is a small pill that keeps the search button and the status in view. */}
       {!overlaysHidden && !searchOpen && (
         <div className={`absolute z-[500] top-14 left-3 md:top-3 flex items-center gap-2 p-2 ${GLASS} !rounded-full`} data-testid="map-search-pill">
-          <button className="btn-ghost !rounded-full !px-3 !py-1 text-xs" onClick={() => setSearchOpen(true)} aria-label="Expand the map search panel" aria-expanded="false" data-testid="map-search-expand">
-            <CaretDown size={14} /> MAP SEARCH
+          <button className="btn-ghost !rounded-full !px-3 !py-1 text-xs" onClick={() => setSearchOpen(true)} aria-label="Ouvrir le panneau Prospection" aria-expanded="false" data-testid="map-search-expand">
+            <CaretDown size={14} /> PROSPECTION
           </button>
           <button className="btn-ink !rounded-full !px-3 !py-1 text-xs" onClick={search} disabled={busy || tooLarge} data-testid="map-search">
-            <MagnifyingGlass size={14} /> {busy ? "SEARCHING…" : "SEARCH"}
+            <MagnifyingGlass size={14} /> {busy ? "RECHERCHE…" : "RECHERCHER"}
           </button>
+          {job && (
+            <span className="max-w-[14rem] truncate pr-2 text-[11px] text-soft" role="status" aria-live="polite" data-testid="map-pill-status">
+              {job.status === "failed" ? "Recherche échouée : ouvrez le panneau" : jobLine(job)}
+            </span>
+          )}
         </div>
       )}
       {!overlaysHidden && searchOpen && (
-        <div className={`absolute z-[500] top-14 left-3 right-3 md:top-3 md:right-auto md:w-[26rem] max-h-[calc(100%-4rem)] md:max-h-[calc(100%-1.5rem)] overflow-y-auto p-4 space-y-3 ${GLASS}`} data-testid="map-search-card">
-          <div className="flex items-center justify-between gap-2">
+        <aside className={`absolute z-[500] top-14 left-3 right-3 md:top-3 md:bottom-8 md:right-auto md:w-[27rem] max-h-[calc(100%-4rem)] md:max-h-none flex flex-col overflow-hidden ${GLASS}`} aria-label="Prospection" data-testid="map-search-card">
+          <div className="flex items-center justify-between gap-2 px-4 pt-3 pb-2 border-b border-border">
             <div>
-              <div className="mono-accent">// live.map</div>
-              <h1 className="text-2xl font-black tracking-tighter leading-none">Map search</h1>
+              <div className="eyebrow">prospection</div>
+              <h1 className="text-2xl font-black tracking-tighter leading-none">Prospection</h1>
             </div>
-            <button className="btn-ghost !px-2" onClick={() => setSearchOpen(false)} aria-label="Minimise the map search panel" aria-expanded="true" data-testid="map-search-minimise">
+            <button className="btn-ghost !px-2" onClick={() => setSearchOpen(false)} aria-label="Réduire le panneau Prospection" aria-expanded="true" data-testid="map-search-minimise">
               <CaretUp size={16} />
             </button>
           </div>
-          <CityBox stats={cityStats} positions={positions} onPick={goTo} />
-          <div className="flex gap-1.5 flex-wrap" role="group" aria-label="Business category">
-            {Object.entries(CATEGORY_LABELS).map(([k, v]) => (
-              <button key={k} onClick={() => setCategory(k)} aria-pressed={category === k} data-testid={`map-cat-${k}`}
-                className={`px-3 py-1 rounded-full text-xs border transition-colors ${category === k ? "bg-brand-violet text-white border-brand-violet" : "bg-card border-border hover:bg-white/[0.04]"}`}>
-                {v.split(",")[0].split(" (")[0]}
-              </button>
-            ))}
-          </div>
-          <label className="flex items-center gap-2 text-xs" data-testid="map-mine-toggle">
-            <input type="checkbox" checked={showMine} onChange={(e) => setShowMine(e.target.checked)} />
-            <span><b>Qualified prospects</b> (squares) — {readySummary(mine)}</span>
-          </label>
-          <DraftJobsStrip />
-          {mine.length > 0 && showMine && (
-            <div className="space-y-2" data-testid="map-filters">
-              <div className="grid grid-cols-2 gap-2">
-                <select className="neo-input" aria-label="Filter by vertical" value={filter.vertical} onChange={(e) => setFilter({ ...filter, vertical: e.target.value })} data-testid="filter-vertical">
-                  <option value="">All verticals</option>
-                  {options.verticals.map((v) => <option key={v.value} value={v.value}>{v.value} ({v.count})</option>)}
-                </select>
-                <select className="neo-input" aria-label="Filter by review status" value={filter.status} onChange={(e) => setFilter({ ...filter, status: e.target.value })} data-testid="filter-status">
-                  <option value="">Any status</option>
-                  {Object.entries(STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                </select>
-                <select className="neo-input" aria-label="Filter by detected signal" value={filter.signal} onChange={(e) => setFilter({ ...filter, signal: e.target.value })} data-testid="filter-signal">
-                  <option value="">Any signal</option>
-                  {options.signals.map((v) => <option key={v.value} value={v.value}>{signalLabel(v.value)} ({v.count})</option>)}
-                </select>
-                <input className="neo-input" type="number" min="0" max="100" placeholder="Min score" aria-label="Minimum score" value={filter.minScore} onChange={(e) => setFilter({ ...filter, minScore: e.target.value })} data-testid="filter-score" />
-              </div>
-              <div className="flex items-center justify-between gap-2 text-xs">
-                <span data-testid="filter-summary">{filterSummary(shown.length, ready.length)}</span>
-                {hasFilter(filter) && <button className="underline" onClick={() => { setFilter(EMPTY_FILTER); setGroup(null); }} data-testid="filter-clear">Clear</button>}
-              </div>
-              <p className="text-[11px] text-soft" data-testid="map-updated" aria-live="polite">
-                {stale ? "Update failed: showing the last data. " : ""}{updatedAt ? `Updated ${updatedAt.toLocaleTimeString()} · live, every 2 to 10 s` : "Loading…"}
-              </p>
-            </div>
-          )}
-          <button className="btn-ink w-full justify-center" onClick={search} disabled={busy || tooLarge} data-testid="map-search">
-            <MagnifyingGlass size={14} /> {busy ? "SEARCHING…" : "SEARCH THIS AREA"}
-          </button>
-          {tooLarge && <p className="text-xs text-amber-300" data-testid="map-zoom-hint">Zoom in on a town or a neighbourhood to search.</p>}
-          {job && job.status !== "failed" && <p className="text-xs" role="status" aria-live="polite" data-testid="map-job">{jobLine(job)}{job.truncated ? " The area holds more places: zoom in to see the rest." : ""}</p>}
-          {job && job.status === "failed" && (
-            <div role="alert" className="text-sm text-red-300 space-y-2" data-testid="map-job-failed">
-              <p>{job.error}</p>
-              <p className="text-[11px] text-soft">Code: {job.error_code}. This search is saved with its error.</p>
-              {canRetryInBrowser(job) && (
-                <button className="btn-ghost" onClick={retryInBrowser} disabled={retrying} data-testid="map-retry-browser">
-                  {retrying ? "ASKING OPENSTREETMAP…" : "RETRY FROM MY BROWSER"}
-                </button>
-              )}
-            </div>
-          )}
-          {error && <div role="alert" className="text-sm text-red-300" data-testid="map-error">{error}</div>}
-        </div>
-      )}
-      {/* the search status stays visible when the card is minimised */}
-      {!overlaysHidden && !searchOpen && job && (
-        <p className={`absolute z-[499] top-[3.9rem] left-3 text-xs px-3 py-1 ${GLASS} !rounded-full`} role="status" aria-live="polite" data-testid="map-job">
-          {job.status === "failed" ? `${job.error_code}: open the panel for details.` : jobLine(job)}
-        </p>
-      )}
-
-      {/* results drawer */}
-      {!overlaysHidden && (
-        <>
-          <aside className={`absolute z-[500] bottom-11 left-3 right-3 md:left-auto md:top-3 md:bottom-8 md:w-[24rem] flex flex-col ${panelOpen ? "" : "md:translate-x-[calc(100%+1rem)] translate-y-[calc(100%+1rem)] md:translate-y-0 pointer-events-none"} transition-transform duration-300 max-h-[45%] md:max-h-none`} aria-label="Results" aria-hidden={!panelOpen}>
-            <div className={`${GLASS} flex-1 min-h-0 flex flex-col overflow-hidden`}>
-              <div className="flex items-center justify-between px-4 pt-3">
-                <div className="mono-accent">// results</div>
-                <button className="btn-ghost !px-2 !py-1" onClick={() => setPanelOpen(false)} aria-label="Close the results panel" data-testid="map-panel-close"><X size={14} /></button>
-              </div>
-              {mine.length > 0 && showMine && (
-                <section className="p-4 border-b border-border max-h-[50%] overflow-y-auto" data-testid="map-mine-list">
-                  <div className="flex items-center justify-between gap-2">
-                    <h2 className="font-display text-lg font-bold">{group ? `Cluster · ${group.length} qualified prospects` : "Qualified prospects"}</h2>
-                    {group && <button className="underline text-xs" onClick={() => setGroup(null)} data-testid="cluster-close">All</button>}
-                  </div>
-                  {list.length === 0 && <p className="text-sm text-soft mt-1" data-testid="mine-none">{ready.length === 0 ? "No hot lead with a phone and an e-mail yet." : "No hot lead matches the filters."}</p>}
-                  <ul className="divide-y divide-border">
-                    {list.map((p) => {
-                      const cls = classifyProspect(p);
-                      return (
-                        <li key={p.id} className="py-2 flex gap-2 items-start text-sm hover:bg-white/[0.02] px-1 rounded-lg transition" data-testid="mine-row">
-                          <input type="checkbox" checked={picked.has(p.id)} onChange={() => togglePick(p.id)} aria-label={`Select ${p.name}`} className="mt-1" />
-                          <button className="text-left min-w-0 flex-1" onClick={() => map.current.flyTo([p.lat, p.lon], 17, { duration: 1 })}>
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="font-semibold block truncate">{p.name}</span>
-                              <span style={{ color: cls.color }} className="text-[9px] font-mono font-bold px-1 rounded border border-current">
-                                {cls.label}
-                              </span>
-                            </div>
-                            <span className="block text-xs text-soft truncate mt-0.5">{p.heat ? `${p.heat.tier} ${p.heat.value} · ` : ""}{STATUS_LABEL[p.review_status]} · {p.score === null || p.score === undefined ? "not scored" : `score ${p.score}`}{p.city ? ` · ${p.city}` : ""}</span>
-                          </button>
-                          <Link to={`/app/prospects/${p.id}`} className="text-xs text-brand-lilac hover:underline shrink-0 pt-0.5">open</Link>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                  {!group && shown.length > list.length && <p className="text-xs text-soft mt-1">Showing the first {list.length} of {shown.length}: click a cluster or filter to narrow.</p>}
-                  <button className="btn-ink w-full justify-center mt-2" disabled={starting || pickInfo.ids.length === 0} onClick={startCampaign} data-testid="start-campaign">
-                    {starting ? "CREATING…" : `START CAMPAIGN (${pickInfo.ids.length})`}
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            {/* 1 · the zone and the essential criteria */}
+            <section className="p-4 space-y-3" aria-label="Zone et critères">
+              <h2 className="eyebrow" data-testid="map-step-zone">1 · Zone</h2>
+              <CityBox stats={cityStats} positions={positions} onPick={goTo} />
+              <div className="flex gap-1.5 flex-wrap" role="group" aria-label="Business category">
+                {Object.entries(CATEGORY_LABELS).map(([k, v]) => (
+                  <button key={k} onClick={() => setCategory(k)} aria-pressed={category === k} data-testid={`map-cat-${k}`}
+                    className={`px-3 py-1 rounded-full text-xs border transition-colors ${category === k ? "bg-brand-violet text-white border-brand-violet" : "bg-card border-border hover:bg-white/[0.04]"}`}>
+                    {v.split(",")[0].split(" (")[0]}
                   </button>
-                  <p className="text-[11px] text-soft mt-1" data-testid="start-campaign-note">
-                    {picked.size === 0 ? "Tick prospects to start a campaign. Only approved ones can join; nothing is sent until you add steps and launch." : pickInfo.excluded > 0 ? `${pickInfo.excluded} selected prospect${pickInfo.excluded === 1 ? " is" : "s are"} not approved and will be left out.` : "Creates a draft campaign: nothing is sent."}
-                  </p>
-                </section>
+                ))}
+              </div>
+              <label className="flex items-center gap-2 text-xs" data-testid="map-mine-toggle">
+                <input type="checkbox" checked={showMine} onChange={(e) => setShowMine(e.target.checked)} />
+                <span><b>Qualified prospects</b> (squares) — {readySummary(mine)}</span>
+              </label>
+              {mine.length > 0 && showMine && (
+                <p className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-soft" data-testid="map-legend">
+                  <span className="inline-flex items-center gap-1"><span className="map-legend-square is-hot" aria-hidden="true" /> Hot : qualifié + intention observée et sourcée</span>
+                  <span className="inline-flex items-center gap-1"><span className="map-legend-square" aria-hidden="true" /> Qualifié prioritaire</span>
+                </p>
               )}
-              {!result ? (
-                <div className="p-4" data-testid="map-empty">
-                  <h2 className="font-display text-lg font-bold">Nothing searched yet</h2>
-                  <p className="text-sm text-soft mt-1">Move the map to a town, choose a category and press “Search this area”.</p>
-                </div>
-              ) : (
-                <section className="flex-1 min-h-0 flex flex-col" data-testid="map-results">
-                  <div className="p-4 pb-2 space-y-2">
-                    <p className="text-sm" data-testid="map-summary">{summaryText(places, result.truncated)}</p>
-                    <label className="flex items-center gap-2 text-xs" data-testid="map-found-toggle">
-                      <input type="checkbox" checked={showAllFound} onChange={(e) => setShowAllFound(e.target.checked)} />
-                      <span>{found.length} of {places.length} shown: only places with a published phone and e-mail. Tick to show all of them.</span>
-                    </label>
-                    {found.length > 0 && (
-                      <div className="flex gap-2 flex-wrap">
-                        <button className="btn-ghost" onClick={() => setSelected(new Set(found.map((p) => p.external_id)))} data-testid="map-select-all">SELECT ALL</button>
-                        <button className="btn-ghost" onClick={() => setSelected(new Set(found.filter((p) => p.email).map((p) => p.external_id)))} data-testid="map-select-email">ONLY WITH E-MAIL</button>
-                        <button className="btn-ghost" onClick={() => setSelected(new Set())}>NONE</button>
-                      </div>
-                    )}
-                  </div>
-                  <ul className="flex-1 min-h-0 overflow-y-auto divide-y divide-border px-4">
-                    {found.map((p) => (
-                      <li key={p.external_id} className="py-2 flex gap-2 items-start text-sm">
-                        <input type="checkbox" checked={selected.has(p.external_id)} onChange={() => toggle(p.external_id)} aria-label={`Select ${p.name}`} className="mt-1" />
-                        <button className="text-left min-w-0 flex-1" onClick={() => openPlace(p)} data-testid="place-row" title="Show on the map and add to the CRM">
-                          <span className="font-medium block truncate">{p.name}</span>
-                          <span className="block text-xs text-soft truncate">{p.email || p.phone || "no contact published"}</span>
-                        </button>
-                      </li>
+              <DraftJobsStrip />
+              {mine.length > 0 && showMine && (
+                <div className="space-y-2" data-testid="map-filters">
+                  <div className="flex flex-wrap gap-1" role="radiogroup" aria-label="Priorité" data-testid="filter-priority">
+                    {[["", `Tous (${ready.length})`], ["hot", `Hot — intention observée (${options.hot})`], ["qualified", `Qualifiés (${ready.length - options.hot})`]].map(([key, label]) => (
+                      <button key={key || "all"} type="button" role="radio" aria-checked={filter.priority === key} onClick={() => setFilter({ ...filter, priority: key })} data-testid={`filter-priority-${key || "all"}`}
+                        className={`px-2.5 py-1 rounded-full text-xs border ${filter.priority === key ? "bg-brand-violet text-white border-brand-violet" : "bg-card border-border hover:border-white/20"}`}>
+                        {label}
+                      </button>
                     ))}
-                  </ul>
-                </section>
-              )}
-              {canImport && chosen.length > 0 && (
-                <div className="border-t border-border p-3 overflow-y-auto max-h-[50%]">
-                  <ImportPanel selected={chosen} onDone={() => setSelected(new Set())} open={importOpen} onToggle={() => setImportOpen((v) => !v)} onClose={() => setSelected(new Set())} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <select className="neo-input" aria-label="Filter by vertical" value={filter.vertical} onChange={(e) => setFilter({ ...filter, vertical: e.target.value })} data-testid="filter-vertical">
+                      <option value="">All verticals</option>
+                      {options.verticals.map((v) => <option key={v.value} value={v.value}>{v.value} ({v.count})</option>)}
+                    </select>
+                    <select className="neo-input" aria-label="Filter by review status" value={filter.status} onChange={(e) => setFilter({ ...filter, status: e.target.value })} data-testid="filter-status">
+                      <option value="">Any status</option>
+                      {Object.entries(STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                    </select>
+                    <select className="neo-input" aria-label="Filter by detected signal" value={filter.signal} onChange={(e) => setFilter({ ...filter, signal: e.target.value })} data-testid="filter-signal">
+                      <option value="">Any signal</option>
+                      {options.signals.map((v) => <option key={v.value} value={v.value}>{signalLabel(v.value)} ({v.count})</option>)}
+                    </select>
+                    <input className="neo-input" type="number" min="0" max="100" placeholder="Min score" aria-label="Minimum score" value={filter.minScore} onChange={(e) => setFilter({ ...filter, minScore: e.target.value })} data-testid="filter-score" />
+                  </div>
+                  <div className="flex items-center justify-between gap-2 text-xs">
+                    <span data-testid="filter-summary">{filterSummary(shown.length, ready.length)}</span>
+                    {hasFilter(filter) && <button className="underline" onClick={() => { setFilter(EMPTY_FILTER); setGroup(null); }} data-testid="filter-clear">Clear</button>}
+                  </div>
+                  <p className="text-[11px] text-soft" data-testid="map-updated" aria-live="polite">
+                    {stale ? "Update failed: showing the last data. " : ""}{updatedAt ? `Updated ${updatedAt.toLocaleTimeString()} · live, every 2 to 10 s` : "Loading…"}
+                  </p>
                 </div>
               )}
-              {!canImport && result && <p className="p-3 text-xs text-amber-300 border-t border-border" data-testid="map-import-off">Importing is off: set FEATURE_PROSPECT_IMPORT=true to import the selection.</p>}
-            </div>
-          </aside>
-          <button className={`hidden md:flex absolute z-[501] top-1/2 ${GLASS} !rounded-full p-2 transition-all ${panelOpen ? "right-[24.6rem]" : "right-3"}`}
-            onClick={() => setPanelOpen((o) => !o)} aria-label={panelOpen ? "Hide results" : "Show results"} aria-expanded={panelOpen} data-testid="map-panel-toggle">
-            {panelOpen ? <CaretDoubleRight size={14} /> : <CaretDoubleLeft size={14} />}
-          </button>
-          <button className={`md:hidden absolute z-[501] bottom-1 left-16 ${GLASS} !rounded-full px-4 py-1.5 text-xs font-medium`}
-            onClick={() => setPanelOpen((o) => !o)} aria-expanded={panelOpen} data-testid="map-panel-toggle-mobile">
-            {panelOpen ? "Hide results" : result ? `Results (${found.length})` : "Results"}
-          </button>
-          <p className="absolute z-[400] bottom-1 left-40 text-[10px] text-foreground/80 bg-void-surface/85 px-2 rounded-full pointer-events-none hidden lg:block">
-            Square: qualified prospects, with e-mail, phone and address (blue to review, green approved; a ring marks an observed intent) · round: places found by the search with a published phone and e-mail (green e-mail, amber phone/site, grey name) · click a pin to add it to the CRM · double-click to select several · H: hide panels
-          </p>
-        </>
+              <h2 className="eyebrow pt-1" data-testid="map-step-search">2 · Recherche</h2>
+              <button className="btn-ink w-full justify-center" onClick={search} disabled={busy || tooLarge} data-testid="map-search">
+                <MagnifyingGlass size={14} /> {busy ? "RECHERCHE…" : "RECHERCHER DANS CETTE ZONE"}
+              </button>
+              {tooLarge && <p className="text-xs text-amber-300" data-testid="map-zoom-hint">Zoomez sur une commune ou un quartier pour lancer la recherche.</p>}
+              {/* 2 · the real progress of the search */}
+              {job && job.status !== "failed" && <p className="text-xs" role="status" aria-live="polite" data-testid="map-job">{jobLine(job)}{job.truncated ? " La zone contient plus d'établissements : zoomez pour voir le reste." : ""}</p>}
+              {job && job.status === "failed" && (
+                <div role="alert" className="text-sm text-red-300 space-y-2" data-testid="map-job-failed">
+                  <p>{job.error}</p>
+                  <p className="text-[11px] text-soft">Code: {job.error_code}. This search is saved with its error.</p>
+                  {canRetryInBrowser(job) && (
+                    <button className="btn-ghost" onClick={retryInBrowser} disabled={retrying} data-testid="map-retry-browser">
+                      {retrying ? "ASKING OPENSTREETMAP…" : "RETRY FROM MY BROWSER"}
+                    </button>
+                  )}
+                </div>
+              )}
+              {error && <div role="alert" className="text-sm text-red-300" data-testid="map-error">{error}</div>}
+            </section>
+
+            {/* 3 · the results of the search: what was found, what is reachable, what was left out and why */}
+            {!result ? (
+              <section className="p-4 border-t border-border" data-testid="map-empty">
+                <h2 className="font-display text-lg font-bold">Nothing searched yet</h2>
+                <p className="text-sm text-soft mt-1">Move the map to a town, choose a category and press “Rechercher dans cette zone”.</p>
+              </section>
+            ) : (
+              <section className="border-t border-border" data-testid="map-results" aria-label="Résultats de la recherche">
+                <div className="p-4 pb-2 space-y-2">
+                  <h2 className="eyebrow" data-testid="map-step-results">3 · Résultats</h2>
+                  {breakdown.total > 0 && <p className="text-sm font-medium" data-testid="map-breakdown">{breakdownText(breakdown)}</p>}
+                  <p className="text-sm" data-testid="map-summary">{summaryText(places, result.truncated)}</p>
+                  <label className="flex items-center gap-2 text-xs" data-testid="map-found-toggle">
+                    <input type="checkbox" checked={showAllFound} onChange={(e) => setShowAllFound(e.target.checked)} />
+                    <span>{found.length} of {places.length} shown: only places with a published phone and e-mail. Tick to show all of them.</span>
+                  </label>
+                  {found.length > 0 && (
+                    <div className="flex gap-2 flex-wrap">
+                      <button className="btn-ghost" onClick={() => setSelected(new Set(found.map((p) => p.external_id)))} data-testid="map-select-all">TOUT SÉLECTIONNER ({found.length})</button>
+                      <button className="btn-ghost" onClick={() => setSelected(new Set(found.filter((p) => p.email).map((p) => p.external_id)))} data-testid="map-select-email">ONLY WITH E-MAIL</button>
+                      <button className="btn-ghost" onClick={() => setSelected(new Set())}>NONE</button>
+                    </div>
+                  )}
+                </div>
+                <ul className="divide-y divide-border px-4 pb-2">
+                  {found.map((p) => (
+                    <li key={p.external_id} className="py-2 flex gap-2 items-start text-sm">
+                      <input type="checkbox" checked={selected.has(p.external_id)} onChange={() => toggle(p.external_id)} aria-label={`Select ${p.name}`} className="mt-1" />
+                      <button className="text-left min-w-0 flex-1" onClick={() => openPlace(p)} data-testid="place-row" title="Show on the map and add to the CRM">
+                        <span className="font-medium block truncate">{p.name}</span>
+                        <span className="block text-xs text-soft truncate">{p.email || p.phone || "no contact published"}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+            {canImport && chosen.length > 0 && (
+              <div className="border-t border-border p-3">
+                <ImportPanel selected={chosen} onDone={() => setSelected(new Set())} onRefresh={() => pullRef.current && pullRef.current()} open={importOpen} onToggle={() => setImportOpen((v) => !v)} onClose={() => setSelected(new Set())} />
+              </div>
+            )}
+            {!canImport && result && <p className="p-3 text-xs text-amber-300 border-t border-border" data-testid="map-import-off">Importing is off: set FEATURE_PROSPECT_IMPORT=true to import the selection.</p>}
+            {/* your qualified prospects on the map (squares), with their filters and the quick campaign */}
+            {mine.length > 0 && showMine && (
+              <section className="p-4 border-t border-border" data-testid="map-mine-list" aria-label="Prospects qualifiés">
+                <div className="flex items-center justify-between gap-2">
+                  <h2 className="font-display text-lg font-bold">{group ? `Cluster · ${group.length} qualified prospects` : "Qualified prospects"}</h2>
+                  {group && <button className="underline text-xs" onClick={() => setGroup(null)} data-testid="cluster-close">All</button>}
+                </div>
+                {list.length === 0 && <p className="text-sm text-soft mt-1" data-testid="mine-none">{emptyListText(ready.length, filter)}</p>}
+                <ul className="divide-y divide-border">
+                  {list.map((p) => (
+                    <li key={p.id} className="py-1.5 flex gap-2 items-start text-sm" data-testid="mine-row">
+                      <input type="checkbox" checked={picked.has(p.id)} onChange={() => togglePick(p.id)} aria-label={`Select ${p.name}`} className="mt-1" />
+                      <button className="text-left min-w-0 flex-1" onClick={() => map.current.flyTo([p.lat, p.lon], 17, { duration: 1 })}>
+                        <span className="font-medium block truncate">{p.name}</span>
+                        <span className="block text-xs text-soft truncate">{p.priority === "hot" ? "Hot · " : ""}{p.heat ? `chaleur ${p.heat.value} · ` : ""}{STATUS_LABEL[p.review_status]} · {p.score === null || p.score === undefined ? "not scored" : `score ${p.score}`}{p.city ? ` · ${p.city}` : ""}</span>
+                        {p.priority === "hot" && p.intent_evidence && <span className="block text-xs text-brand-lilac line-clamp-2" data-testid="mine-why-hot">Pourquoi Hot : {p.intent_evidence}</span>}
+                      </button>
+                      <Link to={`/app/prospects/${p.id}`} className="text-xs underline shrink-0">open</Link>
+                    </li>
+                  ))}
+                </ul>
+                {!group && shown.length > list.length && <p className="text-xs text-soft mt-1">Showing the first {list.length} of {shown.length}: click a cluster or filter to narrow.</p>}
+                <button className="btn-ink w-full justify-center mt-2" disabled={starting || pickInfo.ids.length === 0} onClick={startCampaign} data-testid="start-campaign">
+                  {starting ? "CREATING…" : `START CAMPAIGN (${pickInfo.ids.length})`}
+                </button>
+                <p className="text-[11px] text-soft mt-1" data-testid="start-campaign-note">
+                  {picked.size === 0 ? "Tick prospects to start a campaign. Only approved ones can join; nothing is sent until you add steps and launch." : pickInfo.excluded > 0 ? `${pickInfo.excluded} selected prospect${pickInfo.excluded === 1 ? " is" : "s are"} not approved and will be left out.` : "Creates a draft campaign: nothing is sent."}
+                </p>
+              </section>
+            )}
+          </div>
+          {/* 4 · the way to the campaign: the perimeter that was really searched, then the three decisions */}
+          <footer className="border-t border-border p-3 space-y-2 bg-white/[0.02]" data-testid="map-campaign">
+            <h2 className="eyebrow" data-testid="map-step-campaign">4 · Campagne</h2>
+            {zoneOf(job) ? (
+              <>
+                <p className="text-[11px] text-soft" data-testid="map-zone">{zoneSummary(zoneOf(job))}</p>
+                <Link to={journeyLink(zoneOf(job))} className="btn-primary w-full justify-center" data-testid="map-to-campaign">
+                  CONTINUER VERS LA CAMPAGNE <ArrowRight size={14} />
+                </Link>
+              </>
+            ) : (
+              <p className="text-[11px] text-soft" data-testid="map-zone-none">Lancez une recherche : le périmètre recherché devient la zone de votre campagne.</p>
+            )}
+          </footer>
+        </aside>
+      )}
+      {!overlaysHidden && (
+        <p className="absolute z-[400] bottom-1 left-40 text-[10px] text-foreground/80 bg-void-surface/85 px-2 rounded-full pointer-events-none hidden lg:block">
+          Square: qualified prospects, with e-mail, phone and address (blue to review, green approved; a ring marks an observed intent) · round: places found by the search with a published phone and e-mail (green e-mail, amber phone/site, grey name) · click a pin to add it to the CRM · double-click to select several · H: hide panels
+        </p>
       )}
     </div>
   );
@@ -668,8 +689,8 @@ export default function MapSearch() {
   return (
     <div className="p-6 md:p-10 space-y-6 max-w-6xl" data-testid="map-page">
       <div>
-        <div className="mono-accent">// live.map</div>
-        <h1 className="text-4xl font-black tracking-tighter">Map search</h1>
+        <div className="eyebrow">Prospection</div>
+        <h1 className="mt-3 text-4xl font-bold tracking-tight leading-[1.15]">Carte</h1>
         <p className="text-soft mt-1 max-w-3xl">
           Find real local businesses on the map, with the phone, e-mail and website their OpenStreetMap contributors published.
           Free, no key. <Link to="/app/prospects/import" className="underline">Import a list instead</Link>

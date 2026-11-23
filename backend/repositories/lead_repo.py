@@ -104,37 +104,59 @@ async def _create_primary_contact(
     return contact
 
 
-async def load_extra(session: AsyncSession, lead: Lead) -> LeadExtra:
-    source_name = None
-    if lead.source_id is not None:
-        result = await session.execute(select(LeadSource.name).where(LeadSource.id == lead.source_id))
-        source_name = result.scalar_one_or_none()
+async def load_extras(session: AsyncSession, leads: list[Lead]) -> dict[uuid.UUID, LeadExtra]:
+    """The related fields of many leads in a fixed number of queries (sources, primary contacts, both consents, latest
+    prospect score), whatever the number of leads: the CRM list used to issue up to five queries per lead."""
+    if not leads:
+        return {}
+    ids = [lead.id for lead in leads]
 
-    contact_id = await consent_repo.get_primary_contact_id(session, lead.id)
-    email_consent = "unknown"
-    whatsapp_consent = "unknown"
-    if contact_id:
-        email_consent = await consent_repo.get_status(session, contact_id, "email")
-        whatsapp_consent = await consent_repo.get_status(session, contact_id, "whatsapp")
+    source_ids = {lead.source_id for lead in leads if lead.source_id is not None}
+    source_names: dict[uuid.UUID, str] = {}
+    if source_ids:
+        rows = await session.execute(select(LeadSource.id, LeadSource.name).where(LeadSource.id.in_(source_ids)))
+        source_names = {sid: name for sid, name in rows.all()}
 
-    prospect_score = None
-    if lead.review_status is not None:  # a discovery prospect is scored in `prospect_scores`, not in `Lead.score`
-        prospect_score = (
-            await session.execute(
-                select(ProspectScore.score)
-                .where(ProspectScore.lead_id == lead.id)
-                .order_by(ProspectScore.created_at.desc(), ProspectScore.id)
-                .limit(1)
-            )
-        ).scalar_one_or_none()
-
-    return LeadExtra(
-        source=source_name,
-        contact_id=contact_id,
-        email_consent=email_consent,
-        whatsapp_consent=whatsapp_consent,
-        prospect_score=prospect_score,
+    # The primary contact as `consent_repo.get_primary_contact_id` picks it: primary first, then oldest, not deleted.
+    contacts = await session.execute(
+        select(Contact.lead_id, Contact.id)
+        .where(Contact.lead_id.in_(ids), Contact.deleted_at.is_(None))
+        .order_by(Contact.lead_id, Contact.is_primary.desc(), Contact.created_at.asc(), Contact.id)
     )
+    contact_by_lead: dict[uuid.UUID, uuid.UUID] = {}
+    for lead_id, contact_id in contacts.all():
+        contact_by_lead.setdefault(lead_id, contact_id)
+    contact_ids = list(contact_by_lead.values())
+    email = await consent_repo.get_status_map(session, contact_ids, "email")
+    whatsapp = await consent_repo.get_status_map(session, contact_ids, "whatsapp")
+
+    # A discovery prospect is scored in `prospect_scores`, not in `Lead.score`: its latest score, one row per lead.
+    prospect_ids = [lead.id for lead in leads if lead.review_status is not None]
+    scores: dict[uuid.UUID, int] = {}
+    if prospect_ids:
+        latest = await session.execute(
+            select(ProspectScore.lead_id, ProspectScore.score)
+            .where(ProspectScore.lead_id.in_(prospect_ids))
+            .order_by(ProspectScore.lead_id, ProspectScore.created_at.desc(), ProspectScore.id)
+            .distinct(ProspectScore.lead_id)
+        )
+        scores = {lead_id: score for lead_id, score in latest.all()}
+
+    out: dict[uuid.UUID, LeadExtra] = {}
+    for lead in leads:
+        contact_id = contact_by_lead.get(lead.id)
+        out[lead.id] = LeadExtra(
+            source=source_names.get(lead.source_id) if lead.source_id is not None else None,
+            contact_id=contact_id,
+            email_consent=email.get(contact_id, consent_repo.DEFAULT_STATUS) if contact_id else "unknown",
+            whatsapp_consent=whatsapp.get(contact_id, consent_repo.DEFAULT_STATUS) if contact_id else "unknown",
+            prospect_score=scores.get(lead.id) if lead.review_status is not None else None,
+        )
+    return out
+
+
+async def load_extra(session: AsyncSession, lead: Lead) -> LeadExtra:
+    return (await load_extras(session, [lead]))[lead.id]
 
 
 @dataclass
@@ -145,6 +167,34 @@ class BulkResult:
     lead_ids: list[str] = field(default_factory=list)
 
 
+def _filtered(  # type: ignore[no-untyped-def]
+    stmt, *, stage: Optional[str], search: Optional[str], review_status: Optional[str]
+):
+    """The CRM filters, shared by the list and its count so the two always agree."""
+    if stage:
+        stmt = stmt.where(Lead.stage == stage)
+    if search:
+        pattern = f"%{search}%"
+        stmt = stmt.where(or_(Lead.full_name.ilike(pattern), Lead.email.ilike(pattern), Lead.company.ilike(pattern)))
+    if review_status:
+        stmt = stmt.where(Lead.review_status == review_status)
+    return stmt
+
+
+async def count_listed(
+    session: AsyncSession,
+    account_id: uuid.UUID,
+    *,
+    stage: Optional[str] = None,
+    search: Optional[str] = None,
+    review_status: Optional[str] = None,
+) -> int:
+    """How many leads the CRM holds for these filters: the list is capped, this number is not."""
+    stmt = select(func.count()).select_from(Lead).where(Lead.account_id == account_id, ACTIVE)
+    stmt = _filtered(stmt, stage=stage, search=search, review_status=review_status)
+    return int((await session.execute(stmt)).scalar_one())
+
+
 async def list_leads(
     session: AsyncSession,
     account_id: uuid.UUID,
@@ -153,6 +203,7 @@ async def list_leads(
     search: Optional[str] = None,
     sort: str = "heat",
     limit: int = 500,
+    review_status: Optional[str] = None,
 ) -> list[tuple[Lead, LeadExtra]]:
     """`sort`: "heat" (hottest first: real information and score; a CRM score of 0 means not scored, a discovery
     prospect is ranked on its latest prospect score) or "recent"."""
@@ -163,11 +214,7 @@ async def list_leads(
         .options(selectinload(Lead.contacts))
         .where(Lead.account_id == account_id, ACTIVE)
     )
-    if stage:
-        stmt = stmt.where(Lead.stage == stage)
-    if search:
-        pattern = f"%{search}%"
-        stmt = stmt.where(or_(Lead.full_name.ilike(pattern), Lead.email.ilike(pattern), Lead.company.ilike(pattern)))
+    stmt = _filtered(stmt, stage=stage, search=search, review_status=review_status)
     if sort == "recent":
         stmt = stmt.order_by(Lead.created_at.desc(), Lead.id)
     else:
@@ -176,7 +223,8 @@ async def list_leads(
     stmt = stmt.limit(limit)
     result = await session.execute(stmt)
     leads = result.scalars().all()
-    return [(lead, await load_extra(session, lead)) for lead in leads]
+    extras = await load_extras(session, list(leads))
+    return [(lead, extras[lead.id]) for lead in leads]
 
 
 class DuplicateEmail(Exception):
@@ -380,6 +428,7 @@ async def get_leads_by_ids(session: AsyncSession, account_id: uuid.UUID, lead_id
                 "company": lead.company,
                 "title": lead.title,
                 "country": lead.country,
+                "website": lead.website,  # a targeted batch reads the known web presence to pick the offer
                 "source": source_names.get(lead.source_id) if lead.source_id else None,
                 "contact_id": str(contact_id) if contact_id else None,
                 "email_consent": email_consents.get(contact_id, "unknown") if contact_id else "unknown",

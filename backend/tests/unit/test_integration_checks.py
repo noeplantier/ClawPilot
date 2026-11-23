@@ -248,7 +248,7 @@ AI_KEY = "k-" + secrets.token_hex(8)  # runtime-built, not a credential
 
 
 class _Models:
-    def __init__(self, status=200, ids=("llama-3.3-70b-versatile",), body=None):
+    def __init__(self, status=200, ids=("openai/gpt-oss-120b",), body=None):
         self.status_code = status
         self._body = body if body is not None else {"data": [{"id": i} for i in ids]}
 
@@ -260,7 +260,7 @@ class _Models:
 
 @pytest.fixture()
 def ai_env(monkeypatch):
-    for name in ("AI_PROVIDER", "AI_API_KEY", "AI_MODEL", "AI_BASE_URL"):
+    for name in ("AI_PROVIDER", "AI_API_KEY", "AI_MODEL", "AI_BASE_URL", "AI_MODEL_LIGHT"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("AI_PROVIDER", "groq")
     monkeypatch.setenv("AI_API_KEY", AI_KEY)
@@ -304,6 +304,26 @@ def test_ai_fails_when_the_model_is_not_offered_and_says_which_variable_to_chang
     assert out["outcome"] == "failed" and "AI_MODEL" in out["detail"]
 
 
+def test_a_retired_model_is_answered_with_the_chat_models_the_key_can_really_use(monkeypatch, ai_env):
+    monkeypatch.setenv("AI_MODEL", "llama-3.3-70b-versatile")
+    listed = (
+        "whisper-large-v3",
+        "openai/gpt-oss-20b",
+        "meta-llama/llama-guard-4-12b",
+        "openai/gpt-oss-120b",
+        "playai-tts",
+    )
+    out = checks.ai(get=lambda *a, **k: _Models(ids=listed))
+    assert out["outcome"] == "failed" and "llama-3.3-70b-versatile" in out["detail"]
+    assert out["detail"].endswith("Set AI_MODEL to one it offers: openai/gpt-oss-120b, openai/gpt-oss-20b.")
+    assert AI_KEY not in out["detail"]
+
+
+def test_a_long_model_list_is_cut_and_counted():
+    ids = {f"model-{n:02d}" for n in range(12)} | {"whisper-1"}
+    assert checks.chat_models(ids)[:2] == ["model-00", "model-01"] and len(checks.chat_models(ids)) == 12
+
+
 @pytest.mark.parametrize(
     "reply,words",
     [
@@ -327,3 +347,182 @@ def test_ai_failures_are_explained_without_the_key(ai_env, reply, words):
 def test_ai_passes_without_a_model_check_when_the_list_has_an_unexpected_shape(ai_env):
     assert checks.ai(get=lambda *a, **k: _Models(body=ValueError("not json")))["outcome"] == "passed"
     assert ai_svc.config() is not None
+
+
+BREVO_KEY = "xkeysib-" + "0" * 16  # a placeholder shape, never a real key
+
+
+class _Answer:
+    def __init__(self, status):
+        self.status_code = status
+
+    def json(self):
+        return {"email": "founder@plantiers.com", "companyName": "Plantiers"}
+
+
+def test_brevo_is_skipped_without_a_key_and_nothing_is_asked(monkeypatch):
+    monkeypatch.delenv("BREVO_API_KEY", raising=False)
+
+    def ask(*a, **k):
+        raise AssertionError("asked Brevo without a key")
+
+    assert checks.brevo(get=ask)["outcome"] == "skipped"
+
+
+def test_brevo_reads_the_account_sends_nothing_and_echoes_nothing_of_it(monkeypatch):
+    monkeypatch.setenv("BREVO_API_KEY", BREVO_KEY)
+    seen = {}
+
+    def get(url, **kwargs):
+        seen.update(url=url, **kwargs)
+        return _Answer(200)
+
+    out = checks.brevo(get=get)
+    assert out["outcome"] == "passed" and "Nothing was sent" in out["detail"]
+    assert seen["url"] == "https://api.brevo.com/v3/account" and seen["headers"]["api-key"] == BREVO_KEY
+    assert seen["allow_redirects"] is False
+    assert BREVO_KEY not in out["detail"] and "founder@" not in out["detail"] and "Plantiers" not in out["detail"]
+
+
+@pytest.mark.parametrize(
+    "reply,words",
+    [
+        (_Answer(401), "rejected the key (HTTP 401)"),
+        (_Answer(500), "answered HTTP 500"),
+        (requests.Timeout(), "in time"),
+    ],
+)
+def test_brevo_failures_are_explained_without_the_key(monkeypatch, reply, words):
+    monkeypatch.setenv("BREVO_API_KEY", BREVO_KEY)
+
+    def get(*a, **k):
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+
+    out = checks.brevo(get=get)
+    assert out["outcome"] == "failed" and words in out["detail"] and BREVO_KEY not in out["detail"]
+
+
+RESEND_KEY = "re_" + secrets.token_hex(8)  # runtime-built, not a credential
+
+
+class _Resend:
+    def __init__(self, status, body=None):
+        self.status_code = status
+        self._body = body
+
+    def json(self):
+        if self._body is None:
+            raise ValueError("no JSON")
+        return self._body
+
+
+ACCOUNT = {
+    "object": "list",
+    "data": [
+        {"id": "d1", "name": "other-client.example", "status": "verified", "region": "eu-west-1"},
+        {"id": "d2", "name": "plantiers.com", "status": "verified", "region": "eu-west-1"},
+    ],
+}
+
+
+@pytest.fixture
+def resend_env(monkeypatch):
+    monkeypatch.setenv("RESEND_API_KEY", RESEND_KEY)
+    monkeypatch.setenv("OUTREACH_SENDER_EMAIL", "Founder@Plantiers.com")
+
+
+def _resend_with(reply, seen=None):
+    def get(url, **kwargs):
+        if seen is not None:
+            seen.update(url=url, **kwargs)
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+
+    return get
+
+
+def test_resend_is_skipped_without_a_key_and_nothing_is_asked(monkeypatch):
+    monkeypatch.delenv("RESEND_API_KEY", raising=False)
+
+    def ask(*a, **k):
+        raise AssertionError("asked Resend without a key")
+
+    assert checks.resend(get=ask)["outcome"] == "skipped"
+
+
+def test_resend_reads_the_domains_sends_nothing_and_reports_only_the_senders_domain(resend_env):
+    seen = {}
+    out = checks.resend(get=_resend_with(_Resend(200, ACCOUNT), seen))
+    assert out["outcome"] == "passed" and "plantiers.com" in out["detail"] and "is verified" in out["detail"]
+    assert "Nothing was sent" in out["detail"]
+    assert seen["url"] == "https://api.resend.com/domains" and seen["allow_redirects"] is False
+    assert seen["headers"]["Authorization"] == f"Bearer {RESEND_KEY}"
+    assert RESEND_KEY not in out["detail"] and "other-client" not in out["detail"] and "d2" not in out["detail"]
+
+
+@pytest.mark.parametrize(
+    "rows,words",
+    [
+        ([{"name": "plantiers.com", "status": "pending"}], "not verified yet (status: pending)"),
+        ([{"name": "plantiers.com", "status": "<script>"}], "not verified yet (status: unknown)"),
+        ([{"name": "other-client.example", "status": "verified"}], "is not in this Resend account"),
+    ],
+)
+def test_an_unverified_or_absent_sender_domain_is_a_failure_that_says_what_to_do(resend_env, rows, words):
+    out = checks.resend(get=_resend_with(_Resend(200, {"data": rows})))
+    assert out["outcome"] == "failed" and words in out["detail"] and "Resend refuses every message" in out["detail"]
+    assert "other-client" not in out["detail"] and "<script>" not in out["detail"]
+
+
+def test_a_sending_only_key_is_recognised_and_the_domain_left_to_check(resend_env):
+    reply = _Resend(401, {"statusCode": 401, "name": "restricted_api_key", "message": "echo founder@plantiers.com"})
+    out = checks.resend(get=_resend_with(reply))
+    assert out["outcome"] == "passed" and "sending access only" in out["detail"]
+    assert "Resend > Domains" in out["detail"] and "echo" not in out["detail"]
+
+
+def test_without_a_sender_the_key_is_proved_and_no_domain_is_claimed(resend_env, monkeypatch):
+    monkeypatch.delenv("OUTREACH_SENDER_EMAIL")
+    out = checks.resend(get=_resend_with(_Resend(200, ACCOUNT)))
+    assert out["outcome"] == "passed" and "no sender domain was checked" in out["detail"]
+    assert "plantiers.com" not in out["detail"]
+
+
+@pytest.mark.parametrize(
+    "reply,words",
+    [
+        (_Resend(403, {"name": "invalid_api_key", "message": "API key is invalid"}), "rejected the key (HTTP 403)"),
+        (_Resend(401, {"name": "missing_api_key"}), "rejected the key (HTTP 401)"),
+        (_Resend(401), "rejected the key (HTTP 401)"),
+        (_Resend(500, {"name": "internal_server_error"}), "answered HTTP 500"),
+        (_Resend(200), "could not be read"),
+        (_Resend(200, {"data": "nope"}), "could not be read"),
+        (requests.Timeout(), "in time"),
+        (requests.ConnectionError(), "could not be reached (ConnectionError)"),
+    ],
+)
+def test_resend_failures_are_explained_without_the_key(resend_env, reply, words):
+    out = checks.resend(get=_resend_with(reply))
+    assert out["outcome"] == "failed" and words in out["detail"] and RESEND_KEY not in out["detail"]
+
+
+def test_the_light_model_is_checked_too_and_named_when_the_key_reaches_it(ai_env):
+    out = checks.ai(get=lambda *a, **k: _Models(ids=("openai/gpt-oss-120b", "openai/gpt-oss-20b")))
+    assert out["outcome"] == "passed" and "and the light model openai/gpt-oss-20b" in out["detail"]
+
+
+def test_a_missing_light_model_is_not_a_failure_but_says_where_short_messages_go(ai_env):
+    out = checks.ai(get=lambda *a, **k: _Models(ids=("openai/gpt-oss-120b", "llama-3.1-8b-instant", "whisper-large")))
+    assert out["outcome"] == "passed" and "not the light model openai/gpt-oss-20b" in out["detail"]
+    assert "will use openai/gpt-oss-120b" in out["detail"] and "AI_MODEL_LIGHT" in out["detail"]
+    assert "llama-3.1-8b-instant" in out["detail"] and "whisper" not in out["detail"]  # chat models only
+    assert "Nothing was generated" in out["detail"] and AI_KEY not in out["detail"]
+
+
+def test_without_a_lighter_model_nothing_about_it_is_claimed(monkeypatch, ai_env):
+    monkeypatch.setenv("AI_PROVIDER", "mistral")
+    out = checks.ai(get=lambda *a, **k: _Models(ids=("mistral-small-latest",)))
+    assert out["outcome"] == "passed" and "light" not in out["detail"]
