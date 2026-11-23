@@ -107,7 +107,7 @@ export default function AIComposerModal({ open, onClose, defaults }) {
 
             <div className="flex items-center gap-2 mb-2">
               <Sparkle size={18} weight="fill" className="text-foreground" />
-              <span className="mono-accent text-foreground">/// gemini-3-flash</span>
+              <span className="mono-accent text-foreground">/// ai.composer</span>
             </div>
             <h2 className="text-2xl font-black tracking-tighter">AI Message Composer</h2>
             <p className="text-soft text-sm mt-1">Multi-language, tone-aware outreach copy generated in seconds.</p>
@@ -216,7 +216,7 @@ export default function AIComposerModal({ open, onClose, defaults }) {
                     </div>
                     <div className="pt-3 border-t border-border flex items-center justify-between">
                       <span className="chip chip-purple">{result.language}</span>
-                      <span className="mono-accent text-faint">gemini-3-flash · {(result.body || "").length} chars</span>
+                      <span className="mono-accent text-faint">{(result.body || "").length} chars</span>
                     </div>
                   </motion.div>
                 )}

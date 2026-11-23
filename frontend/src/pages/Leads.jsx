@@ -57,6 +57,11 @@ export default function Leads() {
     if (fitSort) result = [...result].sort((a, b) => (b.fit_score ?? -1) - (a.fit_score ?? -1));
     return result;
   }, [reachable, lane, priorityFilter, fitSort]);
+  // An approved lead with no reachable contact is still a real CRM object: count it so it cannot vanish silently.
+  const hiddenApprovedEmpty = useMemo(
+    () => everyLead.filter((l) => l.review_status === "approved" && l.heat && l.heat.has_contact === false).length,
+    [everyLead]
+  );
   const toggleEmpty = () => setShowEmpty((v) => { writePref("leads.showEmpty", !v); return !v; });
   const setCrmView = (next) => {
     setSearchParams(next === "table" ? {} : { view: next }, { replace: true });
@@ -206,6 +211,15 @@ export default function Leads() {
       </section>}
 
       {live.error && <div role="alert" className="text-sm text-red-300" data-testid="leads-error">{live.error}</div>}
+
+      {hiddenApprovedEmpty > 0 && !showEmpty && (
+        <div role="status" className="surface flex flex-wrap items-center justify-between gap-3 border border-amber-500/40 p-3 text-sm" data-testid="leads-approved-hidden">
+          <span>
+            {hiddenApprovedEmpty} lead{hiddenApprovedEmpty === 1 ? "" : "s"} approuvé{hiddenApprovedEmpty === 1 ? "" : "s"} sans e-mail, téléphone ni site {hiddenApprovedEmpty === 1 ? "est masqué" : "sont masqués"} de cette liste. Aucun lead n&apos;a été perdu.
+          </span>
+          <button type="button" className="btn-ghost !py-1 !px-2" onClick={toggleEmpty} data-testid="leads-approved-show">AFFICHER LES LEADS SANS CONTACT</button>
+        </div>
+      )}
 
       {view === "map" ? <DiscoveryMap /> : view === "table" ? (
         <div className="surface overflow-hidden overflow-x-auto">

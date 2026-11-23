@@ -91,3 +91,23 @@ it("shows unavailable qualification fields as unknown rather than empty or negat
   expect(qualification.textContent).toContain("Website Unknown · Digital Unknown");
   expect(qualification.querySelector(".chip").className).toContain("chip-ink");
 });
+
+it("announces an approved lead hidden for lack of contact and reveals it on demand", async () => {
+  window.localStorage.removeItem("pos.ui.leads.showEmpty");
+  const lead = {
+    id: "lead-map", full_name: "Atelier Map", company: "Atelier Map", country: "FR", stage: "new", score: 0,
+    review_status: "approved",
+    heat: { value: 10, tier: "cold", known: [], missing: [], scored: false, top: false, has_contact: false },
+    enrichment_status: "required", fit_score: null, website_quality: null, digital_maturity: null, priority: null,
+  };
+  api.get.mockResolvedValue({ data: [lead] });
+  await act(async () => root.render(<MemoryRouter><Leads /></MemoryRouter>));
+
+  expect(byId("leads-approved-hidden").textContent).toContain("1 lead approuvé");
+  expect(byId("qualification-lead-map")).toBeNull();
+
+  await click("leads-approved-show");
+  expect(byId("leads-approved-hidden")).toBeNull();
+  expect(byId("qualification-lead-map")).not.toBeNull();
+  window.localStorage.removeItem("pos.ui.leads.showEmpty");
+});

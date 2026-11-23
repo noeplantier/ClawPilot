@@ -6,8 +6,9 @@ company, the offer and the goal. Never the e-mail address, the phone number or a
 
     AI_PROVIDER  groq | gemini | mistral | custom      (no default: the choice of who receives names is yours)
     AI_API_KEY   the provider's key (never shown, never logged)
-    AI_MODEL     optional: overrides the provider's default model
-    AI_BASE_URL  only for `custom`: https://…/v1 (the API root that serves /chat/completions and /models)
+    AI_MODEL            optional: overrides the provider's default model
+    AI_MODEL_PRECISION  optional: a second, more capable model reserved for the best Hot Leads
+    AI_BASE_URL         only for `custom`: https://…/v1 (the API root that serves /chat/completions and /models)
 """
 
 from __future__ import annotations
@@ -40,10 +41,11 @@ LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
 class AIUnavailable(Exception):
     """The composer cannot write a real message right now. Never replaced by a canned text that pretends to be one."""
 
-    def __init__(self, code: str, message: str) -> None:
+    def __init__(self, code: str, message: str, retry_at: Optional[int] = None) -> None:
         super().__init__(message)
         self.code = code
         self.message = message
+        self.retry_at = retry_at
 
 
 @dataclass(frozen=True)
@@ -85,6 +87,12 @@ def _read() -> tuple[Optional[AIConfig], Optional[str]]:
 
 def config() -> Optional[AIConfig]:
     return _read()[0]
+
+
+def precision_model() -> Optional[str]:
+    """The optional model reserved for the best Hot Leads. None = no precision tier is configured: say so, never
+    pretend that a slower model was used. The provider will reject an invalid name (HTTP 404), which fails closed."""
+    return os.environ.get("AI_MODEL_PRECISION", "").strip() or None
 
 
 def status() -> dict[str, Any]:
@@ -179,9 +187,9 @@ def parse_answer(raw: str) -> dict[str, Optional[str]]:
     return {"subject": None, "body": text, "whatsapp": None}
 
 
-def _generate_sync(cfg: AIConfig, messages: list[dict[str, str]]) -> str:
+def _generate_sync(cfg: AIConfig, messages: list[dict[str, str]], model: Optional[str] = None) -> str:
     payload: dict[str, Any] = {
-        "model": cfg.model,
+        "model": model or cfg.model,
         "messages": messages,
         "temperature": 0.7,
         "max_tokens": MAX_TOKENS,
@@ -192,8 +200,10 @@ def _generate_sync(cfg: AIConfig, messages: list[dict[str, str]]) -> str:
         payload.pop("response_format")
         response = _post(cfg, payload)
     if response.status_code != 200:
-        code, message = explain_http_error(response.status_code, response.headers.get("Retry-After"))
-        raise AIUnavailable(code, message)
+        after = response.headers.get("Retry-After", "")
+        code, message = explain_http_error(response.status_code, after)
+        # A provider limit has a known delay; surface it so the UI can say when to try again.
+        raise AIUnavailable(code, message, int(after) if code == "ai_rate_limited" and after.isdigit() else None)
     try:
         content = response.json()["choices"][0]["message"]["content"]
     except (ValueError, KeyError, IndexError, TypeError):
@@ -203,9 +213,12 @@ def _generate_sync(cfg: AIConfig, messages: list[dict[str, str]]) -> str:
     return content
 
 
-async def complete(messages: list[dict[str, str]]) -> dict[str, Optional[str]]:
+async def complete(
+    messages: list[dict[str, str]], *, model: Optional[str] = None
+) -> dict[str, Optional[str]]:
     """The provider's answer to `messages` as {"subject", "body"}, or `AIUnavailable` saying why (not configured,
     rejected, limit, unreachable). The one place that talks to the provider, for the composer and the automatic drafts.
+    `model` is an internal override used only for the configured precision tier; it is never taken from user input.
     """
     cfg, reason = _read()
     if cfg is None:
@@ -214,14 +227,14 @@ async def complete(messages: list[dict[str, str]]) -> dict[str, Optional[str]]:
             f"The AI composer is off: {reason}. Write the message yourself, or set it up in Settings > Integrations.",
         )
     try:
-        raw = await asyncio.to_thread(_generate_sync, cfg, messages)  # blocking socket: never on the event loop
+        raw = await asyncio.to_thread(_generate_sync, cfg, messages, model)  # blocking socket: never on the event loop
     except AIUnavailable:
         raise
     except requests.Timeout:
-        raise AIUnavailable("ai_failed", "The AI provider did not answer in time. Nothing was generated.")
+        raise AIUnavailable("ai_timeout", "The AI provider did not answer in time. Nothing was generated.")
     except requests.RequestException as exc:
         logger.warning("AI provider unreachable: %s", type(exc).__name__)
-        raise AIUnavailable("ai_failed", "The AI provider could not be reached. Nothing was generated.")
+        raise AIUnavailable("ai_unreachable", "The AI provider could not be reached. Nothing was generated.")
     return parse_answer(raw)
 
 
