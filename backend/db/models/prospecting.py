@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, Text, UniqueConstraint, text
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -201,3 +201,54 @@ class ProspectingBatchItem(Base, UUIDPKMixin, CreatedAtMixin):
     stage: Mapped[str] = mapped_column(String(30), nullable=False, server_default="discovered")
     exclusion_reason: Mapped[str | None] = mapped_column(String(120), nullable=True)
     data: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+
+
+class Mandate(Base, UUIDPKMixin, TimestampMixin):
+    """One bounded prospecting authorisation per account. Draft by default: nothing runs until it is activated."""
+
+    __tablename__ = "mandates"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('draft','active','paused','expired','revoked')",
+            name="chk_mandates_status",
+        ),
+        CheckConstraint("daily_volume > 0 AND total_volume > 0", name="chk_mandates_volumes"),
+        CheckConstraint("ai_budget >= 0", name="chk_mandates_budget"),
+        CheckConstraint("cadence_minutes > 0", name="chk_mandates_cadence"),
+        Index("ix_mandates_account_status", "account_id", "status"),
+        Index(
+            "uq_mandates_one_active_per_account",
+            "account_id",
+            unique=True,
+            postgresql_where=text("status = 'active'"),
+        ),
+    )
+
+    account_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("accounts.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="draft", server_default="draft")
+    zone: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    sector: Mapped[str] = mapped_column(String(120), nullable=False)
+    offer: Mapped[str] = mapped_column(Text, nullable=False)
+    qualification_criteria: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    daily_volume: Mapped[int] = mapped_column(Integer, nullable=False)
+    total_volume: Mapped[int] = mapped_column(Integer, nullable=False)
+    ai_budget: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    time_windows: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    cadence_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    stop_rules: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    approved_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
