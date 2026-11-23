@@ -8,6 +8,7 @@ without repeating the key.
 import asyncio
 import copy
 import json
+from datetime import datetime, timezone
 import secrets
 import socket
 
@@ -256,6 +257,32 @@ def test_an_organisation_cannot_use_more_than_its_minute_of_model_calls(monkeypa
     assert int(refused.value.headers["Retry-After"]) >= 1
     other = {"org_id": "00000000-0000-4000-8000-000000000002"}
     ai_route._spend(other)  # another organisation has its own allowance
+
+
+def test_a_timeout_is_a_gateway_timeout_and_an_unreachable_provider_is_a_bad_gateway():
+    timeout = ai_route._unavailable(ai_svc.AIUnavailable("ai_timeout", "too slow"))
+    assert timeout.status_code == 504 and timeout.detail["code"] == "ai_timeout"
+    down = ai_route._unavailable(ai_svc.AIUnavailable("ai_unreachable", "down"))
+    assert down.status_code == 502 and down.detail["code"] == "ai_unreachable"
+
+
+def test_a_provider_limit_carries_its_retry_delay_to_the_ui(monkeypatch):
+    configure(monkeypatch)
+    monkeypatch.setattr(requests, "post", answering(Reply(status=429, headers={"Retry-After": "7"})))
+    with pytest.raises(ai_svc.AIUnavailable) as refused:
+        write()
+    error = ai_route._unavailable(refused.value)
+    assert error.status_code == 429 and datetime.fromisoformat(error.detail["retry_at"]) > datetime.now(timezone.utc)
+
+
+def test_a_provider_failure_is_retried_at_most_once(monkeypatch):
+    configure(monkeypatch)
+    monkeypatch.setattr(ai_svc, "RETRY_PAUSE", 0)
+    post = answering(Reply(status=500), Reply(status=500), Reply(text_content=GOOD))
+    monkeypatch.setattr(requests, "post", post)
+    with pytest.raises(ai_svc.AIUnavailable) as refused:
+        write()
+    assert refused.value.code == "ai_failed" and len(post.calls) == 2
 
 
 def test_a_provider_side_failure_is_retried_once_then_answers(monkeypatch):

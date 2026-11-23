@@ -27,6 +27,7 @@ from routes.launches import router as launches_router
 from routes.leads import router as leads_router
 from routes.mandates import router as mandates_router
 from routes.map_search import router as map_router
+from routes.outreach_mandates import router as outreach_mandates_router
 from routes.messages import router as messages_router
 from routes.notes import router as notes_router
 from routes.outbound import router as outbound_router
@@ -87,6 +88,7 @@ api_router.include_router(journeys_router)
 api_router.include_router(mandates_router)
 api_router.include_router(unsubscribe_router)
 api_router.include_router(prospecting_router)
+api_router.include_router(outreach_mandates_router)
 api_router.include_router(suggestions_router)
 api_router.include_router(usage_router)
 api_router.include_router(autopilot_router)

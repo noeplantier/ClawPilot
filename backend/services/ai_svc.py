@@ -6,10 +6,10 @@ company, the offer and the goal. Never the e-mail address, the phone number or a
 
     AI_PROVIDER  groq | gemini | mistral | custom      (no default: the choice of who receives names is yours)
     AI_API_KEY   the provider's key (never shown, never logged)
-    AI_MODEL     optional: overrides the provider's default model (the "main" one)
-    AI_MODEL_LIGHT optional: a lighter model of the SAME provider, for the short messages ("Rapide"); Groq has a
-                 default (gpt-oss-20b). Without one, every message uses the main model. Same key, same provider.
-    AI_BASE_URL  only for `custom`: https://…/v1 (the API root that serves /chat/completions and /models)
+    AI_MODEL            optional: overrides the provider's default model (the "main" one)
+    AI_MODEL_LIGHT      optional: a lighter model of the SAME provider for the "Rapide" tier (Groq has a default)
+    AI_MODEL_PRECISION  optional: a second, more capable model reserved for the best Hot Leads
+    AI_BASE_URL         only for `custom`: https://…/v1 (the API root that serves /chat/completions and /models)
 """
 
 from __future__ import annotations
@@ -51,10 +51,11 @@ LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
 class AIUnavailable(Exception):
     """The composer cannot write a real message right now. Never replaced by a canned text that pretends to be one."""
 
-    def __init__(self, code: str, message: str) -> None:
+    def __init__(self, code: str, message: str, retry_at: Optional[int] = None) -> None:
         super().__init__(message)
         self.code = code
         self.message = message
+        self.retry_at = retry_at
 
 
 @dataclass(frozen=True)
@@ -101,6 +102,12 @@ def _read() -> tuple[Optional[AIConfig], Optional[str]]:
 
 def config() -> Optional[AIConfig]:
     return _read()[0]
+
+
+def precision_model() -> Optional[str]:
+    """The optional model reserved for the best Hot Leads. None = no precision tier is configured: say so, never
+    pretend that a slower model was used. The provider will reject an invalid name (HTTP 404), which fails closed."""
+    return os.environ.get("AI_MODEL_PRECISION", "").strip() or None
 
 
 def status() -> dict[str, Any]:
@@ -250,11 +257,14 @@ def _generate_sync(
     max_tokens: Optional[int] = None,
     temperature: Optional[float] = None,
     tier: str = "main",
+    explicit_model: Optional[str] = None,
 ) -> Generated:
-    model = cfg.model_for(tier)
+    # `explicit_model` is the optional precision tier: it is an internal override, never user input. An invalid
+    # precision model is refused by the provider and fails closed (no silent fallback to a weaker model).
+    model = explicit_model or cfg.model_for(tier)
     budget, warmth = max_tokens or MAX_TOKENS, 0.7 if temperature is None else temperature
     response = _ask(cfg, model, messages, budget, warmth)
-    if response.status_code in (400, 404) and model != cfg.model:  # the light model is unknown or retired
+    if explicit_model is None and response.status_code in (400, 404) and model != cfg.model:  # light model retired
         logger.warning(
             "AI provider=%s light model=%s answered HTTP %s: main model used", cfg.provider, model, response.status_code
         )
@@ -264,8 +274,10 @@ def _generate_sync(
         # What the operator needs to fix it, in the server log: the provider, the model and the status (never the key
         # nor the body, which can echo the request).
         logger.warning("AI provider=%s model=%s answered HTTP %s", cfg.provider, model, response.status_code)
-        code, message = explain_http_error(response.status_code, response.headers.get("Retry-After"))
-        raise AIUnavailable(code, message)
+        after = response.headers.get("Retry-After", "")
+        code, message = explain_http_error(response.status_code, after)
+        # A provider limit has a known delay; surface it so the UI can say when to try again.
+        raise AIUnavailable(code, message, int(after) if code == "ai_rate_limited" and after.isdigit() else None)
     try:
         data = response.json()
         content = data["choices"][0]["message"]["content"]
@@ -284,11 +296,13 @@ async def complete(
     max_tokens: Optional[int] = None,
     temperature: Optional[float] = None,
     tier: str = "main",
+    model: Optional[str] = None,
 ) -> dict[str, Any]:
     """The provider's answer to `messages` as {"subject", "body", "whatsapp", "usage"}, or `AIUnavailable` saying why
     (not configured, rejected, limit, unreachable). The one place that talks to the provider, for the composer and the
     automatic drafts. `tier` "light" asks the provider's lighter model (see LIGHT_MODELS). `usage` is
     {"model", "tokens"}: the model that really wrote the answer and the tokens the provider reported (or None).
+    `model` is an internal override used only for the configured precision tier; never taken from user input.
     """
     cfg, reason = _read()
     if cfg is None:
@@ -298,15 +312,21 @@ async def complete(
         )
     try:
         raw = await asyncio.to_thread(
-            _generate_sync, cfg, messages, max_tokens, temperature, tier if tier in TIERS else "main"
-        )  # never on the event loop
+            _generate_sync,
+            cfg,
+            messages,
+            max_tokens,
+            temperature,
+            tier if tier in TIERS else "main",
+            model,
+        )  # blocking socket: never on the event loop
     except AIUnavailable:
         raise
     except requests.Timeout:
-        raise AIUnavailable("ai_failed", "The AI provider did not answer in time. Nothing was generated.")
+        raise AIUnavailable("ai_timeout", "The AI provider did not answer in time. Nothing was generated.")
     except requests.RequestException as exc:
         logger.warning("AI provider unreachable: %s", type(exc).__name__)
-        raise AIUnavailable("ai_failed", "The AI provider could not be reached. Nothing was generated.")
+        raise AIUnavailable("ai_unreachable", "The AI provider could not be reached. Nothing was generated.")
     return {**parse_answer(raw), "usage": {"model": raw.model, "tokens": raw.tokens}}
 
 

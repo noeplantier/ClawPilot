@@ -1,3 +1,4 @@
+/* global AbortController */
 // "Live" data without a socket (none on the free host): fetch, then fetch again every few seconds while the tab is visible.
 // A failed refresh keeps what is on screen and says so; only the very first load can end in an error.
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -57,5 +58,86 @@ export function useLive(fn, deps, { intervalMs = LIVE_MS, idOf = (x) => x.id, it
   }, [load, intervalMs]);
 
   const reload = useCallback(() => load(true), [load]);
+  return { ...state, reload };
+}
+
+// Per-mandate stream built on the same authenticated API as everything else (no Supabase Realtime, no JWT mismatch).
+// `fetcher(since, signal)` returns a snapshot `{version, changed, ...}`; an unchanged poll keeps the current data.
+// One timer, one in-flight request, one owner: stale requests are aborted, hidden tabs slow down and errors back off.
+export const LIVE_FAST_MS = 2000;
+export const LIVE_SLOW_MS = 15000;
+export const LIVE_HIDDEN_MS = 60000;
+
+export function useMandateLive(fetcher, mandateId, {
+  fastMs = LIVE_FAST_MS,
+  slowMs = LIVE_SLOW_MS,
+  hiddenMs = LIVE_HIDDEN_MS,
+  enabled = true,
+} = {}) {
+  const [state, setState] = useState({ data: null, error: null, loading: false, reconnecting: false, updatedAt: null });
+  const snapshot = useRef(null);
+  const since = useRef(null);
+  const timer = useRef(null);
+  const controller = useRef(null);
+  const attempts = useRef(0);
+  const ticket = useRef(0);
+  const fetcherRef = useRef(fetcher);
+  fetcherRef.current = fetcher;
+  const tickRef = useRef(() => {});
+  const scheduleRef = useRef(() => {});
+
+  const clearTimer = useCallback(() => {
+    if (timer.current !== null) { clearTimeout(timer.current); timer.current = null; }
+  }, []);
+  scheduleRef.current = (delay) => {
+    clearTimer();
+    timer.current = setTimeout(() => tickRef.current(), delay);
+  };
+
+  const tick = useCallback(async () => {
+    if (!enabled || !mandateId) return;
+    clearTimer();
+    const mine = ++ticket.current;
+    if (controller.current) controller.current.abort();
+    const ctl = new AbortController();
+    controller.current = ctl;
+    setState((s) => ({ ...s, loading: s.data === null }));
+    try {
+      const answer = await fetcherRef.current(since.current, ctl.signal);
+      if (mine !== ticket.current || ctl.signal.aborted) return;
+      if (answer && answer.version) since.current = answer.version;
+      attempts.current = 0;
+      const current = answer && answer.changed === false ? snapshot.current : answer;
+      snapshot.current = current;
+      setState({ data: current, error: null, reconnecting: false, loading: false, updatedAt: new Date() });
+      const active = !!(current && (current.counts?.discovery_in_progress || current.status === "active"));
+      scheduleRef.current(document.hidden ? hiddenMs : active ? fastMs : slowMs);
+    } catch (e) {
+      if (mine !== ticket.current || ctl.signal.aborted) return;
+      attempts.current += 1;
+      setState((s) => ({ ...s, error: describeApiError(e), reconnecting: true, loading: false }));
+      scheduleRef.current(Math.min(hiddenMs, slowMs * 2 ** Math.min(attempts.current, 3)));
+    }
+  }, [enabled, mandateId, hiddenMs, fastMs, slowMs, clearTimer]);
+  tickRef.current = tick;
+
+  useEffect(() => {
+    if (!enabled || !mandateId) return undefined;
+    since.current = null;
+    snapshot.current = null;
+    attempts.current = 0;
+    setState({ data: null, error: null, loading: true, reconnecting: false, updatedAt: null });
+    tick();
+    const onVisibility = () => { if (!document.hidden) tick(); };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      clearTimer();
+      if (controller.current) controller.current.abort();
+      ticket.current += 1; // a response already in flight belongs to an unmounted stream
+    };
+  }, [tick, enabled, mandateId, clearTimer]);
+
+  const reload = useCallback(() => { since.current = null; ticket.current += 1; tick(); }, [tick]);
   return { ...state, reload };
 }

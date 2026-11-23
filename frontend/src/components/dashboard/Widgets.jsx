@@ -1,6 +1,5 @@
 import { Link } from "react-router-dom";
-import { motion } from "framer-motion";
-import { ArrowRight, ChatCircleDots, Pause, Play, ShieldCheck, Sparkle, TrendUp } from "@phosphor-icons/react";
+import { ArrowRight, ChatCircleDots, Pause, Play, ShieldCheck } from "@phosphor-icons/react";
 import { DASH, ago, channelOf, chartGeometry, kpiCards, modeOf, pct, quotaShare, seriesHasData, seriesSummary, shortDay } from "@/lib/dashboardFormat";
 import { EmptyBlock } from "@/components/outreach/States";
 
@@ -20,30 +19,24 @@ export function Widget({ title, kicker, testId, action, children }) {
 }
 
 export function KpiStrip({ kpis, limits }) {
-  const cards = kpiCards(kpis, limits);
+  const signals = kpiCards(kpis, limits);
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3" data-testid="kpi-strip">
-      {cards.map((c, i) => (
-        <motion.div
-          key={c.key}
-          className={`pos-kpi pos-kpi-${c.accent || "violet"} surface p-4 rounded-xl relative overflow-hidden`}
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: i * 0.03, duration: 0.25 }}
-          data-testid={`kpi-${c.key}`}
-        >
-          <div className="pos-kpi-body">
-            <div className="mono-accent !text-white/60">{c.label}</div>
-            <div className="font-display text-2xl md:text-3xl font-black tracking-tight mt-1 text-white" data-testid={`kpi-${c.key}-value`}>
-              {c.value}
+    <section className="surface kpi-strip" data-testid="kpi-strip" aria-label="Indicateurs">
+      <div className="mono-accent">// Signaux</div>
+      <div className="kpi-strip-grid">
+        {signals.map((signal) => (
+          <div key={signal.key} className="kpi-strip-item" data-testid={`kpi-${signal.key}`}>
+            <div className="text-[10px] uppercase tracking-[0.2em] text-white/60">{signal.label}</div>
+            <div className="font-display tabular text-xl font-bold text-white" data-testid={`kpi-${signal.key}-value`}>
+              {signal.value}
             </div>
-            <div className="text-xs text-white/60 mt-1 truncate" data-testid={`kpi-${c.key}-hint`}>
-              {c.hint}
+            <div className="truncate text-xs text-white/60" data-testid={`kpi-${signal.key}-hint`}>
+              {signal.hint}
             </div>
           </div>
-        </motion.div>
-      ))}
-    </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
