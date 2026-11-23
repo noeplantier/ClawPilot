@@ -48,7 +48,11 @@ def _spend(user: dict, calls: int = 1) -> None:
     if wait:
         raise HTTPException(
             status_code=429,
-            detail={"code": "ai_rate_limited", "message": f"Too many AI requests: wait {wait} s.", "retry_at": _retry_at(wait)},
+            detail={
+                "code": "ai_rate_limited",
+                "message": f"Too many AI requests: wait {wait} s.",
+                "retry_at": _retry_at(wait),
+            },
             headers={"Retry-After": str(wait)},
         )
     for _ in range(calls):

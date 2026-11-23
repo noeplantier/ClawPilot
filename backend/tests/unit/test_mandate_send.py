@@ -14,9 +14,14 @@ NOW = datetime(2026, 11, 23, 10, 0, tzinfo=timezone.utc)
 
 def mandate(**overrides):
     values = dict(
-        id=uuid.uuid4(), account_id=uuid.uuid4(), status="active",
-        expires_at=NOW + timedelta(days=1), ai_budget=5, daily_volume=10,
-        total_volume=100, time_windows=[{"start_hour": 8, "end_hour": 18}],
+        id=uuid.uuid4(),
+        account_id=uuid.uuid4(),
+        status="active",
+        expires_at=NOW + timedelta(days=1),
+        ai_budget=5,
+        daily_volume=10,
+        total_volume=100,
+        time_windows=[{"start_hour": 8, "end_hour": 18}],
     )
     values.update(overrides)
     return SimpleNamespace(**values)
@@ -24,7 +29,9 @@ def mandate(**overrides):
 
 def message(status, *, when=None, draft_id=None):
     return SimpleNamespace(
-        id=uuid.uuid4(), status=status, draft_id=draft_id or uuid.uuid4(),
+        id=uuid.uuid4(),
+        status=status,
+        draft_id=draft_id or uuid.uuid4(),
         dispatched_at=when or NOW - timedelta(minutes=1),
     )
 
@@ -148,7 +155,12 @@ def test_snapshot_reports_real_states_and_only_approved_drafts(monkeypatch):
     monkeypatch.setattr(ms, "_messages", lambda session, account_id, ids: asyncio.sleep(0, result=messages))
     counts, planned = asyncio.run(ms.snapshot(None, mandate(), NOW))
     assert counts == {
-        "planned": 1, "processing": 1, "accepted": 1, "failed": 1, "bounced": 1, "reply": 1,
+        "planned": 1,
+        "processing": 1,
+        "accepted": 1,
+        "failed": 1,
+        "bounced": 1,
+        "reply": 1,
     }
     assert planned == [approved]
     assert older.status == "draft"  # an unreviewed draft is never proposed
@@ -175,6 +187,7 @@ def test_send_due_never_retries_an_unclear_send(monkeypatch, gates):
     monkeypatch.setattr(ms, "_ready_drafts", ready)
     monkeypatch.setattr(ms.outbound_repo, "get_for_draft", existing)
     monkeypatch.setattr(ms.audit_repo, "log", log)
+
     class Result:
         def scalars(self):
             return self

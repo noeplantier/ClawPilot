@@ -37,10 +37,7 @@ def test_a_mandate_is_a_draft_until_someone_approves_it():
     assert column.default is not None and "draft" in str(column.default.arg)
     assert column.server_default is not None and "draft" in str(column.server_default.arg)
     texts = [str(c.sqltext) for c in Mandate.__table__.constraints if hasattr(c, "sqltext")]
-    assert any(
-        all(status in text for status in ("draft", "active", "paused", "expired", "revoked"))
-        for text in texts
-    )
+    assert any(all(status in text for status in ("draft", "active", "paused", "expired", "revoked")) for text in texts)
 
 
 @pytest.mark.parametrize(
@@ -84,11 +81,16 @@ def test_live_counts_come_only_from_counters_the_engine_wrote():
         def __init__(self, status, counters, reasons, error=None):
             self.status, self.counters, self.exclusion_reasons, self.error_summary = status, counters, reasons, error
 
-    counts = _aggregate_batches([
-        Batch("completed", {"entities": 12, "duplicates_merged": 3, "qualified_strict": 4, "hot": 2, "failed": 1},
-              {"duplicate": 2}),
-        Batch("discovering", {"entities": 5, "hot": 1}, {}, "registry_fr: Timeout"),
-    ])
+    counts = _aggregate_batches(
+        [
+            Batch(
+                "completed",
+                {"entities": 12, "duplicates_merged": 3, "qualified_strict": 4, "hot": 2, "failed": 1},
+                {"duplicate": 2},
+            ),
+            Batch("discovering", {"entities": 5, "hot": 1}, {}, "registry_fr: Timeout"),
+        ]
+    )
     assert counts == {
         "leads_discovered": 17,
         "duplicates_excluded": 5,  # merged listings + staged duplicates
@@ -105,7 +107,11 @@ def test_the_mandates_endpoint_is_registered_under_the_api_prefix():
     from server import app
 
     paths = app.openapi()["paths"]
-    assert "/api/outreach-mandates" in paths and "post" in paths["/api/outreach-mandates"] and "get" in paths["/api/outreach-mandates"]
+    assert (
+        "/api/outreach-mandates" in paths
+        and "post" in paths["/api/outreach-mandates"]
+        and "get" in paths["/api/outreach-mandates"]
+    )
     for action in ("activate", "pause", "resume", "revoke"):
         assert f"/api/outreach-mandates/{{mandate_id}}/{action}" in paths
     assert "get" in paths["/api/outreach-mandates/{mandate_id}/live"]

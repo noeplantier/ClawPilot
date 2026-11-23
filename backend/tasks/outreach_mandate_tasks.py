@@ -38,9 +38,7 @@ async def _last_run(session, mandate_id):
     )
 
 
-async def _hot_items(
-    session, mandate_id: UUID, *, batch_id: Optional[UUID] = None
-) -> list[tuple[UUID, dict]]:
+async def _hot_items(session, mandate_id: UUID, *, batch_id: Optional[UUID] = None) -> list[tuple[UUID, dict]]:
     """(lead_id, staged data) of Hot Leads, real rows written by the discovery engine. No batch_id = whole mandate."""
     statement = select(ProspectingBatchItem.lead_id, ProspectingBatchItem.data).where(
         ProspectingBatchItem.stage == "hot"
@@ -48,9 +46,9 @@ async def _hot_items(
     if batch_id is not None:
         statement = statement.where(ProspectingBatchItem.batch_id == batch_id)
     else:
-        statement = statement.join(
-            ProspectingBatch, ProspectingBatchItem.batch_id == ProspectingBatch.id
-        ).where(ProspectingBatch.config["mandate_id"].astext == str(mandate_id))
+        statement = statement.join(ProspectingBatch, ProspectingBatchItem.batch_id == ProspectingBatch.id).where(
+            ProspectingBatch.config["mandate_id"].astext == str(mandate_id)
+        )
     rows = (await session.execute(statement)).all()
     return [(row.lead_id, row.data or {}) for row in rows if row.lead_id is not None]
 
@@ -68,18 +66,23 @@ async def _ready_leads(session, account_id: UUID, lead_ids: list[UUID]) -> set[U
                     DraftJob.status == "ready",
                 )
             )
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
     )
 
 
 def _best(items: list[tuple[UUID, dict]], limit: int) -> list[UUID]:
     """The best leads are those with the most *detected* signals the discovery engine actually recorded.
     A missing or dismissed signal adds nothing: no score is invented."""
+
     def score(item: tuple[UUID, dict]) -> int:
         return sum(
-            1 for signal in (item[1].get("signals") or [])
+            1
+            for signal in (item[1].get("signals") or [])
             if isinstance(signal, dict) and signal.get("state") == "detected"
         )
+
     return [lead_id for lead_id, _ in sorted(items, key=score, reverse=True)[:limit]]
 
 
@@ -118,13 +121,17 @@ async def _draft_hot_leads(session, mandate: Mandate, batch_id: UUID) -> dict:
 async def _sweep(session) -> dict:
     now = datetime.now(timezone.utc)
     mandates = (
-        await session.execute(
-            select(Mandate)
-            .where(Mandate.status == "active", Mandate.expires_at > now)
-            .order_by(Mandate.created_at)
-            .limit(MAX_MANDATES_PER_SWEEP)
+        (
+            await session.execute(
+                select(Mandate)
+                .where(Mandate.status == "active", Mandate.expires_at > now)
+                .order_by(Mandate.created_at)
+                .limit(MAX_MANDATES_PER_SWEEP)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     adapters = default_adapters()
     ran = []
     for mandate in mandates:
@@ -150,14 +157,20 @@ def run_due_mandate_discovery(self):
 @celery_app.task(name="tasks.outreach_mandate_tasks.process_mandate_sends", bind=True, max_retries=0)
 def process_mandate_sends(self):
     """Plan and send what is due for active mandates through the common dispatch and its guardrails."""
+
     async def _send(session):
-        return await mandate_send.send_due(session, now=datetime.now(timezone.utc), live_adapter=smtp_svc.adapter_from_env())
+        return await mandate_send.send_due(
+            session, now=datetime.now(timezone.utc), live_adapter=smtp_svc.adapter_from_env()
+        )
+
     return run_async(_send)
 
 
 @celery_app.task(name="tasks.outreach_mandate_tasks.mandate_daily_report", bind=True, max_retries=0)
 def mandate_daily_report(self):
     """Compact daily journal: only counts the ledger really holds."""
+
     async def _report(session):
         return await mandate_send.daily_report(session, now=datetime.now(timezone.utc))
+
     return run_async(_report)

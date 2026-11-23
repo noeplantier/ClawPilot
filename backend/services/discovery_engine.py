@@ -133,8 +133,7 @@ def qualify(
         # The adapter was queried with `vertical_for(adapter, sector)`: relevance is enforced by the
         # sector-scoped source query, not re-guessed here from the category text.
         "relevant_activity": bool(listing.category) and bool(sector.strip()),
-        "verifiable_location": within_zone(zone, listing.lat, listing.lon)
-        and bool(listing.address or listing.city),
+        "verifiable_location": within_zone(zone, listing.lat, listing.lon) and bool(listing.address or listing.city),
         "coherent_address": bool(listing.address and (listing.city or listing.postcode)),
         "sourced_email": bool(cand.email),
         "sourced_phone": bool(cand.phone),
@@ -145,18 +144,14 @@ def qualify(
     # Freshness has an explicit basis: the source's own date, or the date we observed the record.
     reference = listing.last_updated or observed_at
     checks["fresh_provenance"] = (
-        reference <= now
-        and (now - reference).days <= FRESHNESS_DAYS
-        and bool(listing.source_url)
+        reference <= now and (now - reference).days <= FRESHNESS_DAYS and bool(listing.source_url)
     )
     basis = "source_last_updated" if listing.last_updated else "observed_at"
     checks["freshness_basis"] = basis  # type: ignore[assignment]  # evidence, not a boolean gate
 
     observed = sig.analyze(listing, None, now=now, stale_days=FRESHNESS_DAYS, trust_absence=False)
     signals = [{"key": r.key, "state": r.state.value, "evidence": r.evidence} for r in observed]
-    checks["observable_signal"] = any(
-        r.key == OPPORTUNITY_SIGNAL and r.state == SignalState.DETECTED for r in observed
-    )
+    checks["observable_signal"] = any(r.key == OPPORTUNITY_SIGNAL and r.state == SignalState.DETECTED for r in observed)
 
     if suppressed or already_seen:
         reason = "suppressed" if suppressed else "duplicate"
@@ -292,8 +287,14 @@ async def run_mandate_discovery(
             continue
         try:
             result = adapter.fetch(
-                SourceParams(vertical=vertical, lat=lat, lon=lon, radius_m=min(radius, adapter.max_radius_m),
-                             limit=max_listings, country="FR")
+                SourceParams(
+                    vertical=vertical,
+                    lat=lat,
+                    lon=lon,
+                    radius_m=min(radius, adapter.max_radius_m),
+                    limit=max_listings,
+                    country="FR",
+                )
             )
         except Exception as exc:  # provider unavailable: record it, never invent results
             errors[adapter.name] = type(exc).__name__
@@ -342,12 +343,20 @@ async def run_mandate_discovery(
             continue  # resumed batch: this entity was already staged before the interruption
         duplicate = source_key in seen_sources or any(k in seen_matches for k in cand.match_keys)
         suppressed = await suppression_repo.is_suppressed(
-            session, mandate.account_id, email=cand.email, phone=cand.phone,
+            session,
+            mandate.account_id,
+            email=cand.email,
+            phone=cand.phone,
             domain=cand.domain,
         )
         decision = qualify(
-            cand, mandate.zone, mandate.sector,
-            now=now.date(), observed_at=now.date(), suppressed=suppressed, already_seen=duplicate,
+            cand,
+            mandate.zone,
+            mandate.sector,
+            now=now.date(),
+            observed_at=now.date(),
+            suppressed=suppressed,
+            already_seen=duplicate,
         )
         if decision.stage == "hot" and (total_left <= 0 or day_left <= 0):
             decision = Decision("qualified_strict", "quota_reached", decision.checks, decision.signals)
@@ -365,7 +374,9 @@ async def run_mandate_discovery(
             lead = await prospect_repo.find_by_keys(session, mandate.account_id, cand.match_keys)
             if lead is None:
                 lead = await prospect_repo.create_from_candidate(
-                    session, mandate.account_id, cand,
+                    session,
+                    mandate.account_id,
+                    cand,
                     vertical=vertical_by_source.get(
                         cand.listing.source_name, primary_vertical or mandate.sector.strip().lower()
                     ),
@@ -374,7 +385,10 @@ async def run_mandate_discovery(
             else:
                 await prospect_repo.merge_keys(session, lead, cand.match_keys)
             await prospect_repo.add_source(
-                session, mandate.account_id, lead.id, cand.listing,
+                session,
+                mandate.account_id,
+                lead.id,
+                cand.listing,
                 license_by_source.get(cand.listing.source_name, "licence not stated by source"),
             )
         done_items.add(source_key)

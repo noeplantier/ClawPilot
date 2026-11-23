@@ -40,7 +40,7 @@ STOP_TO_STATUS = {
 }
 MESSAGE_STATE = {
     "sending": "processing",  # outcome unknown: a person reconciles from the mailbox, never a blind retry
-    "sent": "accepted",       # the adapter accepted it — NOT a delivery confirmation
+    "sent": "accepted",  # the adapter accepted it — NOT a delivery confirmation
     "failed": "failed",
     "bounced": "bounced",
     "replied": "reply",
@@ -54,7 +54,9 @@ def in_window(mandate: Mandate, now: datetime) -> bool:
     """The mandate's own UTC windows; an empty configuration authorises nothing."""
     hour = now.astimezone(timezone.utc).hour
     return any(
-        isinstance(w, dict) and isinstance(w.get("start_hour"), int) and isinstance(w.get("end_hour"), int)
+        isinstance(w, dict)
+        and isinstance(w.get("start_hour"), int)
+        and isinstance(w.get("end_hour"), int)
         and w["start_hour"] <= hour < w["end_hour"]
         for w in (mandate.time_windows or [])
     )
@@ -74,7 +76,9 @@ async def hot_lead_ids(session: AsyncSession, account_id: uuid.UUID, mandate_id:
                 )
                 .distinct()
             )
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
     )
 
 
@@ -88,7 +92,9 @@ async def _messages(session: AsyncSession, account_id: uuid.UUID, lead_ids: list
                     OutboundMessage.account_id == account_id, OutboundMessage.lead_id.in_(lead_ids)
                 )
             )
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
     )
 
 
@@ -96,15 +102,19 @@ async def _ready_drafts(session: AsyncSession, account_id: uuid.UUID, lead_ids: 
     if not lead_ids:
         return []
     draft_ids = (
-        await session.execute(
-            select(DraftJob.draft_id).where(
-                DraftJob.account_id == account_id,
-                DraftJob.lead_id.in_(lead_ids),
-                DraftJob.status == "ready",
-                DraftJob.draft_id.is_not(None),
+        (
+            await session.execute(
+                select(DraftJob.draft_id).where(
+                    DraftJob.account_id == account_id,
+                    DraftJob.lead_id.in_(lead_ids),
+                    DraftJob.status == "ready",
+                    DraftJob.draft_id.is_not(None),
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     if not draft_ids:
         return []
     return list(
@@ -116,7 +126,9 @@ async def _ready_drafts(session: AsyncSession, account_id: uuid.UUID, lead_ids: 
                     MessageDraft.status == "approved",  # quality control: an unreviewed draft never leaves
                 )
             )
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
     )
 
 
@@ -228,12 +240,14 @@ async def send_due(
     """Plan and send what is due for every active mandate. Never raises for one message; never retries an unclear send."""
     counts: Counter = Counter()
     mandates = (
-        await session.execute(
-            select(Mandate)
-            .where(Mandate.status == "active", Mandate.expires_at > now)
-            .order_by(Mandate.created_at)
+        (
+            await session.execute(
+                select(Mandate).where(Mandate.status == "active", Mandate.expires_at > now).order_by(Mandate.created_at)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     for mandate in mandates:
         reason = await stop_reason(session, mandate, now)
         if reason:
@@ -254,15 +268,24 @@ async def send_due(
             key = f"mandate:{mandate.id}:{draft.id}" + (f":retry{failed}" if failed else "")
             try:
                 message, _ = await dispatcher(
-                    session, mandate.account_id, draft,
-                    now=now, user_id=None, idempotency_key=key, live_adapter=live_adapter,
+                    session,
+                    mandate.account_id,
+                    draft,
+                    now=now,
+                    user_id=None,
+                    idempotency_key=key,
+                    live_adapter=live_adapter,
                 )
             except dispatch.DispatchBlocked as blocked:
                 counts["blocked"] += 1
                 await audit_repo.log(
-                    session, mandate.account_id,
-                    action="mandate.send_blocked", resource_type="mandate", resource_id=mandate.id,
-                    actor_type="system", diff={"code": blocked.code, "draft_id": str(draft.id)},
+                    session,
+                    mandate.account_id,
+                    action="mandate.send_blocked",
+                    resource_type="mandate",
+                    resource_id=mandate.id,
+                    actor_type="system",
+                    diff={"code": blocked.code, "draft_id": str(draft.id)},
                 )
                 if blocked.code in ("kill_switch", "paused", "limit_daily", "limit_hourly", "limit_delay"):
                     account_halted = True
@@ -283,8 +306,10 @@ async def daily_report(session: AsyncSession, *, now: datetime) -> dict[str, int
     """Compact, real daily journal entry per mandate that ran or is still active."""
     from_date = (now - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
     mandates = (
-        await session.execute(select(Mandate).where(Mandate.status.in_(("active", "paused", "expired", "revoked"))))
-    ).scalars().all()
+        (await session.execute(select(Mandate).where(Mandate.status.in_(("active", "paused", "expired", "revoked")))))
+        .scalars()
+        .all()
+    )
     reported = 0
     for mandate in mandates:
         leads = await hot_lead_ids(session, mandate.account_id, mandate.id)
@@ -299,9 +324,13 @@ async def daily_report(session: AsyncSession, *, now: datetime) -> dict[str, int
             "status": mandate.status,
         }
         await audit_repo.log(
-            session, mandate.account_id,
-            action="mandate.daily_report", resource_type="mandate", resource_id=mandate.id,
-            actor_type="system", diff=diff,
+            session,
+            mandate.account_id,
+            action="mandate.daily_report",
+            resource_type="mandate",
+            resource_id=mandate.id,
+            actor_type="system",
+            diff=diff,
         )
         reported += 1
     return {"mandates_reported": reported}

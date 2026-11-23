@@ -199,13 +199,17 @@ async def list_mandates(
     session: AsyncSession = Depends(get_db_session),
 ):
     rows = (
-        await session.execute(
-            select(Mandate)
-            .where(Mandate.account_id == uuid.UUID(user["org_id"]))
-            .order_by(Mandate.created_at.desc())
-            .limit(50)
+        (
+            await session.execute(
+                select(Mandate)
+                .where(Mandate.account_id == uuid.UUID(user["org_id"]))
+                .order_by(Mandate.created_at.desc())
+                .limit(50)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return [_to_out(row) for row in rows]
 
 
@@ -322,7 +326,8 @@ class LiveOut(BaseModel):
 
 async def _mandate_hot_leads(session: AsyncSession, account_id, mandate_id) -> list:
     return [
-        row for row in (
+        row
+        for row in (
             await session.execute(
                 select(ProspectingBatchItem.lead_id)
                 .join(ProspectingBatch, ProspectingBatchItem.batch_id == ProspectingBatch.id)
@@ -332,7 +337,9 @@ async def _mandate_hot_leads(session: AsyncSession, account_id, mandate_id) -> l
                     ProspectingBatchItem.stage == "hot",
                 )
             )
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
         if row is not None
     ]
 
@@ -399,16 +406,20 @@ async def list_mandate_batches(
     """Real discovery progress for this mandate. No batch exists until a bounded run actually happened."""
     mandate = await _owned(session, user, mandate_id)
     rows = (
-        await session.execute(
-            select(ProspectingBatch)
-            .where(
-                ProspectingBatch.account_id == mandate.account_id,
-                ProspectingBatch.config["mandate_id"].astext == str(mandate.id),
+        (
+            await session.execute(
+                select(ProspectingBatch)
+                .where(
+                    ProspectingBatch.account_id == mandate.account_id,
+                    ProspectingBatch.config["mandate_id"].astext == str(mandate.id),
+                )
+                .order_by(desc(ProspectingBatch.created_at))
+                .limit(50)
             )
-            .order_by(desc(ProspectingBatch.created_at))
-            .limit(50)
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return [_batch_out(row) for row in rows]
 
 
@@ -435,13 +446,17 @@ async def list_batch_items(
     if batch is None:
         raise HTTPException(status_code=404, detail="Batch not found")
     rows = (
-        await session.execute(
-            select(ProspectingBatchItem)
-            .where(ProspectingBatchItem.batch_id == batch.id, ProspectingBatchItem.account_id == mandate.account_id)
-            .order_by(ProspectingBatchItem.created_at)
-            .limit(200)
+        (
+            await session.execute(
+                select(ProspectingBatchItem)
+                .where(ProspectingBatchItem.batch_id == batch.id, ProspectingBatchItem.account_id == mandate.account_id)
+                .order_by(ProspectingBatchItem.created_at)
+                .limit(200)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return [
         BatchItemOut(
             id=str(row.id),
@@ -502,20 +517,30 @@ async def mandate_live(
             return LiveOut(version=version.isoformat(), changed=False, mandate_id=str(mandate.id))
 
     batches = (
-        await session.execute(select(ProspectingBatch).where(*scope).order_by(desc(ProspectingBatch.created_at)).limit(100))
-    ).scalars().all()
-    events = (
-        await session.execute(
-            select(AuditLog)
-            .where(
-                AuditLog.account_id == mandate.account_id,
-                AuditLog.resource_type == "mandate",
-                AuditLog.resource_id == mandate.id,
+        (
+            await session.execute(
+                select(ProspectingBatch).where(*scope).order_by(desc(ProspectingBatch.created_at)).limit(100)
             )
-            .order_by(desc(AuditLog.created_at))
-            .limit(8)
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
+    events = (
+        (
+            await session.execute(
+                select(AuditLog)
+                .where(
+                    AuditLog.account_id == mandate.account_id,
+                    AuditLog.resource_type == "mandate",
+                    AuditLog.resource_id == mandate.id,
+                )
+                .order_by(desc(AuditLog.created_at))
+                .limit(8)
+            )
+        )
+        .scalars()
+        .all()
+    )
     latest = batches[0] if batches else None
     return LiveOut(
         version=version.isoformat(),
@@ -524,12 +549,16 @@ async def mandate_live(
         status=mandate.status,
         paused=mandate.status == "paused",
         stopped=mandate.status in ("revoked", "expired"),
-        latest_batch={
-            "id": str(latest.id),
-            "status": latest.status,
-            "created_at": latest.created_at.isoformat(),
-            "error_summary": latest.error_summary,
-        } if latest is not None else None,
+        latest_batch=(
+            {
+                "id": str(latest.id),
+                "status": latest.status,
+                "created_at": latest.created_at.isoformat(),
+                "error_summary": latest.error_summary,
+            }
+            if latest is not None
+            else None
+        ),
         counts=LiveCounts(**_aggregate_batches(batches)),
         events=[
             LiveEvent(

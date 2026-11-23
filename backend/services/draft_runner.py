@@ -295,8 +295,10 @@ async def prepare(
     if precise_ids and precise_run is None:
         model = ai_svc.precision_model()
         if model:
+
             async def precise_run(msgs: list[dict[str, str]], **kwargs: Any) -> dict[str, Any]:  # type: ignore[no-redef]
                 return await ai_svc.complete(msgs, model=model, **kwargs)
+
     out = {"queued": 0, "offer_required": 0, "ready": 0, "failed": 0, "unavailable": 0, "skipped": 0}
     try:
         out.update(await record_jobs(session_factory, account_id, now(), only))
@@ -314,9 +316,13 @@ async def prepare(
                 if limited.is_set():  # the provider's limit is reached: the rest waits for the next sweep
                     return
                 status = await run_job(
-                    session_factory, account_id, job_id,
-                    generator=run, now=now,
-                    precise=precise_by_job.get(job_id, False), precision_generator=precise_run,
+                    session_factory,
+                    account_id,
+                    job_id,
+                    generator=run,
+                    now=now,
+                    precise=precise_by_job.get(job_id, False),
+                    precision_generator=precise_run,
                 )
                 out[status] = out.get(status, 0) + 1
                 if status == "unavailable":
@@ -351,8 +357,11 @@ def kick(
     async def go() -> None:
         try:
             await prepare(
-                account_id, only=only, budget=budget,
-                precision_ids=precision_ids, precision_generator=precision_generator,
+                account_id,
+                only=only,
+                budget=budget,
+                precision_ids=precision_ids,
+                precision_generator=precision_generator,
             )
         finally:
             _running.discard(account_id)

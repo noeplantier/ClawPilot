@@ -115,9 +115,17 @@ def test_an_inactive_mandate_runs_nothing_and_touches_no_provider():
         def fetch(self, params):
             raise AssertionError("a draft mandate must never call a provider")
 
-    mandate = Mandate(status="draft", zone=ZONE, sector="restaurants", offer="offre",
-                      daily_volume=10, total_volume=100, ai_budget=0, cadence_minutes=60,
-                      expires_at=datetime.now(timezone.utc) + timedelta(days=1))
+    mandate = Mandate(
+        status="draft",
+        zone=ZONE,
+        sector="restaurants",
+        offer="offre",
+        daily_volume=10,
+        total_volume=100,
+        ai_budget=0,
+        cadence_minutes=60,
+        expires_at=datetime.now(timezone.utc) + timedelta(days=1),
+    )
     with pytest.raises(engine.MandateNotRunnable):
         import asyncio
 
