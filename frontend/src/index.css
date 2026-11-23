@@ -6,20 +6,33 @@
 @tailwind utilities;
 
 :root {
-  /* Plantiers identity */
-  --void: #07060B;
-  --void-elevated: #0C0A14;
-  --void-surface: #120F1E;
-  --brand-ink: #0C0A14;
-  --brand-violet: #7C3AED;
-  --brand-violet-hover: #8B5CF6;
-  --brand-lilac: #B79BFF; /* brand-300 */
-  --brand-400: #9B74FA;
-  --brand-500: #7C3AED;
-  --leaf: #4ADE80;
-  --surface-dark: #120F1E;
-  --surface-dark-raised: #1A1530;
-  --sidebar-muted: rgba(255, 255, 255, 0.62);
+  /* Tokens read from the stylesheet currently published by plantiers.com (assets/index-Db8SJOLk.css).
+     Only verifiable values are used here; no claim of a faithful reproduction of the site's source. */
+  --rgb-canvas: 10 8 16;
+  --rgb-surface: 18 14 27;
+  --rgb-raised: 27 21 39;
+  --rgb-line: 255 255 255;
+  --rgb-ink: 244 242 248;
+  --rgb-ink-muted: 178 172 190;
+  --rgb-ink-subtle: 142 135 156;
+  --rgb-accent-300: 179 146 255;
+  --rgb-accent-400: 150 102 250;
+  --rgb-accent-500: 124 58 237;
+  --rgb-accent-600: 109 40 217;
+  --rgb-leaf: 118 201 76;
+  --void: rgb(var(--rgb-canvas));
+  --void-elevated: rgb(var(--rgb-surface));
+  --void-surface: rgb(var(--rgb-raised));
+  --brand-ink: rgb(var(--rgb-canvas));
+  --brand-violet: rgb(var(--rgb-accent-500));
+  --brand-violet-hover: rgb(var(--rgb-accent-400));
+  --brand-lilac: rgb(var(--rgb-accent-300));
+  --brand-400: rgb(var(--rgb-accent-400));
+  --brand-500: rgb(var(--rgb-accent-500));
+  --leaf: rgb(var(--rgb-leaf));
+  --surface-dark: rgb(var(--rgb-surface));
+  --surface-dark-raised: rgb(var(--rgb-raised));
+  --sidebar-muted: rgb(var(--rgb-ink-muted));
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 0.75rem;
@@ -29,7 +42,11 @@
   --radius-control: 0.75rem;
   --radius-card: 1rem;
   --font-interface: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-display: 'Space Grotesk', var(--font-interface);
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+  --duration-fast: 0.14s;
+  --duration-base: 0.24s;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 
   /* Surfaces and text (text opacities follow plantiers.com: primary .95, secondary .72, tertiary .58) */
   --bg-page: var(--void);
@@ -37,7 +54,7 @@
   --bg-surface-hover: rgba(255, 255, 255, 0.07);
   --surface-card: rgba(255, 255, 255, 0.035);
   --surface-hover: rgba(255, 255, 255, 0.07);
-  --surface-opaque: #120F1E; /* dropdowns, modals and anything the panel below must not show through */
+  --surface-opaque: rgb(var(--rgb-surface)); /* dropdowns, modals and anything the panel below must not show through */
   --text-primary: rgba(255, 255, 255, 0.95);
   --text-secondary: rgba(255, 255, 255, 0.72);
   --text-muted: rgba(255, 255, 255, 0.58);
@@ -70,7 +87,7 @@
     color-scheme: dark;
   }
 
-  h1, h2, h3, h4, h5 { font-family: var(--font-interface); letter-spacing: -0.02em; }
+  h1, h2, h3, h4, h5 { font-family: var(--font-display); letter-spacing: -0.032em; }
 
   ::selection { background: rgba(124, 58, 237, 0.45); color: #FFFFFF; }
 
@@ -111,7 +128,7 @@
 
 /* Utility classes */
 .font-mono { font-family: var(--font-mono); }
-.font-display { font-family: var(--font-interface); font-weight: 800; letter-spacing: -0.03em; }
+.font-display { font-family: var(--font-display); font-weight: 800; letter-spacing: -0.032em; }
 
 .bg-sidebar { background-color: var(--void-elevated); }
 .text-brand-lilac { color: var(--brand-lilac); }
@@ -120,6 +137,135 @@
 .bg-brand-violet-hover:hover { background-color: var(--brand-violet-hover); }
 .text-soft { color: var(--text-secondary); }
 .text-faint { color: var(--text-muted); }
+
+/* Sidebar shell: one coordinated fold — width, brand and destinations share the site's duration/easing. */
+.nav-shell { transition: width var(--duration-base) var(--ease-out); }
+.nav-brand-wrap {
+  position: relative;
+  display: flex;
+  min-height: 5rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.75rem;
+  border-bottom: 1px solid var(--border-default);
+  overflow: hidden;
+}
+.nav-brand { display: flex; width: 100%; flex-direction: column; align-items: center; justify-content: center; gap: 0.3rem; }
+.nav-wordmark {
+  max-height: 2.5rem;
+  overflow: hidden;
+  text-align: center;
+  white-space: nowrap;
+  opacity: 1;
+  transition: opacity var(--duration-fast) var(--ease-out), max-height var(--duration-base) var(--ease-out),
+    transform var(--duration-base) var(--ease-out);
+}
+.nav-brand-folded .nav-wordmark { max-height: 0; opacity: 0; transform: translateY(-0.25rem); }
+.nav-header-action {
+  position: absolute;
+  top: 50%;
+  right: 0.5rem;
+  display: flex;
+  height: 2rem;
+  width: 2rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-control);
+  color: rgb(var(--rgb-accent-300));
+  transform: translateY(-50%);
+  transition: background-color var(--duration-fast) var(--ease-out);
+}
+.nav-header-action:hover { background-color: rgb(var(--rgb-line) / 0.08); }
+
+.nav-list { min-height: 0; flex: 1; overflow-y: auto; padding: 0.75rem; }
+.nav-rubrique {
+  position: relative;
+  display: flex;
+  min-height: 2.5rem;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0 0.75rem;
+  border-radius: var(--radius-control);
+  color: rgb(var(--rgb-ink-muted));
+  font-size: 0.875rem;
+  transition: background-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+.nav-rubrique:hover { background-color: rgb(var(--rgb-line) / 0.06); color: rgb(var(--rgb-ink)); }
+.nav-rubrique[aria-current="page"] {
+  background-color: rgb(var(--rgb-accent-500) / 0.16);
+  color: rgb(var(--rgb-ink));
+  font-weight: 600;
+  box-shadow: inset 0 1px 0 rgb(var(--rgb-line) / 0.08);
+}
+.nav-rubrique[aria-current="page"]::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.5rem;
+  bottom: 0.5rem;
+  width: 3px;
+  border-radius: 999px;
+  background: rgb(var(--rgb-accent-300));
+  box-shadow: 0 0 8px rgb(var(--rgb-accent-500) / 0.7);
+}
+.nav-rubrique-icon { color: rgb(var(--rgb-ink-subtle)); }
+.nav-rubrique:hover .nav-rubrique-icon,
+.nav-rubrique[aria-current="page"] .nav-rubrique-icon { color: rgb(var(--rgb-accent-300)); }
+.nav-rubrique-folded { justify-content: center; padding: 0 0.25rem; }
+.nav-rubrique-folded .nav-rubrique-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Advanced screens stay reachable but out of the way: one functional disclosure, no decorative control. */
+.section-details-toggle {
+  display: inline-flex;
+  min-height: 2rem;
+  align-items: center;
+  gap: 0.4rem;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--border-default);
+  background-color: rgb(var(--rgb-line) / 0.04);
+  padding: 0 0.6rem;
+  font-size: 0.75rem;
+  color: rgb(var(--rgb-ink-muted));
+  transition: background-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+.section-details-toggle:hover { background-color: rgb(var(--rgb-line) / 0.08); color: rgb(var(--rgb-ink)); }
+.details-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.4rem);
+  z-index: 60;
+  display: flex;
+  min-width: 14rem;
+  flex-direction: column;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-control);
+  background: var(--surface-opaque);
+  padding: 0.4rem;
+  box-shadow: 0 18px 48px -32px rgba(0, 0, 0, 0.9);
+}
+.details-panel-link {
+  border-radius: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.8125rem;
+  color: rgb(var(--rgb-ink-muted));
+  transition: background-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+.details-panel-link:hover { background-color: rgb(var(--rgb-line) / 0.06); color: rgb(var(--rgb-ink)); }
+.details-panel-link[aria-current="page"] { background-color: rgb(var(--rgb-accent-500) / 0.16); color: rgb(var(--rgb-ink)); }
+
+/* One compact signal panel instead of a grid of glowing cards; figures stay tabular and readable. */
+.kpi-strip { padding: 0.75rem 1rem; }
+.kpi-strip-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.25rem 1rem; }
+@media (min-width: 768px) { .kpi-strip-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 1280px) { .kpi-strip-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+.kpi-strip-item { min-width: 0; padding: 0.4rem 0; border-top: 1px solid var(--border-default); }
 
 /* Kicker: monospace, uppercase, wide tracking, lilac (the "// section" label of plantiers.com) */
 .mono-accent {
@@ -431,6 +577,8 @@ select option { background: var(--void-surface); color: var(--text-primary); }
 @keyframes pos-live { 70% { box-shadow: 0 0 0 8px rgba(74, 222, 128, 0); } 100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); } }
 @keyframes pos-pulse { 70% { box-shadow: 0 0 0 8px rgba(109, 66, 193, 0); } 100% { box-shadow: 0 0 0 0 rgba(109, 66, 193, 0); } }
 @media (prefers-reduced-motion: reduce) {
+  .nav-shell, .nav-wordmark, .nav-header-action, .nav-rubrique, .section-details-toggle, .details-panel-link { transition: none; }
+  .nav-brand-folded .nav-wordmark { transform: none; }
   .pos-kpi, .pos-kpi:hover { transition: none; transform: none; }
   .pos-signal-chip, .pos-live-dot, .flash-pulse, .pulse-dot, .border-beam::before { animation: none; }
   .btn-primary, .btn-ghost, .btn-purple, .btn-ink { transition: none; }

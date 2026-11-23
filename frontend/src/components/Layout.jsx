@@ -3,11 +3,10 @@ import { Link, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   Briefcase,
-  CaretDown,
   CaretLeft,
   CaretRight,
-  CaretUp,
   Cpu,
+  DotsThree,
   Gear,
   Heartbeat,
   List,
@@ -18,6 +17,7 @@ import {
   SignOut,
   Sparkle,
   SquaresFour,
+  Stack,
   TrendUp,
   Users,
   X,
@@ -25,7 +25,7 @@ import {
 const AIComposerModal = lazy(() => import("@/components/AIComposerModal"));
 import Footer from "@/components/Footer";
 import { LogoMark } from "@/components/Logo";
-import { NAV_GROUPS, activeNavItem, activeTab, sectionOf } from "@/lib/sections";
+import { SECTIONS, activeNavItem, activeTab, sectionOf } from "@/lib/sections";
 import { isTypingTarget, readPref, writePref } from "@/lib/uiPrefs";
 import { prefetchAll, prefetchPath, whenIdle } from "@/lib/routes";
 
@@ -36,6 +36,7 @@ const ICONS = {
   PaperPlaneTilt,
   TrendUp,
   Sparkle,
+  Stack,
   Cpu,
   ShieldCheck,
   Briefcase,
@@ -46,99 +47,43 @@ const ICONS = {
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400";
 
-function NavList({ folded, onNavigate, testPrefix = "" }) {
-  const { pathname, search } = useLocation();
-  const currentItem = activeNavItem(pathname, search);
-  const [collapsedGroups, setCollapsedGroups] = useState(() => {
-    return readPref("sidebar.collapsedGroups", {});
-  });
+// Offer approval belongs with the answers it produces: shown beside Outreach, never as another top-level destination.
+const CONTEXT_DETAILS = {
+  outreach: [{ to: "/app/settings/offer", label: "Offre & modèle", testId: "detail-offer" }],
+};
 
-  const toggleGroup = (groupId) => {
-    setCollapsedGroups((prev) => {
-      const next = { ...prev, [groupId]: !prev[groupId] };
-      writePref("sidebar.collapsedGroups", next);
-      return next;
-    });
-  };
+// The sidebar holds exactly the six rubriques of the product. Their sub-sections stay in the section bar;
+// NAV_GROUPS remains the route/title index used by activeNavItem and by the rest of the application.
+function NavList({ folded, onNavigate, testPrefix = "" }) {
+  const { pathname } = useLocation();
+  const activeSection = sectionOf(pathname);
 
   return (
-    <nav className="min-h-0 flex-1 overflow-y-auto px-3 py-3 space-y-4" aria-label="Navigation principale">
-      {NAV_GROUPS.map((group) => {
-        const isCollapsed = !folded && !!collapsedGroups[group.id];
-        return (
-          <div key={group.id} className="space-y-1">
-            {!folded && (
-              <div className="flex items-center justify-between px-3 py-1">
-                <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-brand-lilac/70">
-                  // {group.label}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => toggleGroup(group.id)}
-                  className="text-white/40 hover:text-white transition p-0.5"
-                  aria-label={isCollapsed ? `Déplier ${group.label}` : `Replier ${group.label}`}
-                >
-                  {isCollapsed ? <CaretDown size={11} /> : <CaretUp size={11} />}
-                </button>
-              </div>
-            )}
-            {!isCollapsed && (
-              <ul className="space-y-0.5">
-                {group.items.map((item) => {
-                  const Icon = ICONS[item.icon] || SquaresFour;
-                  const active = currentItem && currentItem.id === item.id;
-                  return (
-                    <li key={item.id}>
-                      <Link
-                        to={item.to}
-                        onClick={onNavigate}
-                        onMouseEnter={() => prefetchPath(item.to)}
-                        onFocus={() => prefetchPath(item.to)}
-                        title={folded ? item.label : undefined}
-                        aria-label={folded ? item.label : undefined}
-                        aria-current={active ? "page" : undefined}
-                        data-testid={`${testPrefix}${item.testId}`}
-                        className={`relative flex min-h-10 items-center ${
-                          folded ? "justify-center px-1" : "gap-3 px-3"
-                        } rounded-xl text-sm transition-all duration-150 ${FOCUS} ${
-                          active
-                            ? "bg-brand-violet/20 text-white font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]"
-                            : "text-sidebar-muted hover:bg-white/[0.06] hover:text-white"
-                        }`}
-                      >
-                        {active && (
-                          <span
-                            aria-hidden="true"
-                            className="absolute left-0 top-2 bottom-2 w-[3px] rounded-full bg-brand-400 shadow-[0_0_8px_rgba(155,116,250,0.8)]"
-                          />
-                        )}
-                        <Icon size={18} weight="duotone" className={active ? "text-brand-300" : ""} />
-                        {!folded && (
-                          <div className="flex flex-1 items-center justify-between min-w-0">
-                            <span className="truncate">{item.label}</span>
-                            {item.liveDot && (
-                              <span
-                                className="inline-block h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(74,222,128,0.8)] animate-pulse ml-2"
-                                title="Live map"
-                              />
-                            )}
-                            {item.statusDot && (
-                              <span
-                                className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_4px_rgba(74,222,128,0.6)] ml-2"
-                                title="Operational"
-                              />
-                            )}
-                          </div>
-                        )}
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </div>
-        );
-      })}
+    <nav className="nav-list" aria-label="Rubriques Plantiers OutreachOS">
+      <ul className="space-y-0.5">
+        {SECTIONS.map((section) => {
+          const Icon = ICONS[section.icon] || SquaresFour;
+          const active = activeSection?.id === section.id;
+          return (
+            <li key={section.id}>
+              <Link
+                to={section.to}
+                onClick={onNavigate}
+                onMouseEnter={() => prefetchPath(section.to)}
+                onFocus={() => prefetchPath(section.to)}
+                title={section.label}
+                aria-label={folded ? section.label : undefined}
+                aria-current={active ? "page" : undefined}
+                data-testid={`${testPrefix}${section.testId}`}
+                className={`nav-rubrique ${folded ? "nav-rubrique-folded" : ""} ${FOCUS}`}
+              >
+                <Icon size={18} weight="duotone" className="nav-rubrique-icon" aria-hidden="true" />
+                <span className="nav-rubrique-label">{section.label}</span>
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
     </nav>
   );
 }
@@ -152,9 +97,17 @@ function SectionTabs({ onCompose }) {
   // Per mandate: completely remove upper navigation elements for Offer, Settings, Automations, System Health
   const isSuppressed = !section || section.id === "control";
 
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  useEffect(() => setDetailsOpen(false), [pathname, search]);
+
   const current = section ? activeTab(section, pathname, search) : null;
   const currentNav = activeNavItem(pathname, search);
   const pageTitle = currentNav?.label || section?.label || "Plantiers OutreachOS";
+  const primaryTabs = (section?.tabs || []).filter((tab) => !tab.secondary);
+  const detailTabs = [
+    ...(section?.tabs || []).filter((tab) => tab.secondary),
+    ...(CONTEXT_DETAILS[section?.id] || []),
+  ];
 
   return (
     <div
@@ -169,13 +122,13 @@ function SectionTabs({ onCompose }) {
           {pageTitle}
         </span>
 
-        {!isSuppressed && section?.tabs?.length > 1 && (
+        {!isSuppressed && primaryTabs.length > 0 && (
           <nav
             className="flex min-w-0 items-center gap-1 ml-3 pl-3 border-l border-white/10"
             aria-label={`${section.label} : sous-sections`}
             data-testid="section-tabs"
           >
-            {section.tabs.map((tab) => {
+            {primaryTabs.map((tab) => {
               const active = current && current.to === tab.to;
               return (
                 <Link
@@ -202,6 +155,51 @@ function SectionTabs({ onCompose }) {
           </nav>
         )}
       </div>
+
+      {!isSuppressed && detailTabs.length > 0 && (
+        <div className="relative shrink-0">
+          <button
+            type="button"
+            onClick={() => setDetailsOpen((open) => !open)}
+            className={`section-details-toggle ${FOCUS}`}
+            aria-expanded={detailsOpen}
+            aria-haspopup="true"
+            aria-label="Détails et écrans avancés"
+            title="Détails et écrans avancés"
+            data-testid="details-toggle"
+          >
+            <DotsThree size={16} weight="bold" />
+            <span className="hidden lg:inline">Détails</span>
+          </button>
+          {detailsOpen && (
+            <div
+              className="details-panel"
+              role="group"
+              aria-label="Détails et écrans avancés"
+              data-testid="details-panel"
+            >
+              <div className="mono-accent px-3 pb-1 pt-2">// détails</div>
+              {detailTabs.map((link) => {
+                const active = current && current.to === link.to;
+                return (
+                  <Link
+                    key={link.to}
+                    to={link.to}
+                    onClick={() => setDetailsOpen(false)}
+                    onMouseEnter={() => prefetchPath(link.to)}
+                    onFocus={() => prefetchPath(link.to)}
+                    aria-current={active ? "page" : undefined}
+                    data-testid={link.testId}
+                    className={`details-panel-link ${FOCUS}`}
+                  >
+                    {link.label}
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       <button
         type="button"
@@ -279,7 +277,7 @@ export default function Layout() {
   const foldButton = (
     <button
       onClick={() => setFolded((value) => !value)}
-      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-brand-lilac transition hover:bg-white/[0.08] ${FOCUS}`}
+      className={`nav-header-action ${FOCUS}`}
       aria-label={folded ? "Déplier la navigation" : "Replier la navigation"}
       aria-expanded={!folded}
       title={folded ? "Déplier la navigation ([)" : "Replier la navigation ([)"}
@@ -297,29 +295,25 @@ export default function Layout() {
           mobile
             ? "flex fixed inset-y-0 left-0 z-[1001] w-[min(20rem,86vw)] shadow-2xl"
             : `hidden md:flex ${folded ? "w-[4.5rem]" : "w-64"} sticky top-0 h-screen`
-        } shrink-0 flex-col overflow-y-auto bg-sidebar text-white border-r border-white/10 transition-[width] duration-200`}
+        } nav-shell shrink-0 flex-col overflow-y-auto bg-sidebar text-white border-r border-white/10`}
         data-testid={mobile ? "mobile-drawer" : "sidebar"}
         data-folded={!mobile && folded}
         aria-label="Navigation Plantiers OutreachOS"
       >
-        <div
-          className={`flex min-h-[4.25rem] items-center gap-3 border-b border-white/10 [@media(max-height:620px)]:min-h-[3.5rem] ${
-            narrow ? "justify-center px-2" : "px-4"
-          }`}
-        >
-          <LogoMark decorative className="h-8" />
-          {!narrow && (
-            <div className="min-w-0 flex-1 leading-none">
+        <div className="nav-brand-wrap">
+          <div className={`nav-brand ${narrow ? "nav-brand-folded" : ""}`}>
+            <LogoMark decorative className="h-8 shrink-0" />
+            <div className="nav-wordmark" aria-hidden={narrow ? "true" : undefined}>
               <div className="text-sm font-extrabold tracking-tight text-white">PLANTIERS</div>
               <div className="mt-1 font-mono text-[9px] tracking-[0.25em] text-brand-lilac/80">OUTREACH OS</div>
             </div>
-          )}
+          </div>
           {mobile ? (
             <button
               ref={mobileCloseRef}
               type="button"
               onClick={() => setMobileOpen(false)}
-              className={`flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-muted hover:bg-white/10 hover:text-white ${FOCUS}`}
+              className={`nav-header-action ${FOCUS}`}
               aria-label="Fermer la navigation"
             >
               <X size={18} />

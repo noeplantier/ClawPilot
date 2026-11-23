@@ -14,7 +14,7 @@ jest.mock("@/components/AIComposerModal", () => () => null);
 jest.mock("@/components/Footer", () => () => null);
 
 import Layout from "@/components/Layout";
-import { NAV_GROUPS } from "@/lib/sections";
+import { SECTIONS } from "@/lib/sections";
 
 global.IS_REACT_ACT_ENVIRONMENT = true;
 let container;
@@ -41,12 +41,11 @@ afterEach(async () => {
   container.remove();
 });
 
-test("the sidebar displays MAIN, INTELLIGENCE and CONFIGURATION navigation groups", async () => {
+test("the sidebar displays exactly the six Plantiers rubriques", async () => {
   await render();
-  const text = byId("sidebar").textContent;
-  expect(text).toContain("MAIN");
-  expect(text).toContain("INTELLIGENCE");
-  expect(text).toContain("CONFIGURATION");
+  const links = [...byId("sidebar").querySelectorAll('a[data-testid^="nav-"]')];
+  expect(links.map((a) => a.textContent)).toEqual(SECTIONS.map((s) => s.label));
+  expect(links).toHaveLength(6);
   expect(byId("account").textContent).toContain("Acme");
   expect(byId("account").textContent).toContain("me@example.test");
   expect(byId("account").closest("nav")).toBeNull();
@@ -61,24 +60,48 @@ test("the sidebar starts unfolded with its branding and the organisation", async
   expect(byId("sidebar-toggle").getAttribute("aria-expanded")).toBe("true");
 });
 
-test("each nav item has its link and the current one is marked active", async () => {
-  const allItems = NAV_GROUPS.flatMap((g) => g.items);
-  for (const item of allItems) {
+test("each rubrique has its link, tooltip and an active state", async () => {
+  for (const section of SECTIONS) {
     await act(async () => root.unmount());
     root = createRoot(container);
-    await render(item.to);
-    const link = byId(item.testId);
+    await render(section.to);
+    const link = byId(section.testId);
     expect(link).not.toBeNull();
-    expect(link.getAttribute("href")).toBe(item.to);
+    expect(link.getAttribute("href")).toBe(section.to);
     expect(link.getAttribute("aria-current")).toBe("page");
+    expect(link.getAttribute("title")).toBe(section.label);
   }
 });
 
-test("the tabs of the current section are displayed for Leads", async () => {
+test("a sub-section keeps its parent rubrique active", async () => {
+  await render("/app/prospects/review");
+  expect(byId("nav-leads").getAttribute("aria-current")).toBe("page");
+  expect(byId("nav-prospecting").getAttribute("aria-current")).toBeNull();
+});
+
+test("only the decision tabs of the current section are displayed for Leads", async () => {
   await render("/app/prospects/review");
   const tabs = [...byId("section-tabs").querySelectorAll("a")];
-  expect(tabs.map((a) => a.textContent)).toEqual(["CRM", "Pipeline", "Prospects", "À vérifier", "À enrichir"]);
+  expect(tabs.map((a) => a.textContent)).toEqual(["CRM", "À vérifier", "À enrichir"]);
   expect(byId("tab-review").getAttribute("aria-current")).toBe("page");
+});
+
+test("advanced screens stay reachable in a details panel instead of the primary tabs", async () => {
+  await render("/app/leads");
+  expect(byId("tab-pipeline")).toBeNull();
+  expect(byId("details-toggle").getAttribute("aria-expanded")).toBe("false");
+  await click(byId("details-toggle"));
+  expect(byId("details-panel")).not.toBeNull();
+  expect([...byId("details-panel").querySelectorAll("a")].map((a) => a.textContent)).toEqual(["Pipeline", "Prospects"]);
+  await click(byId("details-panel").querySelector('a[href="/app/prospects"]'));
+  expect(byId("details-panel")).toBeNull();
+});
+
+test("offer approval sits beside the answers it drives", async () => {
+  await render("/app/drafts");
+  await click(byId("details-toggle"));
+  expect(byId("detail-offer").textContent).toBe("Offre & modèle");
+  expect(byId("detail-offer").getAttribute("href")).toBe("/app/settings/offer");
 });
 
 test("upper navigation elements are removed for Offer, Integrations, Automations, System Health", async () => {
@@ -87,6 +110,7 @@ test("upper navigation elements are removed for Offer, Integrations, Automations
     root = createRoot(container);
     await render(p);
     expect(byId("section-tabs")).toBeNull();
+    expect(byId("details-toggle")).toBeNull();
   }
 });
 
@@ -101,8 +125,8 @@ test("folding keeps destinations reachable with aria-label and remembers choice"
   await render();
   await click(byId("sidebar-toggle"));
   expect(byId("sidebar").getAttribute("data-folded")).toBe("true");
-  expect(byId("nav-dashboard").getAttribute("aria-label")).toBe("Dashboard");
-  expect(byId("nav-map").getAttribute("aria-label")).toBe("Live Prospect Map");
+  expect(byId("nav-overview").getAttribute("aria-label")).toBe("Vue d’ensemble");
+  expect(byId("nav-prospecting").getAttribute("aria-label")).toBe("Prospection");
   expect(window.localStorage.getItem("pos.ui.sidebar.folded")).toBe("true");
   await act(async () => root.unmount());
   root = createRoot(container);
@@ -132,7 +156,7 @@ test("mobile navigation opens an accessible drawer, traps focus and closes on Es
   expect(byId("mobile-drawer")).toBeNull();
   await click(byId("mobile-nav-toggle"));
   expect(byId("mobile-drawer")).not.toBeNull();
-  expect(byId("mobile-nav-dashboard")).not.toBeNull();
+  expect(byId("mobile-nav-overview")).not.toBeNull();
   expect(byId("mobile-drawer").parentElement.getAttribute("aria-modal")).toBe("true");
   expect(byId("mobile-drawer").getAttribute("aria-label")).toContain("Navigation");
   expect(document.activeElement.getAttribute("aria-label")).toBe("Fermer la navigation");
@@ -149,6 +173,6 @@ test("mobile navigation opens an accessible drawer, traps focus and closes on Es
 test("choosing an entry in the drawer closes it", async () => {
   await render();
   await click(byId("mobile-nav-toggle"));
-  await click(byId("mobile-nav-dashboard"));
+  await click(byId("mobile-nav-overview"));
   expect(byId("mobile-drawer")).toBeNull();
 });
