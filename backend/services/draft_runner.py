@@ -19,9 +19,10 @@ import uuid
 from datetime import date, datetime, timezone
 from typing import Any, Awaitable, Callable, Collection, Optional
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from db.models import Lead
+from db.models import DraftJob, Lead
 from db.session import AsyncSessionLocal
 from repositories import audit_repo, draft_job_repo, draft_repo, prospect_repo, usage_repo
 from services import ai_svc, feature_flags
@@ -46,6 +47,11 @@ Generator = Callable[[list[dict[str, str]]], Awaitable[dict[str, Optional[str]]]
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _pick_generator(generator: Generator, precision_generator: Optional[Generator], precise: bool) -> Generator:
+    """Only the selected best leads may use the precision generator; every other lead keeps the short/cheap one."""
+    return precision_generator if precise and precision_generator is not None else generator
 
 
 def _public_base_url() -> str:
@@ -140,8 +146,11 @@ async def run_job(
     *,
     generator: Generator,
     now: Callable[[], datetime],
+    precise: bool = False,
+    precision_generator: Optional[Generator] = None,
 ) -> str:
-    """Step 2, one job: claim it, ask the provider, check the answer, store the draft. Returns the job's new status."""
+    """Step 2, one job: claim it, ask the provider, check the answer, store the draft. Returns the job's new status.
+    `precise` selects the optional precision model for the best leads; it never changes the guardrails or the draft."""
     async with session_factory() as session:
         job = await draft_job_repo.claim(session, job_id, now())
         if job is None:
@@ -185,7 +194,7 @@ async def run_job(
             business, messages = lead.full_name, ai_draft.build_messages(ctx, offer)
 
         try:
-            answer = await generator(messages)
+            answer = await _pick_generator(generator, precision_generator, precise)(messages)
         except ai_svc.AIUnavailable as exc:
             limited = exc.code == "ai_rate_limited"
             return await end(
@@ -253,16 +262,30 @@ async def prepare(
     now: Callable[[], datetime] = utcnow,
     only: Optional[Collection[uuid.UUID]] = None,
     budget: int = BATCH_BUDGET,
+    precision_ids: Optional[Collection[uuid.UUID]] = None,
+    precision_generator: Optional[Generator] = None,
 ) -> dict[str, int]:
     """One sweep: record the jobs, then prepare up to `budget` of them, CONCURRENCY at a time. Never raises.
-    `only` restricts the sweep to those prospects (the recipients of one campaign)."""
+    `only` restricts the sweep to those prospects (the recipients of one campaign or the Hot Leads of a mandate).
+    `precision_ids` are the best leads that may use the precision model; without AI_MODEL_PRECISION nothing changes."""
     started = time.monotonic()
     run = generator or ai_svc.complete
+    precise_ids = set(precision_ids or ())
+    precise_run = precision_generator
+    if precise_ids and precise_run is None:
+        model = ai_svc.precision_model()
+        if model:
+            async def precise_run(msgs: list[dict[str, str]]) -> dict[str, Optional[str]]:  # type: ignore[no-redef]
+                return await ai_svc.complete(msgs, model=model)
     out = {"queued": 0, "offer_required": 0, "ready": 0, "failed": 0, "unavailable": 0, "skipped": 0}
     try:
         out.update(await record_jobs(session_factory, account_id, now(), only))
         async with session_factory() as session:
             ids = await draft_job_repo.due(session, account_id, budget, now(), only)
+            precise_by_job: dict[uuid.UUID, bool] = {}
+            if precise_ids and ids:
+                rows = (await session.execute(select(DraftJob.id, DraftJob.lead_id).where(DraftJob.id.in_(ids)))).all()
+                precise_by_job = {row.id: row.lead_id in precise_ids for row in rows}
         gate = asyncio.Semaphore(CONCURRENCY)
         limited = asyncio.Event()
 
@@ -270,7 +293,11 @@ async def prepare(
             async with gate:
                 if limited.is_set():  # the provider's limit is reached: the rest waits for the next sweep
                     return
-                status = await run_job(session_factory, account_id, job_id, generator=run, now=now)
+                status = await run_job(
+                    session_factory, account_id, job_id,
+                    generator=run, now=now,
+                    precise=precise_by_job.get(job_id, False), precision_generator=precise_run,
+                )
                 out[status] = out.get(status, 0) + 1
                 if status == "unavailable":
                     limited.set()
@@ -287,7 +314,14 @@ async def prepare(
     return out
 
 
-def kick(account_id: uuid.UUID, *, only: Optional[Collection[uuid.UUID]] = None, budget: int = BATCH_BUDGET) -> bool:
+def kick(
+    account_id: uuid.UUID,
+    *,
+    only: Optional[Collection[uuid.UUID]] = None,
+    budget: int = BATCH_BUDGET,
+    precision_ids: Optional[Collection[uuid.UUID]] = None,
+    precision_generator: Optional[Generator] = None,
+) -> bool:
     """Start a sweep for this organisation in the background (one at a time per organisation). Call after the data is
     committed. Nothing waits for it. False when a sweep is already running (nothing was started)."""
     if account_id in _running:
@@ -296,7 +330,10 @@ def kick(account_id: uuid.UUID, *, only: Optional[Collection[uuid.UUID]] = None,
 
     async def go() -> None:
         try:
-            await prepare(account_id, only=only, budget=budget)
+            await prepare(
+                account_id, only=only, budget=budget,
+                precision_ids=precision_ids, precision_generator=precision_generator,
+            )
         finally:
             _running.discard(account_id)
 
